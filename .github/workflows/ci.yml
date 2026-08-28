@@ -58,6 +58,9 @@ jobs:
       - name: Run Claude dialogue/callback regression test
         run: godot --headless --path . --scene tests/dialogue_test.tscn
 
+      - name: Run production-incident (IT WAS DNS) regression test
+        run: godot --headless --path . --scene tests/production_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 

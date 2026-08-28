@@ -90,6 +90,28 @@ static func free_tier() -> Array:
 		},
 	]
 
+## Production incident: the classic "what do we do" panic, including the DNS gag.
+static func production_incident() -> Array:
+	return [
+		{
+			"title": "\ud83d\udd25 PRODUCTION IS DOWN",
+			"description": "Pagers screaming. The graph is a cliff. Users are tweeting.\n\nWhat do you do?",
+			"choices": [
+				{"text": "Investigate properly", "effects": {"tokens": -15, "stability": 15}, "next": 1},
+				{"text": "Just restart it", "next": 2},
+				{"text": "Blame DNS", "dns_gamble": true, "next_fail": 3, "next_success": 4},
+				{"text": "Ask the AI (it's 100% confident)", "effects": {"stability": -4, "technical_debt": 5}, "next": 5},
+				{"text": "Roll back EVERYTHING", "effects": {"stability": 10, "technical_debt": -4}, "next": 6},
+			],
+		},
+		{"title": "FIXED (properly)", "description": "You read the logs like an adult. It was a missing null check. It's always a missing null check.", "choices": [{"text": "Log off forever", "next": -1}]},
+		{"title": "IT CAME BACK", "description": "You restarted it. It came back. Nobody knows why. This is fine. Everything is fine.", "effects_note": "", "choices": [{"text": "Do not touch it again", "effects": {"stability": 8}, "next": -1}]},
+		{"title": "IT'S NEVER DNS", "description": "It wasn't DNS. It's never DNS. You have wasted 40 minutes and some dignity.", "choices": [{"text": "Sigh", "next": -1}]},
+		{"title": "...IT WAS DNS", "description": "Wait. Check the resolver. The TTL. The...\n\nIt was DNS. It was ACTUALLY DNS. You are a legend. Tell no one, they won't believe you.", "choices": [{"text": "Frame the incident report", "next": -1}]},
+		{"title": "THE AI IS CONFIDENT", "description": "The AI suggested a fix with total confidence. It made things worse, with total confidence.", "choices": [{"text": "Undo the AI", "next": -1}]},
+		{"title": "ROLLED BACK", "description": "You rolled back everything, including three features nobody will notice are gone.", "choices": [{"text": "Ship again tomorrow", "next": -1}]},
+	]
+
 ## Repeatable deploy menu for autonomous agents. Choices carry deploy_agent.
 static func agent_menu() -> Array:
 	return [

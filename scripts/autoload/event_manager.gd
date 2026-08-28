@@ -118,6 +118,14 @@ func resolve(choice_index: int) -> void:
 
 func _resolve_scripted(choice: Dictionary) -> void:
 	var next_stage: int = int(choice.get("next", -1))
+	# "Blame DNS": almost always a joke... except, once in a while, it IS DNS.
+	if choice.get("dns_gamble", false):
+		if randf() < 0.12:
+			AchievementManager.unlock("it_was_dns")
+			ResourceManager.modify("stability", 20.0)
+			next_stage = int(choice.get("next_success", -1))
+		else:
+			next_stage = int(choice.get("next_fail", -1))
 	if next_stage >= 0 and next_stage < _script_stages.size():
 		active_event = _stage_to_event(next_stage)
 		event_triggered.emit(_script_id, active_event.get("description", ""))

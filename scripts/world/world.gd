@@ -52,6 +52,13 @@ func _load_region(region_id: String) -> void:
 		camera.enabled = true
 		_apply_camera_bounds(data.get("size", Vector2.ZERO))
 	_set_ambient(region_id)
+	# Production greets you with an incident (once).
+	if region_id == "production" and not EventManager.is_script_completed("production_incident"):
+		call_deferred("_trigger_production_incident")
+
+func _trigger_production_incident() -> void:
+	if not EventManager.has_active_event():
+		EventManager.start_scripted("production_incident", preload("res://scripts/world/story_events.gd").production_incident())
 
 func _apply_camera_bounds(size: Vector2) -> void:
 	if size == Vector2.ZERO:

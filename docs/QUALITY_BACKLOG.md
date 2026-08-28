@@ -67,7 +67,8 @@ every iteration by fresh playtesting. Priorities:
 
 ## P3 — Nice to have
 
-- [ ] Achievements tied to running gags (IT WAS DNS, BORING RESPONSIBLE ADULT).
+- [x] Achievements tied to running gags: **IT WAS DNS** (production incident) and
+  **Boring Responsible Adult** (backups) both implemented + tested. *(It14–15)*
 - [ ] Post-game content.
 - [~] Additional regions polished: all 9 now themed compositions (It10). Could
   still be raised toward Localhost's hand-crafted density.

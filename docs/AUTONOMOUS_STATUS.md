@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 14 complete — Claude reactive personality + memory + backups callback.
+Iteration 15 complete — Production incident + "IT WAS DNS" running gag.
 Next: boss telegraphs/visuals, higher-fi player art, more branching quests with
-multiple endings, IT-WAS-DNS production incident, safe-audio pass.
+multiple endings, safe-audio pass, results-screen polish.
 
 ## Iteration log
 
@@ -201,6 +201,17 @@ multiple endings, IT-WAS-DNS production incident, safe-audio pass.
 - Regression test `tests/dialogue_test.tscn` (9/9): intro + memory, reactive
   barbs (microservices, debt), the backups offer/flag/cost, grudging pride when
   backed up, and the breach-survival achievement payoff. Wired into CI.
+
+### Iteration 15 — Production incident + IT WAS DNS
+- Entering **Production** triggers a branching incident (once): Investigate,
+  Restart, **Blame DNS**, Ask the AI, or Roll back everything — each with its own
+  outcome. Added `dns_gamble` support to the scripted-event engine
+  (`next_success`/`next_fail`).
+- **Blame DNS** is almost always a joke ("It's never DNS")... except ~12% of the
+  time it really **is** DNS, restoring stability and unlocking **IT WAS DNS**.
+- Regression test `tests/production_test.tscn` (5/5): investigate restores
+  stability, the incident resolves, and blaming DNS eventually unlocks the
+  achievement. Wired into CI.
 
 ## Verified test commands
 
