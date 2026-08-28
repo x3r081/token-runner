@@ -12,7 +12,12 @@ func _on_interact(_player: Node) -> void:
 		"dream_app_terminal":
 			_show_message("Open Dream App panel with [B] to upgrade.")
 		"client_email":
-			_show_message("Subject: RE: RE: RE: One tiny change\n\n'Can you also make the logo bigger?'")
+			if EventManager.has_active_event():
+				return
+			if EventManager.is_script_completed("tiny_change"):
+				_show_message("Inbox: 3,918 unread.\n\n'Hey, tiny thing — can you make the logo bigger? And also smaller?'")
+			else:
+				EventManager.start_scripted("tiny_change", preload("res://scripts/world/story_events.gd").tiny_change())
 		"abandoned_package":
 			_show_message("Package recovered. 47 vulnerabilities included free.")
 		"backup_server":

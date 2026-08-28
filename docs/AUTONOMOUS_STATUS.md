@@ -9,8 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 2 complete — Localhost visual redesign. Next: enemy identities +
-gameplay/comedy systems depth.
+Iteration 3 complete — comedy-as-mechanics storyline system + flagship quest.
+Next: more staged quests (Free Tier, The Autonomous Agent), remaining enemy
+identities, model-selection/agent systems.
 
 ## Iteration log
 
@@ -48,6 +49,27 @@ gameplay/comedy systems depth.
 - Floor de-tiled: removed repeating knot feature, added per-tile jitter + grime.
 - Verified: smoke 8/8; visual confirmed via screenshots (before → v3).
 
+### Iteration 3 — Comedy-as-mechanics storyline system
+- New **staged storyline engine** in `EventManager` (`start_scripted`) that
+  reuses the event popup to run multi-stage, branching narrative beats with
+  escalating consequences, achievements, and quest-chain completion.
+- Implemented the flagship **"Just One Tiny Change"** (`scripts/world/story_events.gd`):
+  green button → component-library upgrade → 17 components render as horses →
+  CI on fire → design-system migration → "actually we preferred blue" → restore
+  original. Payoff: +300 Tokens, +43 Technical Debt, -12 Will To Live, **AGILE**
+  achievement. Triggered by checking the client email (laptop); inbox becomes a
+  running gag afterward.
+- **Fixed a latent event-popup soft-lock**: popup paused the tree but its buttons
+  were `PAUSABLE`, so choices could not be clicked. Popup now processes while
+  paused (`process_mode = ALWAYS`). This affects all random events too.
+- Popup **UI polish**: dimmed backdrop, solid neon-bordered panel, larger type,
+  keyboard/controller focus (confirm with Enter).
+- **Interact range** widened (40 → 56) for better feel.
+- Added achievements: AGILE, IT WAS DNS, Boring Responsible Adult, Terms & Cond.
+- Regression test `tests/story_test.tscn` (11/11) drives the storyline to
+  completion and asserts rewards, achievement, script + quest completion, and
+  the chained next quest. Wired into CI.
+
 ## Verified test commands
 
 ```bash
@@ -55,6 +77,7 @@ godot --headless --path . --script scripts/tools/run_generate.gd
 godot --headless --path . --import
 godot --headless --path . --scene tests/smoke_test.tscn        # 8/8
 godot --headless --path . --scene tests/soft_lock_test.tscn    # 4/4
+godot --headless --path . --scene tests/story_test.tscn        # 11/11
 godot --headless --path . --quit-after 1
 ```
 

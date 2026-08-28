@@ -392,7 +392,8 @@ static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 	npcs.add_child(claude)
 
 	var interact_scene := preload("res://scenes/world/generic_interactable.tscn")
-	_add_interact(props, interact_scene, "client_email", Vector2(430, 360), "Check client email")
+	var email := _add_interact(props, interact_scene, "client_email", Vector2(430, 360), "Check client email")
+	email.one_shot = false  # re-checkable inbox running gag
 	_add_interact(props, interact_scene, "dream_app_terminal", Vector2(650, 360), "Dream App Terminal")
 	_add_interact(props, interact_scene, "deploy_button", Vector2(760, 380), "Deploy To Production")
 
@@ -404,9 +405,10 @@ static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 		p.position = Vector2(ROOM_W * TILE - 90, ROOM_H * TILE * 0.5)
 		portals.add_child(p)
 
-static func _add_interact(parent: Node2D, scene: PackedScene, id: String, pos: Vector2, text: String) -> void:
+static func _add_interact(parent: Node2D, scene: PackedScene, id: String, pos: Vector2, text: String) -> Node:
 	var node = scene.instantiate()
 	node.interact_id = id
 	node.interact_text = text
 	node.position = pos
 	parent.add_child(node)
+	return node

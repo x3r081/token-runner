@@ -31,6 +31,9 @@ jobs:
       - name: Run soft-lock regression test
         run: godot --headless --path . --scene tests/soft_lock_test.tscn
 
+      - name: Run storyline/quest regression test
+        run: godot --headless --path . --scene tests/story_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 

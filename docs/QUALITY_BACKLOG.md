@@ -27,8 +27,9 @@ every iteration by fresh playtesting. Priorities:
   still need distinct silhouettes, telegraphs, behaviors, deaths.
 - [ ] **Gameplay depth**: currently walk + collect + shoot. Needs decisions,
   branching quests, model selection, agent system, architecture tradeoffs.
-- [ ] **Comedy as mechanics**: jokes are mostly static labels. Build event- and
-  quest-driven comedy (Just One Tiny Change, Free Tier, The Autonomous Agent).
+- [~] **Comedy as mechanics**: staged storyline engine shipped; **Just One Tiny
+  Change** implemented end-to-end. Still to do: Free Tier, The Autonomous Agent,
+  and more branching scenarios with consequences.
 
 ## P2 — Depth & polish
 

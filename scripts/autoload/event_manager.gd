@@ -9,6 +9,12 @@ var active_event: Dictionary = {}
 var cooldown: float = 0.0
 var _rng := RandomNumberGenerator.new()
 
+## Scripted multi-stage storylines (comedy-as-mechanics). Reuses the same popup
+## UI as random events by having active_event hold the current stage.
+var completed_scripts: Array[String] = []
+var _script_id: String = ""
+var _script_stages: Array = []
+
 func _ready() -> void:
 	_rng.randomize()
 	_load_events()
@@ -16,6 +22,9 @@ func _ready() -> void:
 func reset() -> void:
 	active_event.clear()
 	cooldown = 60.0
+	completed_scripts.clear()
+	_script_id = ""
+	_script_stages = []
 
 func _load_events() -> void:
 	var file := FileAccess.open("res://data/events/random_events.json", FileAccess.READ)
@@ -53,6 +62,31 @@ func _try_trigger() -> void:
 	active_event = ev.duplicate(true)
 	event_triggered.emit(ev.id, ev.get("description", ""))
 
+## Begin a scripted storyline. Stages are provided by StoryEvents.*.
+func start_scripted(script_id: String, stages: Array) -> void:
+	if script_id in completed_scripts:
+		return
+	if stages.is_empty() or not active_event.is_empty():
+		return
+	_script_id = script_id
+	_script_stages = stages
+	active_event = _stage_to_event(0)
+	event_triggered.emit(_script_id, active_event.get("description", ""))
+
+func is_script_completed(script_id: String) -> bool:
+	return script_id in completed_scripts
+
+func _stage_to_event(i: int) -> Dictionary:
+	var s: Dictionary = _script_stages[i]
+	return {
+		"id": "%s_%d" % [_script_id, i],
+		"scripted": true,
+		"stage": i,
+		"title": s.get("title", "INCIDENT"),
+		"description": s.get("description", ""),
+		"choices": s.get("choices", [{"text": "Continue", "next": -1}]),
+	}
+
 func resolve(choice_index: int) -> void:
 	if active_event.is_empty():
 		return
@@ -67,8 +101,34 @@ func resolve(choice_index: int) -> void:
 			ResourceManager.modify(res, float(choice.effects[res]))
 	if choice.has("achievement"):
 		AchievementManager.unlock(choice.achievement)
+
+	if active_event.get("scripted", false):
+		_resolve_scripted(choice)
+		return
+
 	event_resolved.emit(active_event.id, choice_index)
 	active_event.clear()
+
+func _resolve_scripted(choice: Dictionary) -> void:
+	var next_stage: int = int(choice.get("next", -1))
+	if next_stage >= 0 and next_stage < _script_stages.size():
+		active_event = _stage_to_event(next_stage)
+		event_triggered.emit(_script_id, active_event.get("description", ""))
+		return
+	# End of storyline: finalize completion + quest chaining.
+	if choice.has("complete_quest"):
+		var qid: String = choice["complete_quest"]
+		if not QuestManager.is_completed(qid):
+			if QuestManager.quest_states.get(qid) != QuestManager.QuestState.ACTIVE:
+				QuestManager.start_quest(qid)
+			QuestManager.complete_quest(qid)
+	var finished_id := _script_id
+	if finished_id != "" and finished_id not in completed_scripts:
+		completed_scripts.append(finished_id)
+	_script_id = ""
+	_script_stages = []
+	active_event.clear()
+	event_resolved.emit(finished_id, 0)
 
 func has_active_event() -> bool:
 	return not active_event.is_empty()

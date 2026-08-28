@@ -8,6 +8,7 @@ func _ready() -> void:
 		btn.pressed.connect(_on_choice.bind(i))
 
 @onready var panel: PanelContainer = $Panel
+@onready var backdrop: ColorRect = $Backdrop
 @onready var title_label: Label = $Panel/Margin/VBox/Title
 @onready var desc_label: Label = $Panel/Margin/VBox/Description
 @onready var choice_buttons: Array[Button] = [
@@ -17,13 +18,15 @@ func _ready() -> void:
 ]
 
 func _on_event(_event_id: String, description: String) -> void:
-	if UIManager.has_blocking_ui():
-		return
 	var ev := EventManager.get_active()
 	if ev.is_empty():
 		return
+	# Scripted storylines always render (they drive their own modal flow).
+	if not ev.get("scripted", false) and UIManager.has_blocking_ui():
+		return
 	get_tree().paused = true
 	panel.visible = true
+	backdrop.visible = true
 	title_label.text = ev.get("title", "INCIDENT")
 	desc_label.text = description
 	var choices: Array = ev.get("choices", [])
@@ -33,8 +36,16 @@ func _on_event(_event_id: String, description: String) -> void:
 			choice_buttons[i].text = choices[i].get("text", "Option")
 		else:
 			choice_buttons[i].visible = false
+	# Focus the first choice so keyboard/controller players can confirm with Enter.
+	if not choices.is_empty():
+		choice_buttons[0].grab_focus()
 
 func _on_choice(index: int) -> void:
 	EventManager.resolve(index)
+	# A scripted storyline may have advanced to the next stage, which re-renders
+	# the panel via _on_event. Only tear down when nothing is active anymore.
+	if EventManager.has_active_event():
+		return
 	panel.visible = false
+	backdrop.visible = false
 	get_tree().paused = false

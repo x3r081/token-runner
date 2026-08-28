@@ -9,6 +9,10 @@
     "context_is_social_construct": {"name": "Context Is A Social Construct", "description": "Defeated THE INFINITE CONTEXT."},
     "we_have_observability_now": {"name": "We Have Observability Now", "description": "Production went down and you watched it happen live."},
     "dependency_archaeologist": {"name": "Dependency Archaeologist", "description": "Survived the Dependency District."},
-    "actually_i_cannot_explain": {"name": "Actually, I Cannot Explain", "description": "Died 10 times. Still shipping."}
+    "actually_i_cannot_explain": {"name": "Actually, I Cannot Explain", "description": "Died 10 times. Still shipping."},
+    "agile": {"name": "AGILE", "description": "Turned one tiny change into a design-system migration and back. Velocity!"},
+    "it_was_dns": {"name": "IT WAS DNS", "description": "You blamed DNS. This one time, it actually was DNS."},
+    "boring_responsible_adult": {"name": "Boring Responsible Adult", "description": "You actually made backups. The disaster was trivial. Nobody clapped."},
+    "free_tier_victim": {"name": "Terms And Conditions", "description": "Accepted 10,000 free tokens. Kept 30 of them."}
   }
 }

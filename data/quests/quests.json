@@ -14,14 +14,13 @@
     },
     "tiny_change": {
       "name": "Just One Tiny Change",
-      "description": "The client has requested one small adjustment. Estimated impact: catastrophic.",
+      "description": "The client wants the button green. Should take 2 seconds. Check the laptop (client email) and see it through.",
       "region": "localhost",
       "prerequisites": ["hello_localhost"],
       "objectives": [
-        {"id": "defeat_scope", "type": "defeat", "target": "scope_creep", "count": 1, "text": "Defeat the Scope Creep"},
-        {"id": "deliver", "type": "interact", "target": "client_email", "count": 1, "text": "Respond to the client email"}
+        {"id": "answer_email", "type": "story", "target": "tiny_change", "count": 1, "text": "Answer the client's 'tiny' email (check the laptop)"}
       ],
-      "rewards": {"tokens": 350, "technical_debt": 12, "will_to_live": -8},
+      "rewards": {},
       "giver": "roommate_ai"
     },
     "install_node": {
