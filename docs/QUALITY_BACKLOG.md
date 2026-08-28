@@ -36,6 +36,13 @@ every iteration by fresh playtesting. Priorities:
   Change** implemented end-to-end. Still to do: Free Tier, The Autonomous Agent,
   and more branching scenarios with consequences.
 
+## Composition / resolution
+
+- [x] **1080p & 1440p composition**: removed the hard 1920×1080 window override
+  that black-barred the game at higher resolutions; window is now resizable and
+  content scales (stretch canvas_items/expand). Verified Localhost at 1920×1080
+  and 2560×1440. *(It13.5)*
+
 ## P2 — Depth & polish
 
 - [ ] Multi-stage/branching quests with consequences, failure states, callbacks.
