@@ -26,60 +26,291 @@ static func build(parent: Node2D, region_id: String) -> Dictionary:
 		return _LocalhostBuilder.build(parent)
 	return _build_region_static(parent, region_id)
 
+const GEN := "res://assets/textures/generated/"
+
 static func _build_region_static(parent: Node2D, region_id: String) -> Dictionary:
-	var tile_name: String = REGION_TILE_MAP.get(region_id, "localhost")
-	var tile_tex: Texture2D = load("res://assets/textures/generated/tile_%s.png" % tile_name)
-	var spawn_pos := Vector2(REGION_SIZE.x * TILE_SIZE * 0.5, REGION_SIZE.y * TILE_SIZE * 0.5)
-	
-	var floor := Node2D.new()
-	floor.name = "Floor"
-	parent.add_child(floor)
-	
-	for x in REGION_SIZE.x:
-		for y in REGION_SIZE.y:
-			var sprite := Sprite2D.new()
-			sprite.texture = tile_tex
-			sprite.position = Vector2(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2)
-			sprite.z_index = -10
-			floor.add_child(sprite)
-			if x == 0 or y == 0 or x == REGION_SIZE.x - 1 or y == REGION_SIZE.y - 1:
-				_add_wall(parent, sprite.position)
-	
+	parent.y_sort_enabled = true
+	var theme := _region_theme(region_id)
+	var w := REGION_SIZE.x * TILE_SIZE
+	var h := REGION_SIZE.y * TILE_SIZE
+	var spawn_pos := Vector2(w * 0.5, h * 0.5)
+
+	_build_floor_themed(parent, theme, w, h)
+	_build_walls_themed(parent, theme, w, h)
+	_build_structures(parent, theme)
+	_build_region_lights(parent, theme)
+	_build_region_signs(parent, theme)
+
 	var props := Node2D.new()
 	props.name = "Props"
 	parent.add_child(props)
-	
 	var enemies := Node2D.new()
 	enemies.name = "Enemies"
 	parent.add_child(enemies)
-	
 	var tokens := Node2D.new()
 	tokens.name = "Tokens"
 	parent.add_child(tokens)
-	
 	var npcs := Node2D.new()
 	npcs.name = "NPCs"
 	parent.add_child(npcs)
-	
 	var portals := Node2D.new()
 	portals.name = "Portals"
 	parent.add_child(portals)
-	
-	_populate_region(region_id, props, enemies, tokens, npcs, portals, spawn_pos)
-	
-	return {"spawn": spawn_pos, "size": Vector2(REGION_SIZE) * TILE_SIZE}
 
-static func _add_wall(parent: Node2D, pos: Vector2) -> void:
+	_populate_region(region_id, props, enemies, tokens, npcs, portals, spawn_pos)
+
+	return {"spawn": spawn_pos, "size": Vector2(w, h)}
+
+# --- themed visual construction ------------------------------------------
+
+static func _tex(name: String) -> Texture2D:
+	var path := GEN + name + ".png"
+	return load(path) if ResourceLoader.exists(path) else null
+
+static func _put(parent: Node2D, tex_name: String, pos: Vector2, z: int, scale: float = 1.0, mod: Color = Color.WHITE) -> Sprite2D:
+	var t := _tex(tex_name)
+	if not t:
+		return null
+	var s := Sprite2D.new()
+	s.texture = t
+	s.position = pos
+	s.z_index = z
+	s.scale = Vector2(scale, scale)
+	s.modulate = mod
+	parent.add_child(s)
+	return s
+
+static func _depth(pos_y: float, half_h: float) -> int:
+	return int(pos_y + half_h)
+
+static func _build_floor_themed(parent: Node2D, theme: Dictionary, w: int, h: int) -> void:
+	var floor := Node2D.new()
+	floor.name = "Floor"
+	parent.add_child(floor)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 424242
+	var tint: Color = theme.get("floor", Color(0.5, 0.5, 0.55))
+	for x in REGION_SIZE.x:
+		for y in REGION_SIZE.y:
+			var j := rng.randf_range(-0.05, 0.04)
+			var m := Color(tint.r + j, tint.g + j, tint.b + j)
+			_put(floor, "tech_floor", Vector2(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2), -100, 1.0, m)
+
+static func _build_walls_themed(parent: Node2D, theme: Dictionary, w: int, h: int) -> void:
+	var walls := Node2D.new()
+	walls.name = "Walls"
+	parent.add_child(walls)
+	var wall_tint: Color = theme.get("wall", Color(0.7, 0.7, 0.8))
+	for x in REGION_SIZE.x:
+		var px := x * TILE_SIZE + TILE_SIZE / 2
+		_put(walls, "int_wall", Vector2(px, 16), -60, 1.0, wall_tint)
+		_add_collider(walls, Vector2(px, 24), Vector2(TILE_SIZE, 56))
+		_add_collider(walls, Vector2(px, h - 6), Vector2(TILE_SIZE, 20))
+	for y in REGION_SIZE.y:
+		var py := y * TILE_SIZE + TILE_SIZE / 2
+		_put(walls, "int_wall_side", Vector2(20, py), -58, 1.0, wall_tint)
+		_put(walls, "int_wall_side", Vector2(w - 20, py), -58, 1.0, wall_tint.darkened(0.15))
+		_add_collider(walls, Vector2(6, py), Vector2(20, TILE_SIZE))
+		_add_collider(walls, Vector2(w - 6, py), Vector2(20, TILE_SIZE))
+
+static func _add_collider(parent: Node2D, pos: Vector2, sz: Vector2) -> void:
 	var wall := StaticBody2D.new()
 	wall.collision_layer = 32
 	wall.collision_mask = 0
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
-	rect.size = Vector2(TILE_SIZE, TILE_SIZE)
+	rect.size = sz
 	shape.shape = rect
 	shape.position = pos
 	wall.add_child(shape)
 	parent.add_child(wall)
+
+static func _build_structures(parent: Node2D, theme: Dictionary) -> void:
+	var z := Node2D.new()
+	z.name = "Structures"
+	parent.add_child(z)
+	for s in theme.get("structs", []):
+		var half: float = 40.0 * float(s.get("s", 1.0))
+		_put(z, s.t, s.p, _depth(s.p.y, half), s.get("s", 1.0), s.get("m", Color.WHITE))
+
+static func _build_region_lights(parent: Node2D, theme: Dictionary) -> void:
+	for lp in theme.get("lights", []):
+		var light := PointLight2D.new()
+		light.texture = _radial()
+		light.energy = 0.6
+		light.color = theme.get("glow", Color(0.6, 0.8, 1.0))
+		light.texture_scale = 3.5
+		light.position = lp
+		parent.add_child(light)
+
+static func _radial() -> Texture2D:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	for x in 64:
+		for y in 64:
+			var d := Vector2(x - 32, y - 32).length() / 32.0
+			var a := clampf(1.0 - d, 0.0, 1.0)
+			img.set_pixel(x, y, Color(1, 1, 1, a * a))
+	return ImageTexture.create_from_image(img)
+
+static func _build_region_signs(parent: Node2D, theme: Dictionary) -> void:
+	var z := Node2D.new()
+	z.name = "Signs"
+	parent.add_child(z)
+	for sg in theme.get("signs", []):
+		var lbl := Label.new()
+		lbl.text = sg.t
+		lbl.position = sg.p
+		lbl.add_theme_font_size_override("font_size", 13)
+		lbl.add_theme_color_override("font_color", sg.get("c", Color(0.9, 0.9, 1.0)))
+		lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+		lbl.add_theme_constant_override("outline_size", 4)
+		lbl.z_index = 400
+		z.add_child(lbl)
+
+## Small cluster helper for composing themed set-dressing.
+static func _clu(cx: float, cy: float, t: String, n: int, s: float, m: Color, spread: float) -> Array:
+	var out: Array = []
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(cx * 13.0 + cy * 7.0 + t.length())
+	for i in n:
+		out.append({
+			"t": t,
+			"p": Vector2(cx + rng.randf_range(-spread, spread), cy + rng.randf_range(-spread, spread)),
+			"s": s * rng.randf_range(0.85, 1.12),
+			"m": m,
+		})
+	return out
+
+## Per-region theme: floor/glow palette, set-dressing structures, lights, signs.
+## Structures are composed to frame the play space and fill dead corners while
+## leaving the central spawn and the left/right portal lane walkable.
+static func _region_theme(region_id: String) -> Dictionary:
+	match region_id:
+		"dependency_district":
+			var structs := _clu(220, 200, "struct_crate", 4, 1.0, Color(0.75, 0.5, 0.38), 55)
+			structs += _clu(1060, 220, "struct_crate", 4, 1.0, Color(0.7, 0.46, 0.34), 55)
+			structs += _clu(230, 770, "struct_crate", 5, 1.1, Color(0.72, 0.48, 0.36), 70)
+			structs += _clu(1060, 760, "struct_crate", 4, 1.0, Color(0.68, 0.44, 0.32), 60)
+			structs += [{"t": "struct_tower", "p": Vector2(1140, 640), "s": 0.9, "m": Color(0.7, 0.5, 0.5)}]
+			return {
+				"floor": Color(0.5, 0.4, 0.4), "wall": Color(0.7, 0.55, 0.5), "glow": Color(0.95, 0.55, 0.4),
+				"lights": [Vector2(220, 760), Vector2(1080, 240)], "structs": structs,
+				"signs": [
+					{"p": Vector2(150, 150), "t": "node_modules\n(event horizon)", "c": Color(1.0, 0.7, 0.5)},
+					{"p": Vector2(900, 150), "t": "npm install\n(attempt #47)", "c": Color(1.0, 0.6, 0.5)},
+				],
+			}
+		"stackoverflow_ruins":
+			var structs := [
+				{"t": "struct_arch", "p": Vector2(300, 240), "s": 1.1, "m": Color(0.72, 0.68, 0.6)},
+				{"t": "struct_arch", "p": Vector2(980, 250), "s": 1.0, "m": Color(0.66, 0.62, 0.56)},
+			]
+			structs += _clu(240, 760, "struct_slab", 3, 0.9, Color(0.66, 0.63, 0.58), 70)
+			structs += _clu(1050, 740, "struct_slab", 3, 0.85, Color(0.6, 0.58, 0.54), 70)
+			return {
+				"floor": Color(0.55, 0.5, 0.42), "wall": Color(0.7, 0.66, 0.56), "glow": Color(0.95, 0.82, 0.5),
+				"lights": [Vector2(300, 260), Vector2(980, 260)], "structs": structs,
+				"signs": [
+					{"p": Vector2(520, 150), "t": "Marked as duplicate.", "c": Color(1.0, 0.85, 0.5)},
+					{"p": Vector2(430, 820), "t": "Accepted Answer \u2014 2013", "c": Color(0.8, 0.9, 0.6)},
+				],
+			}
+		"api_bazaar":
+			var structs := _clu(300, 200, "struct_console", 3, 0.9, Color(0.6, 0.9, 0.95), 90)
+			structs += _clu(950, 210, "struct_console", 3, 0.9, Color(0.6, 0.95, 0.9), 90)
+			structs += _clu(250, 770, "struct_crate", 4, 0.9, Color(0.5, 0.7, 0.72), 60)
+			return {
+				"floor": Color(0.4, 0.52, 0.55), "wall": Color(0.55, 0.72, 0.75), "glow": Color(0.35, 0.9, 0.9),
+				"lights": [Vector2(300, 210), Vector2(950, 210)], "structs": structs,
+				"signs": [
+					{"p": Vector2(560, 150), "t": "API keys \u2014 cash only", "c": Color(0.4, 0.95, 0.95)},
+					{"p": Vector2(560, 820), "t": "429: come back later", "c": Color(1.0, 0.7, 0.4)},
+				],
+			}
+		"cloud_district":
+			var structs := _clu(260, 220, "struct_orb", 2, 0.8, Color(0.6, 0.8, 1.0), 70)
+			structs += _clu(1040, 230, "struct_orb", 2, 0.7, Color(0.7, 0.85, 1.0), 70)
+			structs += _clu(250, 760, "struct_tower", 2, 0.8, Color(0.6, 0.65, 0.8), 60)
+			structs += _clu(1050, 760, "struct_tower", 2, 0.8, Color(0.55, 0.6, 0.78), 60)
+			return {
+				"floor": Color(0.42, 0.48, 0.66), "wall": Color(0.6, 0.66, 0.85), "glow": Color(0.5, 0.72, 1.0),
+				"lights": [Vector2(260, 220), Vector2(1040, 230), Vector2(640, 200)], "structs": structs,
+				"signs": [
+					{"p": Vector2(500, 150), "t": "The Cloud\n(it's just servers)", "c": Color(0.6, 0.85, 1.0)},
+					{"p": Vector2(560, 820), "t": "Invoice: pending", "c": Color(1.0, 0.6, 0.5)},
+				],
+			}
+		"open_source_wildlands":
+			var structs := [{"t": "struct_arch", "p": Vector2(640, 180), "s": 1.0, "m": Color(0.55, 0.75, 0.55)}]
+			structs += _clu(240, 240, "struct_crate", 3, 0.9, Color(0.55, 0.7, 0.5), 55)
+			structs += _clu(1050, 760, "struct_slab", 2, 0.85, Color(0.5, 0.68, 0.5), 60)
+			structs += _clu(240, 770, "struct_crate", 3, 0.9, Color(0.52, 0.68, 0.48), 55)
+			return {
+				"floor": Color(0.42, 0.55, 0.44), "wall": Color(0.55, 0.72, 0.56), "glow": Color(0.4, 0.9, 0.5),
+				"lights": [Vector2(640, 220), Vector2(240, 760)], "structs": structs,
+				"signs": [
+					{"p": Vector2(430, 320), "t": "Maintained by 1 volunteer", "c": Color(0.5, 0.95, 0.6)},
+					{"p": Vector2(560, 820), "t": "PRs welcome (ignored)", "c": Color(0.7, 0.9, 0.6)},
+				],
+			}
+		"corporate_enterprise":
+			var structs: Array = []
+			for gx in 3:
+				for gy in 2:
+					structs.append({"t": "struct_slab", "p": Vector2(320 + gx * 330, 220 + gy * 520), "s": 0.8, "m": Color(0.6, 0.6, 0.7)})
+			return {
+				"floor": Color(0.48, 0.48, 0.55), "wall": Color(0.62, 0.62, 0.72), "glow": Color(0.6, 0.6, 0.85),
+				"lights": [Vector2(320, 220), Vector2(980, 740)], "structs": structs,
+				"signs": [
+					{"p": Vector2(540, 150), "t": "Synergy Zone", "c": Color(0.7, 0.7, 0.95)},
+					{"p": Vector2(520, 830), "t": "Please raise a ticket.", "c": Color(0.8, 0.8, 0.9)},
+				],
+			}
+		"gpu_mines":
+			var structs := _clu(240, 240, "struct_tower", 3, 0.9, Color(0.7, 0.55, 0.5), 70)
+			structs += _clu(1050, 250, "struct_tower", 3, 0.9, Color(0.7, 0.5, 0.45), 70)
+			structs += _clu(300, 770, "struct_crate", 4, 0.9, Color(0.7, 0.55, 0.45), 70)
+			return {
+				"floor": Color(0.55, 0.42, 0.4), "wall": Color(0.7, 0.55, 0.5), "glow": Color(1.0, 0.5, 0.3),
+				"lights": [Vector2(240, 240), Vector2(1050, 250)], "structs": structs,
+				"signs": [
+					{"p": Vector2(560, 150), "t": "GPU go brrr", "c": Color(1.0, 0.6, 0.35)},
+					{"p": Vector2(540, 830), "t": "Ambient temp: 94\u00b0C", "c": Color(1.0, 0.5, 0.4)},
+				],
+			}
+		"production":
+			var structs := [
+				{"t": "struct_slab", "p": Vector2(640, 210), "s": 1.6, "m": Color(0.5, 0.4, 0.42)},
+				{"t": "struct_tower", "p": Vector2(260, 260), "s": 0.9, "m": Color(0.6, 0.45, 0.45)},
+				{"t": "struct_tower", "p": Vector2(1040, 260), "s": 0.9, "m": Color(0.6, 0.45, 0.45)},
+			]
+			structs += _clu(260, 770, "struct_crate", 3, 0.9, Color(0.65, 0.45, 0.42), 60)
+			return {
+				"floor": Color(0.55, 0.38, 0.38), "wall": Color(0.72, 0.5, 0.5), "glow": Color(1.0, 0.35, 0.3),
+				"lights": [Vector2(640, 260), Vector2(260, 260), Vector2(1040, 260)], "structs": structs,
+				"signs": [
+					{"p": Vector2(470, 150), "t": "PRODUCTION \u2014 DO NOT TOUCH", "c": Color(1.0, 0.4, 0.35)},
+					{"p": Vector2(540, 830), "t": "Observability: vibes", "c": Color(1.0, 0.6, 0.5)},
+				],
+			}
+		"token_vault":
+			var structs := _clu(260, 240, "struct_orb", 2, 0.7, Color(1.0, 0.85, 0.35), 60)
+			structs += _clu(1040, 240, "struct_orb", 2, 0.7, Color(1.0, 0.8, 0.3), 60)
+			structs += _clu(260, 760, "struct_orb", 2, 0.6, Color(1.0, 0.88, 0.4), 60)
+			structs += _clu(1040, 760, "struct_orb", 2, 0.6, Color(1.0, 0.82, 0.35), 60)
+			return {
+				"floor": Color(0.58, 0.52, 0.38), "wall": Color(0.75, 0.68, 0.45), "glow": Color(1.0, 0.85, 0.35),
+				"lights": [Vector2(260, 240), Vector2(1040, 240), Vector2(640, 500)], "structs": structs,
+				"signs": [
+					{"p": Vector2(540, 150), "t": "TOKEN RESERVES", "c": Color(1.0, 0.9, 0.4)},
+					{"p": Vector2(560, 830), "t": "Balance: yes", "c": Color(1.0, 0.85, 0.5)},
+				],
+			}
+		_:
+			return {
+				"floor": Color(0.5, 0.5, 0.55), "wall": Color(0.68, 0.68, 0.78), "glow": Color(0.6, 0.8, 1.0),
+				"lights": [Vector2(640, 480)], "structs": [], "signs": [],
+			}
 
 static func _populate_region(region_id: String, props: Node2D, enemies: Node2D, tokens: Node2D, npcs: Node2D, portals: Node2D, spawn: Vector2) -> void:
 	var rng := RandomNumberGenerator.new()

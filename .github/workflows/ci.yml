@@ -43,6 +43,9 @@ jobs:
       - name: Run ship-before-reset cycle regression test
         run: godot --headless --path . --scene tests/cycle_test.tscn
 
+      - name: Run region-build regression test
+        run: godot --headless --path . --scene tests/region_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 

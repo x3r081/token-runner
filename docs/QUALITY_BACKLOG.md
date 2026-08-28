@@ -58,7 +58,8 @@ every iteration by fresh playtesting. Priorities:
 
 - [ ] Achievements tied to running gags (IT WAS DNS, BORING RESPONSIBLE ADULT).
 - [ ] Post-game content.
-- [ ] Additional regions polished to Localhost quality.
+- [~] Additional regions polished: all 9 now themed compositions (It10). Could
+  still be raised toward Localhost's hand-crafted density.
 
 ## Iteration protocol
 

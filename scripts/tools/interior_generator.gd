@@ -29,7 +29,126 @@ func generate() -> void:
 	_chair()
 	_whiteboard()
 	_door()
+	_tech_floor()
+	_struct_slab()
+	_struct_crate()
+	_struct_console()
+	_struct_tower()
+	_struct_orb()
+	_struct_arch()
 	print("Interior assets generated.")
+
+# ------------------------------------------- themed region primitives -------
+# These are drawn near-grayscale so region palettes can tint them via modulate.
+
+func _tech_floor() -> void:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	var base := Color(0.5, 0.51, 0.56)
+	for y in 64:
+		for x in 64:
+			var c := base
+			if x % 32 == 0 or y % 32 == 0:
+				c = base.darkened(0.22)
+			var n := (_hash(x, y) % 8) / 300.0
+			c = Color(c.r + n, c.g + n, c.b + n, 1.0)
+			img.set_pixel(x, y, c)
+	for r in [Vector2(8, 8), Vector2(56, 8), Vector2(8, 56), Vector2(56, 56), Vector2(32, 32)]:
+		img.set_pixel(int(r.x), int(r.y), base.darkened(0.4))
+	_save(img, "tech_floor.png")
+
+func _struct_slab() -> void:
+	var img := Image.create(80, 120, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var g := Color(0.62, 0.63, 0.68)
+	_rect(img, 6, 4, 68, 116, g)
+	_rect(img, 6, 4, 6, 116, g.lightened(0.18))
+	_rect(img, 68, 4, 6, 116, g.darkened(0.3))
+	for sy in range(14, 116, 22):
+		_rect(img, 10, sy, 60, 2, g.darkened(0.25))
+	_rect(img, 30, 40, 20, 30, g.darkened(0.15))  # a panel
+	_save(img, "struct_slab.png")
+
+func _struct_crate() -> void:
+	var img := Image.create(76, 66, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var g := Color(0.66, 0.6, 0.52)
+	_rect(img, 2, 4, 72, 60, g)
+	_rect(img, 2, 4, 72, 5, g.lightened(0.18))
+	_rect(img, 2, 4, 5, 60, g.lightened(0.1))
+	_rect(img, 69, 4, 5, 60, g.darkened(0.28))
+	_line(img, 2, 4, 74, 64, g.darkened(0.3))
+	_line(img, 74, 4, 2, 64, g.darkened(0.3))
+	_save(img, "struct_crate.png")
+
+func _struct_console() -> void:
+	var img := Image.create(88, 96, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var body := Color(0.42, 0.44, 0.5)
+	_rect(img, 6, 4, 76, 66, body)
+	_rect(img, 6, 4, 76, 5, body.lightened(0.2))
+	_rect(img, 14, 12, 60, 40, Color(0.15, 0.9, 0.95))   # bright screen (stays cyan)
+	for ly in range(14, 50, 6):
+		_rect(img, 18, ly, 44, 2, Color(0.05, 0.4, 0.45, 0.6))
+	_rect(img, 30, 56, 28, 8, body.darkened(0.2))         # keys
+	_rect(img, 30, 70, 28, 22, body.darkened(0.35))       # stand
+	_save(img, "struct_console.png")
+
+func _struct_tower() -> void:
+	var img := Image.create(72, 150, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var cab := Color(0.4, 0.42, 0.47)
+	_rect(img, 6, 4, 60, 142, cab)
+	_rect(img, 6, 4, 5, 142, cab.lightened(0.16))
+	_rect(img, 61, 4, 5, 142, cab.darkened(0.3))
+	var leds := [Color(0.3, 0.95, 0.4), Color(0.95, 0.75, 0.2), Color(0.95, 0.3, 0.25)]
+	for u in range(12, 140, 20):
+		_rect(img, 12, u, 48, 14, Color(0.08, 0.09, 0.11))
+		for i in 3:
+			var on: bool = _rng.randf() > 0.35
+			var col: Color = leds[i] if on else (leds[i] as Color).darkened(0.7)
+			_rect(img, 16 + i * 8, u + 4, 4, 4, col)
+		for vx in range(44, 58, 4):
+			_rect(img, vx, u + 3, 2, 8, cab.darkened(0.4))
+	_save(img, "struct_tower.png")
+
+func _struct_orb() -> void:
+	var img := Image.create(112, 112, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var cx := 56
+	var cy := 56
+	for x in 112:
+		for y in 112:
+			var d := Vector2(x - cx, y - cy).length() / 52.0
+			if d <= 1.0:
+				var b := clampf(1.1 - d * 0.9, 0.2, 1.0)
+				img.set_pixel(x, y, Color(b, b, b, 1.0))
+	# orbit rings
+	for rr in [40, 48]:
+		for a in 180:
+			var ang := TAU * float(a) / 180.0
+			var px := cx + int(cos(ang) * rr)
+			var py := cy + int(sin(ang) * rr * 0.4) + 6
+			if px >= 0 and py >= 0 and px < 112 and py < 112:
+				img.set_pixel(px, py, Color(0.9, 0.9, 0.95, 0.7))
+	_save(img, "struct_orb.png")
+
+func _struct_arch() -> void:
+	var img := Image.create(150, 128, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var stone := Color(0.6, 0.58, 0.55)
+	# two pillars
+	for px in [10, 110]:
+		_rect(img, px, 20, 30, 108, stone)
+		_rect(img, px, 20, 6, 108, stone.lightened(0.15))
+		_rect(img, px + 24, 20, 6, 108, stone.darkened(0.25))
+		for sy in range(28, 128, 18):
+			_rect(img, px, sy, 30, 2, stone.darkened(0.3))
+	# lintel
+	_rect(img, 4, 6, 142, 26, stone)
+	_rect(img, 4, 6, 142, 5, stone.lightened(0.12))
+	# a broken chunk missing (ruin)
+	_rect(img, 70, 6, 18, 20, Color(0, 0, 0, 0))
+	_save(img, "struct_arch.png")
 
 # ---------------------------------------------------------------- floor -----
 

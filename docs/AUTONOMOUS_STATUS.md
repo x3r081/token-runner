@@ -9,10 +9,10 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 9 complete — HUD ability bar (all 5 abilities visible with
-keys/costs/cooldown dimming).
-Next: boss telegraphs/visuals, model-selection system, more branching quests,
-other regions' visual quality, NPC memory/personality.
+Iteration 10 complete — all 9 non-Localhost regions redesigned into themed
+compositions (no more flat noise fields).
+Next: model-selection system, deployable-agent gameplay, Dream App architecture
+tradeoffs, NPC memory/personality, boss telegraphs, higher-fi player art.
 
 ## Iteration log
 
@@ -124,6 +124,25 @@ other regions' visual quality, NPC memory/personality.
   without a single stressful whole-game timer.
 - Cycle resets on new game; the timer only ticks while PLAYING and unpaused.
 - Regression test `tests/cycle_test.tscn` (12/12). Wired into CI.
+
+### Iteration 10 — Themed regions (all 9 beyond Localhost)
+- Replaced the flat single-tile **noise field** builder (`region_builder.gd`)
+  with **intentional themed compositions**. Added tintable structure primitives
+  to the generator: `tech_floor`, `struct_slab` (monolith/pillar/cubicle),
+  `struct_crate` (package), `struct_console` (API kiosk), `struct_tower`
+  (server/GPU rig), `struct_orb` (cloud/token), `struct_arch` (ruin/gateway).
+- Each region now has a palette (tinted floor + glow), themed set-dressing
+  clusters, point lights, and comedic signage. Examples:
+  - **Production**: dark-red server room, central monolith "PRODUCTION — DO NOT
+    TOUCH", server towers, "Observability: vibes".
+  - **Token Vault**: golden hall of glowing token-reserve orbs.
+  - **Cloud District**: floating data orbs + towers. **Corporate**: a grid of
+    cubicle slabs. **Stack Overflow Ruins**: broken arches. **API Bazaar**:
+    console stalls. **GPU Mines**: rig towers. **Dependency District**: piles of
+    broken package crates. **Open Source Wildlands**: a lone gateway arch.
+- Regression test `tests/region_test.tscn` (59/59): every region builds, returns
+  a valid spawn/size, and produces themed structures + gameplay containers.
+  Wired into CI.
 
 ## Verified test commands
 
