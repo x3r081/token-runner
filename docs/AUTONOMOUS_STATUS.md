@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 7 complete — systemic technical-debt consequences.
-Next: ship-before-reset cycle, boss telegraphs/visuals, HUD ability readout,
-model-selection system.
+Iteration 8 complete — Ship-Before-Reset cycle system.
+Next: HUD ability readout (show all 5 ability slots), boss telegraphs/visuals,
+model-selection system, more branching quests.
 
 ## Iteration log
 
@@ -110,6 +110,20 @@ model-selection system.
   above threshold, no effect below threshold, and dependency-break incidents at
   high debt. Wired into CI.
 
+### Iteration 8 — Ship-Before-Reset cycle system
+- New `CycleManager` autoload implements the title mechanic. Development runs in
+  timed **cycles**; at each **RESET**:
+  - volatile quotas refill (compute, context, focus, a little will to live),
+  - a **debt reckoning** drains stability proportional to accumulated debt,
+  - the **vendor price index shifts**, which flows into upgrade costs
+    (`DreamAppManager.get_effective_cost`).
+- A **reset warning** fires as the deadline approaches; the HUD shows a live
+  `◉ Cycle N   ⏱ reset in Xs` readout (turns orange during the warning window)
+  plus reset/warning toasts. Creates strategic "ship it BEFORE RESET" pressure
+  without a single stressful whole-game timer.
+- Cycle resets on new game; the timer only ticks while PLAYING and unpaused.
+- Regression test `tests/cycle_test.tscn` (12/12). Wired into CI.
+
 ## Verified test commands
 
 ```bash
@@ -120,6 +134,7 @@ godot --headless --path . --scene tests/soft_lock_test.tscn    # 4/4
 godot --headless --path . --scene tests/story_test.tscn        # 19/19
 godot --headless --path . --scene tests/combat_test.tscn       # 10/10
 godot --headless --path . --scene tests/debt_test.tscn         # 6/6
+godot --headless --path . --scene tests/cycle_test.tscn        # 12/12
 godot --headless --path . --quit-after 1
 ```
 

@@ -63,11 +63,16 @@ func debt_cost_multiplier() -> float:
 func get_effective_cost(branch: String) -> Dictionary:
 	var next := get_next_upgrade(branch)
 	var base: Dictionary = next.get("cost", {})
-	var mult := debt_cost_multiplier()
+	# Debt makes borrowing pricier; the vendor price index shifts each reset.
+	var mult := debt_cost_multiplier() * _price_index()
 	var out := {}
 	for k in base:
 		out[k] = int(ceil(float(base[k]) * mult))
 	return out
+
+func _price_index() -> float:
+	var cm := get_node_or_null("/root/CycleManager")
+	return cm.price_index if cm else 1.0
 
 func can_purchase(branch: String) -> bool:
 	var next := get_next_upgrade(branch)

@@ -39,7 +39,8 @@ every iteration by fresh playtesting. Priorities:
 - [ ] Multi-stage/branching quests with consequences, failure states, callbacks.
 - [x] Technical-debt systemic consequences: costs rise, stability drains, bugs
   spawn on dependency-break incidents (safe below threshold). *(It7)*
-- [ ] Ship-before-reset cycle system (quotas reset, prices shift, expectations).
+- [x] Ship-before-reset cycle system: timed cycles with quota refill, debt
+  reckoning, vendor price shifts, reset warning + HUD readout. *(It8)*
 - [ ] NPC personalities with memory and evolving dialogue (Claude + archetypes).
 - [~] Combat abilities beyond Prompt Blast/Cache/Dash: added **Rubber Duck**
   (AoE stun) and **Stack Trace** (piercing). Still open: Rollback, Ctrl+Z,

@@ -98,6 +98,7 @@ func start_new_game() -> void:
 	EventManager.reset()
 	AchievementManager.reset()
 	DialogueManager.reset()
+	CycleManager.reset()
 	state = GameState.PLAYING
 	game_started.emit()
 	_change_scene("res://scenes/world/world.tscn")

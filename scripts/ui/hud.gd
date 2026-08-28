@@ -13,6 +13,7 @@ const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 
 var _notif_tween: Tween
 var _theme: Theme
+var _cycle_label: Label
 
 func _ready() -> void:
 	_theme = _GameTheme.create()
@@ -30,11 +31,37 @@ func _ready() -> void:
 	var player := get_tree().get_first_node_in_group("player")
 	if player:
 		player.health_changed.connect(_on_health_changed)
+	_setup_cycle_readout()
 	_update_all()
 	_on_region_changed(GameManager.current_region)
 
+func _setup_cycle_readout() -> void:
+	_cycle_label = Label.new()
+	_cycle_label.anchor_left = 0.5
+	_cycle_label.anchor_right = 0.5
+	_cycle_label.position = Vector2(-120, 92)
+	_cycle_label.custom_minimum_size = Vector2(240, 0)
+	_cycle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_cycle_label.add_theme_font_size_override("font_size", 15)
+	_cycle_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	_cycle_label.add_theme_constant_override("outline_size", 4)
+	add_child(_cycle_label)
+	CycleManager.cycle_warning.connect(_on_cycle_warning)
+	CycleManager.reset_triggered.connect(_on_reset_triggered)
+
+func _on_cycle_warning(seconds_left: int) -> void:
+	_show_notification("\u26a0 TOKEN RESET IN %ds\nShip something before it's gone!" % seconds_left, Color(1.0, 0.55, 0.3))
+
+func _on_reset_triggered(cycle: int) -> void:
+	_show_notification("\u267b RESET \u2014 Cycle %d\nQuotas refilled. Prices shifted." % cycle, Color(0.5, 0.85, 1.0))
+
 func _process(_delta: float) -> void:
 	_update_quest_tracker()
+	if _cycle_label:
+		var secs := CycleManager.seconds_left()
+		var warn := secs <= int(CycleManager.WARN_AT)
+		_cycle_label.text = "\u25c9 Cycle %d   \u23f1 reset in %ds" % [CycleManager.cycle, secs]
+		_cycle_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.3) if warn else Color(0.7, 0.78, 0.85))
 
 func _update_all() -> void:
 	token_label.text = "%d" % int(ResourceManager.get_value("tokens"))

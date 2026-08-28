@@ -40,6 +40,9 @@ jobs:
       - name: Run technical-debt regression test
         run: godot --headless --path . --scene tests/debt_test.tscn
 
+      - name: Run ship-before-reset cycle regression test
+        run: godot --headless --path . --scene tests/cycle_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 
