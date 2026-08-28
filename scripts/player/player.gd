@@ -8,6 +8,14 @@ const SPEED := 220.0
 const MAX_HP := 100
 const FRAME_SIZE := 64
 
+## Dash / Force Push: a guaranteed escape + knockback tool. Even if enemies ever
+## crowd the player, a dash bursts through them and shoves them away.
+const DASH_SPEED := 660.0
+const DASH_DURATION := 0.18
+const DASH_COOLDOWN := 1.1
+const FORCE_PUSH_RADIUS := 120.0
+const FORCE_PUSH_IMPULSE := 560.0
+
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var shadow: Sprite2D = $Shadow
 @onready var hitbox: Area2D = $Hitbox
@@ -25,6 +33,9 @@ var nearby_interactables: Array[Node] = []
 var _facing_dir := "down"
 var _walk_frame := 0
 var _walk_timer := 0.0
+var _dash_timer := 0.0
+var _dash_cd := 0.0
+var _dash_dir := Vector2.DOWN
 
 func _ready() -> void:
 	add_to_group("player")
@@ -97,10 +108,17 @@ func _setup_legacy_frames() -> void:
 
 func _physics_process(delta: float) -> void:
 	z_index = int(global_position.y)
+	_dash_cd = maxf(0.0, _dash_cd - delta)
 	if not can_move or GameManager.state != GameManager.GameState.PLAYING:
 		velocity = Vector2.ZERO
 		if sprite.animation.begins_with("walk"):
 			_play_facing_anim("idle")
+		return
+	if _dash_timer > 0.0:
+		_dash_timer -= delta
+		velocity = _dash_dir * DASH_SPEED
+		move_and_slide()
+		GameManager.player_position = global_position
 		return
 	var input_dir := Vector2(
 		Input.get_axis("move_left", "move_right"),
@@ -159,6 +177,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_use_ability("prompt_blast")
 	if event.is_action_pressed("ability_2"):
 		_use_ability("cache")
+	if event.is_action_pressed("dash"):
+		_start_dash()
 
 func _try_interact() -> void:
 	if nearby_interactables.is_empty():
@@ -192,6 +212,32 @@ func _use_ability(ability: String) -> void:
 			invincibility.start(1.5)
 			ability_cooldown.start(3.0)
 	AudioManager.play_sfx("ability")
+
+func _start_dash() -> void:
+	if _dash_cd > 0.0 or not can_move:
+		return
+	if GameManager.state != GameManager.GameState.PLAYING:
+		return
+	_dash_dir = facing if facing != Vector2.ZERO else Vector2.DOWN
+	_dash_timer = DASH_DURATION
+	_dash_cd = DASH_COOLDOWN
+	is_invincible = true
+	invincibility.start(DASH_DURATION + 0.12)
+	_force_push()
+	particles.emitting = true
+	AudioManager.play_sfx("ability")
+
+## Shove every nearby enemy away from the player. This is the design-level
+## guarantee that the player can always break out of a crowd.
+func _force_push() -> void:
+	for e in get_tree().get_nodes_in_group("enemy"):
+		if not is_instance_valid(e):
+			continue
+		var away: Vector2 = e.global_position - global_position
+		var d := away.length()
+		if d < FORCE_PUSH_RADIUS and d > 0.01 and e.has_method("apply_knockback"):
+			var strength := 1.0 - d / FORCE_PUSH_RADIUS + 0.3
+			e.apply_knockback(away.normalized() * FORCE_PUSH_IMPULSE * strength)
 
 func _fire_projectile(type: String, damage: int) -> void:
 	var proj_scene := preload("res://scenes/combat/projectile.tscn")

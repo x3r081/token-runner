@@ -1,42 +1,46 @@
 # Autonomous Development Status
 
-**Last Updated:** 2026-08-28  
-**Current Objective:** Complete deferred Localhost quality items — v2.0 quality gate
+Living status log for the ongoing effort to turn **Token Runner** into a
+competitive, polished hackathon PC game. Updated every iteration.
 
-## Honest Assessment
+> Checked-off items are **not** a completion signal. Completion is defined by
+> repeated critical playtesting finding no high-severity player-facing issue.
+> See `QUALITY_BACKLOG.md` for the prioritized problem list.
 
-**Would I put this on a Steam page today?** Closer — wishlist/Early Access teaser territory. Localhost reads as an intentional 3AM coder cave with environmental storytelling, themed HUD, holographic Dream App, and a recognizable hoodie protagonist with 4-dir walk + comedic idles.
+## Current focus
 
-### Completed This Session (full deferred backlog)
-- **UIManager** — modal blocking prevents random events overlapping Dream App / dialogue / pause
-- **4-direction player spritesheet** (64×64) — down/up/side walk, hurt, celebrate, phone/laptop/coffee/panic idles
-- **Y-sort depth** — player z-index + localhost `y_sort_enabled` for 2.5D layering
-- **Player shadow** — elliptical ground shadow
-- **Validated ambient audio** — ffmpeg-generated WAV loops with limiter (silent startup default, explicit opt-in)
-- **Settings** — "Enable Music (validated ambient)" checkbox
-- **Environmental comedy pass** — architecture whiteboard, DNS sign, coffee machine, backups sticky notes, production warning
-- **P0 audio** — remains fixed (no auto-play on boot)
+Iteration 1 — release-blocking P0 fixes and safety systems.
 
-### What still holds back Steam hero gallery
-- Player art is improved procedural pixel art, not commissioned sprite work
-- Kenney tiles in top-down layout — not true isometric 2.5D
-- Other 9 regions still use legacy procedural builder (intentionally deprioritized)
+## Iteration log
 
-## Playtest Notes
-- Boot: silent ✓
-- Opening sequence → Claude dialogue ✓
-- Walk 4 directions with animations ✓
-- Comedic idle (phone/laptop) triggers when standing still ✓
-- Dream App opens without event popup collision ✓
-- Music plays only when enabled in settings ✓
-- Smoke tests: 8/8 ✓
+### Iteration 1 — Soft-lock elimination + escape toolkit
+- **P0 FIXED: enemy collision soft-lock.** Player (`collision_mask 34 -> 32`)
+  and enemies (`collision_mask 33 -> 32`) now collide only with walls, never
+  with each other. A ring of enemies can no longer physically pin the player.
+- **Enemy steering.** Enemies now hold at an engage distance and repel each
+  other (`_separation()`), so they surround the player readably instead of
+  stacking into a wall of bodies. Knockback resolves independently of AI.
+- **Dash / Force Push escape ability** (`Shift` or `Q`): a fast i-frame burst in
+  the facing direction that shoves nearby enemies away — a guaranteed crowd
+  escape and new combat tool. Cooldown 1.1s.
+- **Automated regression test** `tests/soft_lock_test.tscn`: surrounds the
+  player with 8 enemies and asserts (a) collision masks exclude the opposing
+  body, (b) walking escapes the ring, (c) Force Push pushes enemies away. Wired
+  into CI after the smoke test.
+- Verified: soft-lock test 4/4, smoke test 8/8.
 
-## Release Readiness
-- **NOT v2.0 tag yet** — Localhost quality gate substantially improved
-- **P0 audio: FIXED**
-- Ready for playtest feedback on presentation
+## Verified test commands
 
-## Next Tasks (if continuing)
-- Source commissioned or higher-quality CC0 character sprite sheet
-- Rebuild Region 2 only after Localhost hero shot approved
-- Optional: Kenney Interface Sounds for UI SFX
+```bash
+godot --headless --path . --script scripts/tools/run_generate.gd
+godot --headless --path . --import
+godot --headless --path . --scene tests/smoke_test.tscn        # 8/8
+godot --headless --path . --scene tests/soft_lock_test.tscn    # 4/4
+godot --headless --path . --quit-after 1
+```
+
+## Next iteration (planned)
+
+See `QUALITY_BACKLOG.md`. Next largest player-facing weakness: **Localhost
+visual composition** (dead space, stamped floor, weak hierarchy) and the
+**player/enemy art readability**.
