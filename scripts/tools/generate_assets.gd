@@ -24,29 +24,54 @@ func _generate_player_sprites() -> void:
 func _draw_player_frame(frame: int) -> Image:
 	var img := Image.create(32, 48, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	# Hoodie body
-	_fill_rect(img, 8, 14, 16, 22, Color(0.15, 0.12, 0.25))
-	# Head
-	_fill_circle(img, 16, 10, 7, Color(0.9, 0.75, 0.65))
-	# Hood
-	_fill_arc(img, 16, 12, 9, Color(0.12, 0.1, 0.22))
-	# Eyes (tired)
-	img.set_pixel(13, 9, Color(0.1, 0.1, 0.15))
-	img.set_pixel(19, 9, Color(0.1, 0.1, 0.15))
-	# Laptop glow
-	var glow := Color(0.2, 0.9, 0.8, 0.8)
-	_fill_rect(img, 10, 28, 12, 8, Color(0.2, 0.2, 0.25))
-	for x in range(11, 21):
-		for y in range(29, 35):
-			if randf() > 0.5:
+	var hoodie := Color(0.16, 0.22, 0.32)
+	var hoodie_dark := Color(0.11, 0.15, 0.22)
+	var skin := Color(0.82, 0.68, 0.58)
+	var glow := Color(0.28, 0.92, 0.82, 1.0)
+	var jeans := Color(0.14, 0.16, 0.24)
+	var shoe := Color(0.18, 0.18, 0.22)
+	var bob := 1 if frame == 1 else 0
+	var leg_l := 0
+	var leg_r := 0
+	var arm_raise := 0
+	match frame:
+		1: bob = 1
+		2: leg_l = 2; leg_r = -1
+		3: leg_l = -1; leg_r = 2
+		5: arm_raise = -6
+	_fill_arc(img, 16, 11 + bob, 10, hoodie)
+	_fill_rect(img, 7, 12 + bob, 18, 6, hoodie)
+	_fill_circle(img, 16, 12 + bob, 6, skin)
+	img.set_pixel(14, 11 + bob, Color(0.12, 0.14, 0.18))
+	img.set_pixel(18, 11 + bob, Color(0.12, 0.14, 0.18))
+	_fill_rect(img, 13, 13 + bob, 6, 1, Color(0.55, 0.45, 0.4, 0.6))
+	_fill_rect(img, 8, 17 + bob, 16, 16, hoodie)
+	_fill_rect(img, 9, 18 + bob, 14, 3, hoodie_dark)
+	_fill_rect(img, 10, 8 + bob, 12, 2, Color(0.22, 0.24, 0.28))
+	img.set_pixel(9, 10 + bob, Color(0.3, 0.85, 0.75))
+	img.set_pixel(22, 10 + bob, Color(0.3, 0.85, 0.75))
+	_fill_rect(img, 11, 24 + bob, 10, 7, Color(0.05, 0.08, 0.1))
+	for x in range(12, 20):
+		for y in range(25 + bob, 30 + bob):
+			if (x * 5 + y * 11 + frame) % 4 == 0:
 				img.set_pixel(x, y, glow)
-	# Legs animation
-	var leg_offset := 1 if frame == 1 else (-1 if frame == 2 else 0)
-	_fill_rect(img, 10 + leg_offset, 36, 4, 10, Color(0.2, 0.18, 0.3))
-	_fill_rect(img, 18 - leg_offset, 36, 4, 10, Color(0.2, 0.18, 0.3))
-	# Coffee cup on celebrate
+	img.set_pixel(15, 26 + bob, Color(0.95, 0.95, 0.35))
+	_fill_rect(img, 5, 20 + bob + arm_raise, 4, 10, hoodie)
+	_fill_rect(img, 23, 20 + bob, 4, 10, hoodie)
 	if frame == 5:
-		_fill_rect(img, 22, 24, 4, 6, Color(0.8, 0.3, 0.1))
+		_fill_rect(img, 4, 14 + bob, 4, 8, hoodie)
+		_fill_rect(img, 24, 14 + bob, 4, 8, hoodie)
+		_fill_rect(img, 24, 22, 4, 7, Color(0.75, 0.28, 0.12))
+	_fill_rect(img, 10 + leg_l, 33 + bob, 5, 11, jeans)
+	_fill_rect(img, 17 + leg_r, 33 + bob, 5, 11, jeans)
+	_fill_rect(img, 9 + leg_l, 42 + bob, 7, 3, shoe)
+	_fill_rect(img, 16 + leg_r, 42 + bob, 7, 3, shoe)
+	if frame == 4:
+		for y in 48:
+			for x in 32:
+				var p := img.get_pixel(x, y)
+				if p.a > 0:
+					img.set_pixel(x, y, p.lerp(Color(0.9, 0.25, 0.3), 0.35))
 	return img
 
 func _generate_tileset() -> void:

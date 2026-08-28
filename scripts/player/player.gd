@@ -34,41 +34,24 @@ func _ready() -> void:
 func _setup_sprite_frames() -> void:
 	if sprite.sprite_frames:
 		return
-	var sheet: Texture2D = load("res://assets/external/kenney/roguelike/roguelikeChar_transparent.png")
-	if not sheet:
-		sheet = load("res://assets/textures/generated/player_idle.png")
-		if sheet:
-			var frames_fallback := SpriteFrames.new()
-			frames_fallback.add_animation("idle")
-			frames_fallback.add_frame("idle", sheet)
-			sprite.sprite_frames = frames_fallback
-			sprite.play("idle")
-		return
+	var frame_map := {
+		"idle": ["player_idle.png", "player_walk1.png"],
+		"walk": ["player_walk2.png", "player_interact.png"],
+		"hurt": ["player_hurt.png"],
+		"celebrate": ["player_celebrate.png"],
+	}
 	var frames := SpriteFrames.new()
-	frames.add_animation("idle")
-	frames.add_animation("walk")
-	frames.add_animation("hurt")
-	frames.add_animation("celebrate")
-	frames.set_animation_speed("idle", 3.0)
-	frames.set_animation_speed("walk", 8.0)
-	# Pre-made character column 0 — 16x16 cells, 1px gap
-	var cell := 17
-	var char_col := 0
-	for row in 4:
-		var atlas := AtlasTexture.new()
-		atlas.atlas = sheet
-		atlas.region = Rect2i(char_col * cell + 1, row * cell + 1, 16, 16)
-		if row < 2:
-			frames.add_frame("idle", atlas)
-		else:
-			frames.add_frame("walk", atlas)
-	var hurt_atlas := AtlasTexture.new()
-	hurt_atlas.atlas = sheet
-	hurt_atlas.region = Rect2i(char_col * cell + 1, 4 * cell + 1, 16, 16)
-	frames.add_frame("hurt", hurt_atlas)
+	for anim in frame_map:
+		frames.add_animation(anim)
+		for fname in frame_map[anim]:
+			var tex: Texture2D = load("res://assets/textures/generated/%s" % fname)
+			if tex:
+				frames.add_frame(anim, tex)
+	frames.set_animation_speed("idle", 2.5)
+	frames.set_animation_speed("walk", 7.0)
 	sprite.sprite_frames = frames
 	sprite.play("idle")
-	sprite.scale = Vector2(3.5, 3.5)
+	sprite.scale = Vector2(2.8, 2.8)
 
 func _physics_process(delta: float) -> void:
 	if not can_move or GameManager.state != GameManager.GameState.PLAYING:

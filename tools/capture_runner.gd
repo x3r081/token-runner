@@ -41,9 +41,11 @@ func _shot(name: String) -> void:
 	var dir := ProjectSettings.globalize_path("res://docs/screenshots")
 	DirAccess.make_dir_recursive_absolute(dir)
 	var path := dir + "/" + name
+	await RenderingServer.frame_post_draw
 	await get_tree().process_frame
-	await get_tree().process_frame
-	var img: Image = get_tree().root.get_viewport().get_texture().get_image()
+	var img: Image = get_viewport().get_texture().get_image()
+	if img.get_width() != 1920 or img.get_height() != 1080:
+		img.resize(1920, 1080, Image.INTERPOLATE_LANCZOS)
 	var err: Error = img.save_png(path)
 	if err == OK:
 		print("  Saved ", name, " (", img.get_width(), "x", img.get_height(), ")")

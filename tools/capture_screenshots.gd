@@ -3,10 +3,7 @@ extends Node
 ## Run: godot --headless --path . res://tools/capture_screenshots.tscn
 
 func _ready() -> void:
-	call_deferred("_run")
-
-func _run() -> void:
-	await get_tree().create_timer(0.5).timeout
+	await get_tree().process_frame
 	await _capture_sequence()
 	get_tree().quit(0)
 
@@ -50,7 +47,10 @@ func _shot(name: String) -> void:
 	DirAccess.make_dir_recursive_absolute(dir)
 	var path := dir + "/" + name
 	await RenderingServer.frame_post_draw
-	var img := get_viewport().get_texture().get_image()
+	await get_tree().process_frame
+	var img: Image = get_viewport().get_texture().get_image()
+	if img.get_width() != 1920 or img.get_height() != 1080:
+		img.resize(1920, 1080, Image.INTERPOLATE_LANCZOS)
 	var err := img.save_png(path)
 	if err == OK:
 		print("  Saved ", name, " (", img.get_width(), "x", img.get_height(), ")")

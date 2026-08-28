@@ -53,3 +53,27 @@ static func focus_bar_fill() -> StyleBoxFlat:
 	s.bg_color = Color(0.45, 0.55, 0.95, 1.0)
 	s.set_corner_radius_all(4)
 	return s
+
+static func dream_app_panel() -> StyleBoxFlat:
+	var panel := StyleBoxFlat.new()
+	panel.bg_color = Color(0.05, 0.07, 0.12, 0.9)
+	panel.border_color = Color(0.35, 0.92, 0.82, 0.75)
+	panel.set_border_width_all(2)
+	panel.set_corner_radius_all(8)
+	panel.shadow_color = Color(0.2, 0.85, 0.75, 0.4)
+	panel.shadow_size = 10
+	return panel
+
+static func accent_cyan() -> Color:
+	return Color(0.45, 0.95, 0.85, 1.0)
+
+static func accent_muted() -> Color:
+	return Color(0.45, 0.85, 0.78, 0.65)
+
+static func ship_button() -> StyleBoxFlat:
+	var btn := StyleBoxFlat.new()
+	btn.bg_color = Color(0.12, 0.28, 0.24, 0.95)
+	btn.border_color = Color(0.45, 0.95, 0.85, 0.9)
+	btn.set_border_width_all(2)
+	btn.set_corner_radius_all(6)
+	return btn
