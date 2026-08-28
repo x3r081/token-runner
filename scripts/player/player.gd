@@ -36,6 +36,11 @@ var _walk_timer := 0.0
 var _dash_timer := 0.0
 var _dash_cd := 0.0
 var _dash_dir := Vector2.DOWN
+## A short, decaying push (e.g. a Rate Limiter's 429 pulse). It never removes
+## control — the player can always walk against it — so it can't cause a trap.
+var _ext_impulse := Vector2.ZERO
+var _duck_cd := 0.0
+var _trace_cd := 0.0
 
 func _ready() -> void:
 	add_to_group("player")
@@ -109,6 +114,9 @@ func _setup_legacy_frames() -> void:
 func _physics_process(delta: float) -> void:
 	z_index = int(global_position.y)
 	_dash_cd = maxf(0.0, _dash_cd - delta)
+	_duck_cd = maxf(0.0, _duck_cd - delta)
+	_trace_cd = maxf(0.0, _trace_cd - delta)
+	_ext_impulse = _ext_impulse.move_toward(Vector2.ZERO, 1300.0 * delta)
 	if not can_move or GameManager.state != GameManager.GameState.PLAYING or EventManager.has_active_event():
 		velocity = Vector2.ZERO
 		if sprite.animation.begins_with("walk"):
@@ -138,6 +146,7 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		if not sprite.animation in ["phone_idle", "laptop_idle", "coffee_idle", "panic_idle"]:
 			_play_facing_anim("idle")
+	velocity += _ext_impulse
 	move_and_slide()
 	GameManager.player_position = global_position
 	ResourceManager.regenerate_focus(delta * 0.5)
@@ -182,6 +191,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_use_ability("cache")
 	if event.is_action_pressed("dash"):
 		_start_dash()
+	if event.is_action_pressed("ability_3"):
+		_use_ability("rubber_duck")
+	if event.is_action_pressed("ability_4"):
+		_use_ability("stack_trace")
 
 func _try_interact() -> void:
 	if nearby_interactables.is_empty():
@@ -214,7 +227,30 @@ func _use_ability(ability: String) -> void:
 			is_invincible = true
 			invincibility.start(1.5)
 			ability_cooldown.start(3.0)
+		"rubber_duck":
+			# Explain the bug to the duck: nearby enemies freeze (you found it).
+			if _duck_cd > 0.0 or ResourceManager.get_value("context") < 5:
+				return
+			ResourceManager.modify("context", -5)
+			_duck_cd = 4.5
+			_rubber_duck()
+		"stack_trace":
+			# A piercing trace that chains through a whole line of enemies.
+			if _trace_cd > 0.0 or ResourceManager.get_value("tokens") < 10:
+				return
+			ResourceManager.modify("tokens", -10)
+			_trace_cd = 1.6
+			_fire_projectile("stack_trace", 22, true)
 	AudioManager.play_sfx("ability")
+
+const RUBBER_DUCK_RADIUS := 180.0
+
+func _rubber_duck() -> void:
+	for e in get_tree().get_nodes_in_group("enemy"):
+		if is_instance_valid(e) and e.has_method("stun"):
+			if global_position.distance_to(e.global_position) < RUBBER_DUCK_RADIUS:
+				e.stun(1.8)
+	particles.emitting = true
 
 func _start_dash() -> void:
 	if _dash_cd > 0.0 or not can_move:
@@ -242,12 +278,16 @@ func _force_push() -> void:
 			var strength := 1.0 - d / FORCE_PUSH_RADIUS + 0.3
 			e.apply_knockback(away.normalized() * FORCE_PUSH_IMPULSE * strength)
 
-func _fire_projectile(type: String, damage: int) -> void:
+func _fire_projectile(type: String, damage: int, pierce: bool = false) -> void:
 	var proj_scene := preload("res://scenes/combat/projectile.tscn")
 	var proj = proj_scene.instantiate()
 	proj.setup(facing, damage, type)
+	proj.pierce = pierce
 	proj.global_position = global_position + facing * 20
 	get_tree().current_scene.add_child(proj)
+
+func apply_external_knockback(impulse: Vector2) -> void:
+	_ext_impulse = impulse
 
 func take_damage(amount: int, _source: String = "") -> void:
 	if is_invincible:

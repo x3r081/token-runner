@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 3 complete — comedy-as-mechanics storyline system + flagship quest.
-Next: more staged quests (Free Tier, The Autonomous Agent), remaining enemy
-identities, model-selection/agent systems.
+Iteration 6 complete — combat depth (enemy behaviours + new abilities).
+Next: systemic technical-debt consequences, ship-before-reset cycle, boss
+visuals/telegraphs, HUD ability readout.
 
 ## Iteration log
 
@@ -77,6 +77,25 @@ identities, model-selection/agent systems.
     second agent, and holds a retro about you. Costs debt + will to live.
   - Triggered by color-coded, signposted props in Localhost.
 
+### Iteration 6 — Combat depth
+- **Enemy signature behaviours + telegraphs** in `enemy_base.gd`:
+  - **merge_conflict** splits into two smaller conflicts on death (once).
+  - **scope_creep** grows and speeds up over time.
+  - **memory_leak** slowly bloats.
+  - **rate_limiter** telegraphs (flashes), then emits a 429 pulse that shoves
+    the player back (temporary, decaying — never a trap).
+  - **hallucination** blinks/teleports to stay evasive.
+  - Generic **stun** state (frozen but still shoveable).
+- **New player abilities**:
+  - **Rubber Duck** (`3`): AoE that freezes nearby enemies (you found the bug).
+  - **Stack Trace** (`4`): a piercing magenta beam that chains through a whole
+    line of enemies.
+  - Safe decaying **external knockback** on the player (used by rate_limiter);
+    the player can always walk against it, so it can't trap.
+- Regression test `tests/combat_test.tscn` (10/10): merge split, scope growth,
+  Rubber Duck stun, Stack Trace pierce (and non-pierce consumption), and that a
+  rate-limiter pulse never traps the player. Wired into CI.
+
 ## Verified test commands
 
 ```bash
@@ -84,7 +103,8 @@ godot --headless --path . --script scripts/tools/run_generate.gd
 godot --headless --path . --import
 godot --headless --path . --scene tests/smoke_test.tscn        # 8/8
 godot --headless --path . --scene tests/soft_lock_test.tscn    # 4/4
-godot --headless --path . --scene tests/story_test.tscn        # 11/11
+godot --headless --path . --scene tests/story_test.tscn        # 19/19
+godot --headless --path . --scene tests/combat_test.tscn       # 10/10
 godot --headless --path . --quit-after 1
 ```
 

@@ -7,6 +7,7 @@ class_name EnemyBase
 @export var speed: float = 80.0
 @export var token_drop: int = 8
 @export var is_boss: bool = false
+@export var generation: int = 0  # for merge_conflict splitting
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var hitbox: Area2D = $Hitbox
@@ -24,6 +25,12 @@ var hp: int
 var target: Node2D = null
 var _flash_tween: Tween
 var _knockback := Vector2.ZERO
+var _stun_time := 0.0
+var _base_speed := 0.0
+var _base_scale := Vector2.ONE
+var _grow := 0.0
+var _special_cd := 0.0
+var _telegraph := 0.0
 
 func _ready() -> void:
 	add_to_group("enemy")
@@ -34,11 +41,17 @@ func _ready() -> void:
 		damage *= 2
 		token_drop *= 5
 		scale = Vector2(2, 2)
+	_base_speed = speed
+	_base_scale = scale
+	_special_cd = randf_range(2.5, 4.5)
 	var tex_path := "res://assets/textures/generated/enemy_%s.png" % enemy_type
 	if ResourceLoader.exists(tex_path):
 		sprite.texture = load(tex_path)
 	attack_timer.timeout.connect(_attack)
 	attack_timer.start(randf_range(1.0, 2.0))
+
+func stun(duration: float) -> void:
+	_stun_time = maxf(_stun_time, duration)
 
 func _physics_process(delta: float) -> void:
 	# Knockback (e.g. from the player's Force Push dash) always resolves, even
@@ -51,9 +64,18 @@ func _physics_process(delta: float) -> void:
 	if _combat_paused():
 		velocity = Vector2.ZERO
 		return
+	# Stunned (e.g. by Rubber Duck): frozen but still shoveable via knockback.
+	if _stun_time > 0.0:
+		_stun_time -= delta
+		velocity = Vector2.ZERO
+		sprite.modulate = Color(0.55, 0.65, 1.0)
+		if _stun_time <= 0.0:
+			sprite.modulate = Color.WHITE
+		return
 	if not target or not is_instance_valid(target):
 		target = get_tree().get_first_node_in_group("player")
 		return
+	_update_special(delta)
 	var to_player := target.global_position - global_position
 	var dist := to_player.length()
 	var desired := Vector2.ZERO
@@ -67,6 +89,55 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	if absf(velocity.x) > 1.0:
 		sprite.flip_h = velocity.x < 0
+
+## Per-type signature behaviours + telegraphs. Never traps the player.
+func _update_special(delta: float) -> void:
+	match enemy_type:
+		"scope_creep":
+			# Requirements never stop growing. It gets bigger and faster.
+			_grow = minf(_grow + delta * 0.09, 1.0)
+			scale = _base_scale * (1.0 + _grow * 0.7)
+			speed = _base_speed * (1.0 + _grow * 0.9)
+		"memory_leak":
+			# Slowly bloats as it leaks.
+			_grow = minf(_grow + delta * 0.05, 0.6)
+			scale = _base_scale * (1.0 + _grow)
+		"rate_limiter":
+			_tick_rate_limiter(delta)
+		"hallucination":
+			_special_cd -= delta
+			if _special_cd <= 0.0:
+				_blink()
+				_special_cd = randf_range(2.2, 3.6)
+
+func _tick_rate_limiter(delta: float) -> void:
+	if _telegraph > 0.0:
+		# Flash while winding up the 429 pulse.
+		_telegraph -= delta
+		sprite.modulate = Color(1.0, 0.85, 0.2) if fmod(_telegraph, 0.2) < 0.1 else Color.WHITE
+		if _telegraph <= 0.0:
+			sprite.modulate = Color.WHITE
+			_rate_pulse()
+		return
+	_special_cd -= delta
+	if _special_cd <= 0.0 and target and global_position.distance_to(target.global_position) < 280.0:
+		_telegraph = 0.6
+		_special_cd = randf_range(3.5, 5.5)
+
+## 429: shove the player back (temporary, decaying — never a trap).
+func _rate_pulse() -> void:
+	if target and is_instance_valid(target) and target.has_method("apply_external_knockback"):
+		var away: Vector2 = target.global_position - global_position
+		if away.length() < 240.0:
+			target.apply_external_knockback(away.normalized() * 430.0)
+	AudioManager.play_sfx("ability")
+
+func _blink() -> void:
+	var ang := randf() * TAU
+	global_position += Vector2(cos(ang), sin(ang)) * 74.0
+	sprite.modulate = Color(1, 1, 1, 0.4)
+	var tw := create_tween()
+	tw.tween_property(sprite, "modulate", Color.WHITE, 0.3)
 
 ## Repel from nearby enemies so they surround the player instead of stacking
 ## into a single blob (which previously helped wall the player in).
@@ -119,6 +190,9 @@ func _attack() -> void:
 	attack_timer.start(randf_range(1.2, 2.5))
 
 func _die() -> void:
+	# A merge conflict resolves into two smaller, incompatible conflicts.
+	if enemy_type == "merge_conflict" and generation < 1 and not is_boss:
+		_split()
 	QuestManager.on_enemy_defeated(enemy_type)
 	GameManager.record_stat("enemies_defeated")
 	AudioManager.play_sfx("enemy_death")
@@ -126,6 +200,19 @@ func _die() -> void:
 	var tween := create_tween()
 	tween.tween_property(sprite, "modulate:a", 0.0, 0.3)
 	tween.tween_callback(queue_free)
+
+func _split() -> void:
+	var scene := preload("res://scenes/combat/enemy.tscn")
+	for i in 2:
+		var e = scene.instantiate()
+		e.enemy_type = "merge_conflict"
+		e.max_hp = maxi(6, int(max_hp / 2))
+		e.damage = maxi(4, int(damage * 0.7))
+		e.token_drop = maxi(1, int(token_drop / 2))
+		e.generation = generation + 1
+		get_parent().add_child(e)
+		e.global_position = global_position + Vector2(randf_range(-26, 26), randf_range(-26, 26))
+		e.scale = _base_scale * 0.68
 
 func _spawn_tokens() -> void:
 	var token_scene := preload("res://scenes/world/token_pickup.tscn")

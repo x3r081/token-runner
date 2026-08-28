@@ -40,8 +40,11 @@ every iteration by fresh playtesting. Priorities:
 - [ ] Technical-debt systemic consequences (bugs spawn, costs rise, incidents).
 - [ ] Ship-before-reset cycle system (quotas reset, prices shift, expectations).
 - [ ] NPC personalities with memory and evolving dialogue (Claude + archetypes).
-- [ ] Combat abilities beyond Prompt Blast/Cache/Dash (Rollback, Rubber Duck,
-  Stack Trace, Ctrl+Z, Agent Swarm...).
+- [~] Combat abilities beyond Prompt Blast/Cache/Dash: added **Rubber Duck**
+  (AoE stun) and **Stack Trace** (piercing). Still open: Rollback, Ctrl+Z,
+  Agent Swarm, and a HUD ability readout showing all 5 slots.
+- [~] Enemy behaviours: signature per-type behaviours + telegraphs shipped
+  (split, grow, 429 pulse, blink). Open: boss telegraphs, death effects.
 - [ ] Environmental interactables with readable comedy (monitors, fridge, plant,
   whiteboard, router, terminal `npm audit`).
 - [ ] HUD to polished indie quality.
