@@ -195,6 +195,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_use_ability("rubber_duck")
 	if event.is_action_pressed("ability_4"):
 		_use_ability("stack_trace")
+	if event.is_action_pressed("cycle_model"):
+		ModelManager.cycle()
 
 func _try_interact() -> void:
 	if nearby_interactables.is_empty():
@@ -215,10 +217,16 @@ func _use_ability(ability: String) -> void:
 		return
 	match ability:
 		"prompt_blast":
-			if ResourceManager.get_value("tokens") < 5:
+			var cost := prompt_cost()
+			if ResourceManager.get_value("tokens") < cost:
 				return
-			ResourceManager.modify("tokens", -5)
-			_fire_projectile("prompt_blast", 25)
+			ResourceManager.modify("tokens", -cost)
+			var dmg := int(round(25.0 * ModelManager.dmg_mult()))
+			# Low-reliability models can hallucinate: the blast fizzles.
+			if randf() > ModelManager.reliability():
+				dmg = maxi(1, int(dmg * 0.2))
+				GameManager.record_stat("reloads_detected")
+			_fire_projectile("prompt_blast", dmg)
 			ability_cooldown.start(0.8)
 		"cache":
 			if ResourceManager.get_value("compute") < 3:
@@ -288,6 +296,10 @@ func _fire_projectile(type: String, damage: int, pierce: bool = false) -> void:
 
 func apply_external_knockback(impulse: Vector2) -> void:
 	_ext_impulse = impulse
+
+## Effective Prompt Blast token cost under the current model (for HUD/tests).
+func prompt_cost() -> int:
+	return int(ceil(5.0 * ModelManager.cost_mult()))
 
 ## Cooldown readiness for the HUD ability bar.
 func ability_ready(id: String) -> bool:

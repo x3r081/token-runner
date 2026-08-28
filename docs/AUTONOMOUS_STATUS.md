@@ -9,10 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 10 complete — all 9 non-Localhost regions redesigned into themed
-compositions (no more flat noise fields).
-Next: model-selection system, deployable-agent gameplay, Dream App architecture
-tradeoffs, NPC memory/personality, boss telegraphs, higher-fi player art.
+Iteration 11 complete — model-selection system (Prompt Blast trade-offs).
+Next: deployable-agent gameplay, Dream App architecture tradeoffs, NPC
+memory/personality, boss telegraphs, higher-fi player art, running-gag callbacks.
 
 ## Iteration log
 
@@ -143,6 +142,19 @@ tradeoffs, NPC memory/personality, boss telegraphs, higher-fi player art.
 - Regression test `tests/region_test.tscn` (59/59): every region builds, returns
   a valid spawn/size, and produces themed structures + gameplay containers.
   Wired into CI.
+
+### Iteration 11 — Model selection
+- New `ModelManager` autoload: the player chooses which model powers **Prompt
+  Blast**, a real trade-off between token cost, damage, and reliability:
+  - **Local 7B** — cheap, weak, unreliable (may hallucinate/misfire).
+  - **Fast** — balanced (default).
+  - **Frontier** — powerful and reliable, but expensive.
+  - **Experimental** — high damage, low reliability (brilliant or catastrophic).
+- Wired into combat: Prompt Blast cost scales (`player.prompt_cost()`), damage
+  scales, and low-reliability models can hallucinate and fizzle. Cycle with `[T]`;
+  HUD shows `⚙ Model: <name> ([T], N tk/blast)` and a change toast.
+- Regression test `tests/model_test.tscn` (7/7): defaults, cycling wrap,
+  distinct trade-offs, and cost scaling (Local 3 → Frontier 11). Wired into CI.
 
 ## Verified test commands
 

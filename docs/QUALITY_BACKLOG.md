@@ -28,8 +28,9 @@ every iteration by fresh playtesting. Priorities:
   knot), hallucination (multi-eyed ghost). Remaining: per-type **telegraphs /
   behaviors / death effects**, and boss visuals (enterprise_architect,
   legacy_monolith, infinite_context).
-- [ ] **Gameplay depth**: currently walk + collect + shoot. Needs decisions,
-  branching quests, model selection, agent system, architecture tradeoffs.
+- [~] **Gameplay depth**: added combat abilities, model selection, technical-debt
+  consequences, and the reset cycle. Still open: deployable-agent gameplay, Dream
+  App architecture tradeoffs, more branching quests with multiple endings.
 - [~] **Comedy as mechanics**: staged storyline engine shipped; **Just One Tiny
   Change** implemented end-to-end. Still to do: Free Tier, The Autonomous Agent,
   and more branching scenarios with consequences.

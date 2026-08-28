@@ -14,6 +14,7 @@ const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 var _notif_tween: Tween
 var _theme: Theme
 var _cycle_label: Label
+var _model_label: Label
 var _player: Node
 var _ability_slots: Array = []
 
@@ -60,12 +61,27 @@ func _setup_cycle_readout() -> void:
 	add_child(_cycle_label)
 	CycleManager.cycle_warning.connect(_on_cycle_warning)
 	CycleManager.reset_triggered.connect(_on_reset_triggered)
+	# Active model readout (press [T] to cycle).
+	_model_label = Label.new()
+	_model_label.anchor_left = 0.5
+	_model_label.anchor_right = 0.5
+	_model_label.position = Vector2(-120, 110)
+	_model_label.custom_minimum_size = Vector2(240, 0)
+	_model_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_model_label.add_theme_font_size_override("font_size", 13)
+	_model_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	_model_label.add_theme_constant_override("outline_size", 4)
+	add_child(_model_label)
+	ModelManager.model_changed.connect(_on_model_changed)
 
 func _on_cycle_warning(seconds_left: int) -> void:
 	_show_notification("\u26a0 TOKEN RESET IN %ds\nShip something before it's gone!" % seconds_left, Color(1.0, 0.55, 0.3))
 
 func _on_reset_triggered(cycle: int) -> void:
 	_show_notification("\u267b RESET \u2014 Cycle %d\nQuotas refilled. Prices shifted." % cycle, Color(0.5, 0.85, 1.0))
+
+func _on_model_changed(_id: String, display_name: String) -> void:
+	_show_notification("Model \u2192 %s" % display_name, ModelManager.color())
 
 func _setup_ability_bar() -> void:
 	var bar := HBoxContainer.new()
@@ -124,6 +140,11 @@ func _process(_delta: float) -> void:
 		var warn := secs <= int(CycleManager.WARN_AT)
 		_cycle_label.text = "\u25c9 Cycle %d   \u23f1 reset in %ds" % [CycleManager.cycle, secs]
 		_cycle_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.3) if warn else Color(0.7, 0.78, 0.85))
+	if _model_label:
+		var m := ModelManager.current()
+		var pc: int = _player.prompt_cost() if is_instance_valid(_player) else int(m.cost * 5)
+		_model_label.text = "\u2699 Model: %s  ([T], %d tk/blast)" % [m.name, pc]
+		_model_label.add_theme_color_override("font_color", ModelManager.color())
 
 func _update_all() -> void:
 	token_label.text = "%d" % int(ResourceManager.get_value("tokens"))
