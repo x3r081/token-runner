@@ -109,7 +109,7 @@ func _setup_legacy_frames() -> void:
 func _physics_process(delta: float) -> void:
 	z_index = int(global_position.y)
 	_dash_cd = maxf(0.0, _dash_cd - delta)
-	if not can_move or GameManager.state != GameManager.GameState.PLAYING:
+	if not can_move or GameManager.state != GameManager.GameState.PLAYING or EventManager.has_active_event():
 		velocity = Vector2.ZERO
 		if sprite.animation.begins_with("walk"):
 			_play_facing_anim("idle")
@@ -171,6 +171,9 @@ func _on_idle_timer() -> void:
 	idle_timer.start(randf_range(10.0, 20.0))
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Ignore gameplay input while a modal event/storyline popup is showing.
+	if EventManager.has_active_event():
+		return
 	if event.is_action_pressed("interact"):
 		_try_interact()
 	if event.is_action_pressed("ability_1"):

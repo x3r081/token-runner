@@ -27,6 +27,9 @@ func _run() -> void:
 	GameManager.player_position = Vector2.ZERO
 	if DialogueManager:
 		DialogueManager.is_active = false
+	# Keep random events from firing mid-test (the player halts during events).
+	EventManager.reset()
+	EventManager.cooldown = 100000.0
 
 	var player: Node = PlayerScene.instantiate()
 	add_child(player)
