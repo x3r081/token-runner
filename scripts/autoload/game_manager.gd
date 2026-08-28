@@ -40,6 +40,8 @@ var session_stats: Dictionary = {
 	"reloads_detected": 0,
 }
 
+var show_opening_sequence: bool = true
+
 var _rng := RandomNumberGenerator.new()
 
 func _ready() -> void:
@@ -66,6 +68,7 @@ func start_new_game() -> void:
 		"api_calls": 0,
 		"reloads_detected": 0,
 	}
+	show_opening_sequence = true
 	ResourceManager.reset()
 	QuestManager.reset()
 	DreamAppManager.reset()
@@ -77,6 +80,7 @@ func start_new_game() -> void:
 
 func continue_game() -> void:
 	if SaveManager.load_game():
+		show_opening_sequence = false
 		state = GameState.PLAYING
 		_change_scene("res://scenes/world/world.tscn")
 	else:

@@ -1,6 +1,8 @@
 extends Node2D
 class_name RegionBuilder
 
+const _LocalhostBuilder = preload("res://scripts/world/localhost_builder.gd")
+
 ## Procedurally builds a region from data at runtime.
 
 const REGION_TILE_MAP := {
@@ -20,6 +22,8 @@ const REGION_SIZE := Vector2i(20, 15)
 const TILE_SIZE := 64
 
 static func build(parent: Node2D, region_id: String) -> Dictionary:
+	if region_id == "localhost":
+		return _LocalhostBuilder.build(parent)
 	return _build_region_static(parent, region_id)
 
 static func _build_region_static(parent: Node2D, region_id: String) -> Dictionary:

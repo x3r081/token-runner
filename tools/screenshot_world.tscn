@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://ssworld001"]
+
+[ext_resource type="Script" path="res://tools/screenshot_world.gd" id="1"]
+
+[node name="ScreenshotWorld" type="Node"]
+script = ExtResource("1")

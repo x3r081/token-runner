@@ -32,7 +32,7 @@ func _populate() -> void:
 				cost_str += "%s:%d " % [k, cost[k]]
 			btn.text = "Buy (%s)" % cost_str.strip_edges()
 			btn.disabled = not DreamAppManager.can_purchase(branch)
-			var b := branch
+			var b: String = branch
 			btn.pressed.connect(func(): _purchase(b))
 			h.add_child(btn)
 		vbox.add_child(h)

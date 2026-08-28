@@ -4,7 +4,7 @@ class_name Player
 signal health_changed(current: int, max_hp: int)
 signal died
 
-const SPEED := 280.0
+const SPEED := 220.0
 const DASH_SPEED := 500.0
 const MAX_HP := 100
 
@@ -34,26 +34,41 @@ func _ready() -> void:
 func _setup_sprite_frames() -> void:
 	if sprite.sprite_frames:
 		return
+	var sheet: Texture2D = load("res://assets/external/kenney/roguelike/roguelikeChar_transparent.png")
+	if not sheet:
+		sheet = load("res://assets/textures/generated/player_idle.png")
+		if sheet:
+			var frames_fallback := SpriteFrames.new()
+			frames_fallback.add_animation("idle")
+			frames_fallback.add_frame("idle", sheet)
+			sprite.sprite_frames = frames_fallback
+			sprite.play("idle")
+		return
 	var frames := SpriteFrames.new()
 	frames.add_animation("idle")
 	frames.add_animation("walk")
 	frames.add_animation("hurt")
 	frames.add_animation("celebrate")
-	frames.set_animation_speed("idle", 4.0)
+	frames.set_animation_speed("idle", 3.0)
 	frames.set_animation_speed("walk", 8.0)
-	var idle_tex := load("res://assets/textures/generated/player_idle.png")
-	var walk1 := load("res://assets/textures/generated/player_walk1.png")
-	var walk2 := load("res://assets/textures/generated/player_walk2.png")
-	if idle_tex:
-		frames.add_frame("idle", idle_tex)
-	if walk1 and walk2:
-		frames.add_frame("walk", walk1)
-		frames.add_frame("walk", walk2)
-	var hurt_tex := load("res://assets/textures/generated/player_hurt.png")
-	if hurt_tex:
-		frames.add_frame("hurt", hurt_tex)
+	# Pre-made character column 0 — 16x16 cells, 1px gap
+	var cell := 17
+	var char_col := 0
+	for row in 4:
+		var atlas := AtlasTexture.new()
+		atlas.atlas = sheet
+		atlas.region = Rect2i(char_col * cell + 1, row * cell + 1, 16, 16)
+		if row < 2:
+			frames.add_frame("idle", atlas)
+		else:
+			frames.add_frame("walk", atlas)
+	var hurt_atlas := AtlasTexture.new()
+	hurt_atlas.atlas = sheet
+	hurt_atlas.region = Rect2i(char_col * cell + 1, 4 * cell + 1, 16, 16)
+	frames.add_frame("hurt", hurt_atlas)
 	sprite.sprite_frames = frames
 	sprite.play("idle")
+	sprite.scale = Vector2(3.5, 3.5)
 
 func _physics_process(delta: float) -> void:
 	if not can_move or GameManager.state != GameManager.GameState.PLAYING:
