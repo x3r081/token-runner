@@ -16,8 +16,12 @@ collision_mask = 34
 script = ExtResource("1")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
-position = Vector2(0, -12)
-scale = Vector2(3.5, 3.5)
+position = Vector2(0, -20)
+scale = Vector2(2.2, 2.2)
+
+[node name="Shadow" type="Sprite2D" parent="."]
+position = Vector2(0, 8)
+z_index = -1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("CapsuleShape2D_1")
@@ -46,6 +50,9 @@ shape = SubResource("CircleShape2D_1")
 one_shot = true
 
 [node name="InvincibilityTimer" type="Timer" parent="."]
+one_shot = true
+
+[node name="IdleTimer" type="Timer" parent="."]
 one_shot = true
 
 [node name="CollectParticles" type="CPUParticles2D" parent="."]

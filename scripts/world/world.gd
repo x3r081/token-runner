@@ -32,6 +32,9 @@ func _on_opening_finished() -> void:
 	if player:
 		player.can_move = true
 	DialogueManager.start_dialogue("roommate_ai", "greeting")
+	if SettingsManager.get_setting("music_enabled"):
+		AudioManager.enable_music()
+		AudioManager.play_music("explore_music")
 
 func _load_region(region_id: String) -> void:
 	if _current_region_node:
@@ -98,28 +101,24 @@ func _close_pause() -> void:
 			c.queue_free()
 
 func _toggle_quest_log() -> void:
-	var existing := hud.get_node_or_null("QuestLogPanel")
-	if existing:
-		existing.queue_free()
-		return
-	var panel := preload("res://scenes/ui/quest_log.tscn").instantiate()
-	panel.name = "QuestLogPanel"
-	hud.add_child(panel)
+	_toggle_modal_panel("QuestLogPanel", preload("res://scenes/ui/quest_log.tscn"))
 
 func _toggle_dream_app() -> void:
-	var existing := hud.get_node_or_null("DreamAppPanel")
-	if existing:
-		existing.queue_free()
-		return
-	var panel := preload("res://scenes/ui/dream_app_panel.tscn").instantiate()
-	panel.name = "DreamAppPanel"
-	hud.add_child(panel)
+	_toggle_modal_panel("DreamAppPanel", preload("res://scenes/ui/dream_app_panel.tscn"))
 
 func _toggle_map() -> void:
-	var existing := hud.get_node_or_null("MapPanel")
+	_toggle_modal_panel("MapPanel", preload("res://scenes/ui/map_panel.tscn"))
+
+func _toggle_modal_panel(panel_name: String, scene: PackedScene) -> void:
+	var existing := hud.get_node_or_null(panel_name)
 	if existing:
 		existing.queue_free()
 		return
-	var panel := preload("res://scenes/ui/map_panel.tscn").instantiate()
-	panel.name = "MapPanel"
+	var panel := scene.instantiate()
+	panel.name = panel_name
+	if panel.has_method("register_modal"):
+		panel.register_modal()
+	elif panel is Control:
+		panel.tree_exiting.connect(func(): UIManager.pop_modal())
+		UIManager.push_modal()
 	hud.add_child(panel)

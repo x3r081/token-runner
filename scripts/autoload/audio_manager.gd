@@ -31,6 +31,7 @@ func _ready() -> void:
 		add_child(p)
 		sfx_players.append(p)
 	_generate_procedural_audio()
+	_load_validated_music()
 
 func _setup_buses() -> void:
 	if _bus_ready:
@@ -105,6 +106,18 @@ func _generate_procedural_audio() -> void:
 	_streams["explore_music"] = _make_ambient_loop(90.0, 4.0)
 	_streams["combat_music"] = _make_ambient_loop(120.0, 3.0)
 	_streams["menu_music"] = _make_ambient_loop(60.0, 6.0)
+
+func _load_validated_music() -> void:
+	_load_looping_wav("res://assets/audio/menu_ambient.wav", "menu_music")
+	_load_looping_wav("res://assets/audio/ambient_localhost.wav", "explore_music")
+
+func _load_looping_wav(path: String, stream_name: String) -> void:
+	if not ResourceLoader.exists(path):
+		return
+	var stream: AudioStream = load(path)
+	if stream is AudioStreamWAV:
+		stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		_streams[stream_name] = stream
 
 func _encode_sample(sample: float) -> int:
 	return int(clamp((sample * 0.5 + 0.5) * 255.0, 0.0, 255.0))

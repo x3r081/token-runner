@@ -13,6 +13,7 @@ const DEFAULTS := {
 	"camera_shake": true,
 	"ui_scale": 1.0,
 	"graphics_quality": 1,
+	"music_enabled": false,
 }
 
 const RESOLUTIONS := [
@@ -63,9 +64,16 @@ func apply_setting(key: String) -> void:
 				settings.music_volume,
 				settings.sfx_volume
 			)
-			# Music stays gated until player opts in via settings.
-			if settings.music_volume > 0.3:
+		"music_enabled":
+			if settings.music_enabled:
 				AudioManager.enable_music()
+				if GameManager.state == GameManager.GameState.MENU:
+					AudioManager.play_music("menu_music")
+				elif GameManager.state == GameManager.GameState.PLAYING:
+					AudioManager.play_music("explore_music")
+			else:
+				AudioManager.music_enabled = false
+				AudioManager.stop_music()
 		"fullscreen":
 			if settings.fullscreen:
 				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
@@ -85,5 +93,6 @@ func get_setting_label(key: String) -> String:
 		"fullscreen": return "Pretend you have a dedicated battlestation."
 		"master_volume": return "Controls everything. Like a tech lead."
 		"music_volume": return "Lo-fi beats to ignore production alerts."
+		"music_enabled": return "Off by default. Your ears thanked us."
 		"sfx_volume": return "Token sounds. Cash register optional."
 		_: return ""

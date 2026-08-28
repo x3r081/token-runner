@@ -50,6 +50,10 @@ max_value = 1.0
 step = 0.05
 value = 0.7
 
+[node name="MusicEnabledBtn" type="CheckButton" parent="Margin/VBox"]
+layout_mode = 2
+text = "Enable Music (validated ambient)"
+
 [node name="SFXLabel" type="Label" parent="Margin/VBox"]
 layout_mode = 2
 text = "SFX Volume"

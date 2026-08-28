@@ -10,6 +10,7 @@ const ROOM_H := 18
 const TILE_DIR := "res://assets/external/kenney/tiny-town/Tiles/"
 
 static func build(parent: Node2D) -> Dictionary:
+	parent.y_sort_enabled = true
 	var spawn := Vector2(ROOM_W * TILE_PX * 0.35, ROOM_H * TILE_PX * 0.72)
 	_build_floor(parent)
 	_build_walls(parent)
@@ -166,6 +167,8 @@ static func _build_props(parent: Node2D) -> void:
 	_add_sticky_note(props, Vector2(200, 180), "SHIP\nIT", Color(1.0, 0.95, 0.4))
 	_add_sticky_note(props, Vector2(280, 200), "TODO:\neverything", Color(0.9, 0.7, 0.9))
 	_add_sticky_note(props, Vector2(350, 170), "call mom\n(later)", Color(0.7, 0.95, 0.7))
+	_add_sticky_note(props, Vector2(420, 190), "TODO:\nBACKUPS", Color(1.0, 0.85, 0.5))
+	_add_sticky_note(props, Vector2(420, 250), "TODO:\nSERIOUSLY, BACKUPS", Color(1.0, 0.6, 0.6))
 	# Whiteboard
 	var board := ColorRect.new()
 	board.size = Vector2(180, 100)
@@ -174,7 +177,7 @@ static func _build_props(parent: Node2D) -> void:
 	board.z_index = -2
 	props.add_child(board)
 	var board_label := Label.new()
-	board_label.text = "Architecture:\n[everything] -> [magic] -> profit?"
+	board_label.text = "Architecture:\nBrowser -> API -> K8s -> 17 microservices\nPurpose: SHOPPING LIST"
 	board_label.position = Vector2(160, 260)
 	board_label.add_theme_font_size_override("font_size", 11)
 	board_label.add_theme_color_override("font_color", Color(0.2, 0.15, 0.3))
@@ -202,6 +205,11 @@ static func _build_labels(parent: Node2D) -> void:
 	parent.add_child(labels)
 	_add_sign(labels, Vector2(1180, 120), "SERVER RACK\n(please don't reboot)", Color(0.5, 1.0, 0.6))
 	_add_sign(labels, Vector2(480, 420), "triple monitor setup\nstill not enough context", Color(0.6, 0.8, 1.0))
+	_add_sign(labels, Vector2(200, 420), "PRODUCTION\nNO TESTING BEYOND THIS POINT", Color(1.0, 0.4, 0.35))
+	_add_sign(labels, Vector2(1050, 120), "TODO APP\n(powered by hope)", Color(0.4, 0.9, 0.7))
+	_add_sign(labels, Vector2(300, 680), "node_modules\n(trash bin)", Color(0.7, 0.6, 0.5))
+	_add_sign(labels, Vector2(400, 120), "DNS\nProbably not the problem.", Color(0.5, 0.85, 1.0))
+	_add_sign(labels, Vector2(1280, 680), "COFFEE MACHINE\nMISSION CRITICAL", Color(1.0, 0.75, 0.35))
 
 static func _add_sign(parent: Node2D, pos: Vector2, text: String, color: Color) -> void:
 	var lbl := Label.new()

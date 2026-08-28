@@ -17,6 +17,8 @@ func _ready() -> void:
 ]
 
 func _on_event(_event_id: String, description: String) -> void:
+	if UIManager.has_blocking_ui():
+		return
 	var ev := EventManager.get_active()
 	if ev.is_empty():
 		return

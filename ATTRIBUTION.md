@@ -18,7 +18,8 @@ Attribution to Kenney.nl is appreciated but not required under CC0.
 
 ## Procedurally Generated (Internal)
 
-- **Player character:** Hoodie vibe-coder with laptop glow, headphones, walk/idle/hurt/celebrate animations — `scripts/tools/asset_generator_runtime.gd` → `assets/textures/generated/player_*.png`
+- **Player character:** 64×64 spritesheet — hoodie vibe-coder, 4-dir walk, comedic idles — `scripts/tools/asset_generator_runtime.gd`
+- **Ambient music:** Soft pad loops composed via ffmpeg with limiter — `assets/audio/menu_ambient.wav`, `assets/audio/ambient_localhost.wav` (original, safe levels)
 - Placeholder SFX (gated, conservative volumes): `scripts/autoload/audio_manager.gd`
 
 ## Third-Party Software

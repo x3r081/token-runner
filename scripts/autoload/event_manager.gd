@@ -38,6 +38,8 @@ func _process(delta: float) -> void:
 		_try_trigger()
 
 func _try_trigger() -> void:
+	if UIManager.has_blocking_ui():
+		return
 	var eligible: Array = []
 	for ev in event_defs:
 		var min_act: int = ev.get("min_act", 1)

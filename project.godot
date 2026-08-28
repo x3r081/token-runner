@@ -28,6 +28,7 @@ SettingsManager="*res://scripts/autoload/settings_manager.gd"
 AchievementManager="*res://scripts/autoload/achievement_manager.gd"
 DialogueManager="*res://scripts/autoload/dialogue_manager.gd"
 SaveManager="*res://scripts/autoload/save_manager.gd"
+UIManager="*res://scripts/autoload/ui_manager.gd"
 
 [display]
 
