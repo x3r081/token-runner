@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 20 complete — branching Debugging Investigation quest (multiple
-endings, failure/hallucination path, model choice matters).
-Next: results-screen polish, more quest variety, per-region NPC flavour.
+Iteration 21 complete — personalized ship-results roast.
+Next: interactive critical playtest to surface remaining high-severity issues;
+more quest variety; per-region NPC flavour.
 
 ## Iteration log
 
@@ -267,6 +267,16 @@ Next: results-screen polish, more quest variety, per-region NPC flavour.
 - Regression test `tests/debug_quest_test.tscn` (9/9): both fix endings, the
   achievement, and model-dependent AI routing (frontier reliable, local
   hallucinates). Wired into CI.
+
+### Iteration 21 — Personalized ship-results roast
+- The victory screen now assembles a **personalized roast** from the choices you
+  actually made (`GameManager.get_ship_roast`): technical debt tier, each
+  architecture decision (microservices/NoSQL/tests-later/velocity/cloud),
+  backups (grudging respect vs cliff-edge), death count, whether it was ever
+  really DNS, and architecture ridiculousness. Ridiculousness is also shown in
+  the results stats.
+- Regression test `tests/results_test.tscn` (11/11) verifies the roast reflects
+  the run's state (and flips when you have backups). Wired into CI.
 
 ## Verified test commands
 
