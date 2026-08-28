@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 19 complete — distinct NPC sprites (Claude + archetypes).
-Next: more branching quests with multiple endings, results-screen polish,
-per-region NPC flavour.
+Iteration 20 complete — branching Debugging Investigation quest (multiple
+endings, failure/hallucination path, model choice matters).
+Next: results-screen polish, more quest variety, per-region NPC flavour.
 
 ## Iteration log
 
@@ -253,6 +253,20 @@ per-region NPC flavour.
 - `npc.gd` assigns a sprite per archetype (roommate/cloud/svp/reseller/foreman/…)
   plus a soft shadow, matching the player's scale. Claude now renders as a clear,
   distinct character in-game.
+
+### Iteration 20 — Branching Debugging Investigation quest
+- A genuinely branching quest (Localhost "/checkout is DOWN" console): read logs
+  / blame the intern / restart, then trace it yourself **or ask the AI**, then
+  choose a **proper fix** (stability + reward + I-CAN-EXPLAIN achievement) or a
+  **quick hotfix** (technical debt) — plus a weak restart ending and a
+  **hallucination failure path**.
+- The **AI-diagnosis branch reliability depends on the selected model** (new
+  `ai_gamble`): Frontier diagnoses reliably; a cheap Local model often
+  hallucinates a confident wrong answer and sends you down the failure path —
+  making model selection matter inside a quest.
+- Regression test `tests/debug_quest_test.tscn` (9/9): both fix endings, the
+  achievement, and model-dependent AI routing (frontier reliable, local
+  hallucinates). Wired into CI.
 
 ## Verified test commands
 

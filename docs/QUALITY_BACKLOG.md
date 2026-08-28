@@ -48,7 +48,9 @@ every iteration by fresh playtesting. Priorities:
 
 ## P2 — Depth & polish
 
-- [ ] Multi-stage/branching quests with consequences, failure states, callbacks.
+- [~] Multi-stage/branching quests with consequences, failure states, callbacks:
+  flagship storylines + a fully branching **Debugging Investigation** (multiple
+  endings, failure path, model-dependent AI) shipped. More variety welcome.
 - [x] Technical-debt systemic consequences: costs rise, stability drains, bugs
   spawn on dependency-break incidents (safe below threshold). *(It7)*
 - [x] Ship-before-reset cycle system: timed cycles with quota refill, debt

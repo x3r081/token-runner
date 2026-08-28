@@ -126,6 +126,13 @@ func _resolve_scripted(choice: Dictionary) -> void:
 			next_stage = int(choice.get("next_success", -1))
 		else:
 			next_stage = int(choice.get("next_fail", -1))
+	# AI diagnosis: reliability depends on the currently selected model. A cheap
+	# model is likely to hallucinate a confident, wrong answer.
+	if choice.get("ai_gamble", false):
+		if randf() < ModelManager.reliability():
+			next_stage = int(choice.get("next_success", -1))
+		else:
+			next_stage = int(choice.get("next_fail", -1))
 	if next_stage >= 0 and next_stage < _script_stages.size():
 		active_event = _stage_to_event(next_stage)
 		event_triggered.emit(_script_id, active_event.get("description", ""))

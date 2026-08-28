@@ -28,6 +28,13 @@ func _on_interact(_player: Node) -> void:
 				_show_message("The ad returns: 'Your FREE tokens expired. Claim 10,000 MORE?*'\n\n*conditions apply, obviously.")
 			else:
 				EventManager.start_scripted("free_tier", preload("res://scripts/world/story_events.gd").free_tier())
+		"broken_service":
+			if EventManager.has_active_event():
+				return
+			if EventManager.is_script_completed("debugging_investigation"):
+				_show_message("/checkout is stable. For now. Suspiciously stable.")
+			else:
+				EventManager.start_scripted("debugging_investigation", preload("res://scripts/world/story_events.gd").debugging_investigation())
 		"agent_terminal":
 			if EventManager.has_active_event():
 				return

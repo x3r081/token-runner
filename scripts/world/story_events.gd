@@ -90,6 +90,70 @@ static func free_tier() -> Array:
 		},
 	]
 
+## A branching debugging investigation with real failure/hallucination paths and
+## multiple endings. The AI-diagnosis branch depends on your selected model, so
+## model choice genuinely matters here.
+static func debugging_investigation() -> Array:
+	return [
+		{  # 0
+			"title": "SERVICE DOWN: /checkout 500s",
+			"description": "Checkout is throwing 500s. Revenue is now theoretical. How do you begin?",
+			"choices": [
+				{"text": "Read the logs (spend 5 context)", "effects": {"context": -5}, "next": 1},
+				{"text": "Blame the intern", "next": 2},
+				{"text": "Restart and pray", "next": 3},
+			],
+		},
+		{  # 1
+			"title": "THE LOGS",
+			"description": "NullPointerException deep in PaymentService. The stack trace points at a dependency.",
+			"choices": [
+				{"text": "Trace the dependency yourself", "next": 4},
+				{"text": "Ask the AI to diagnose it", "next": 5},
+			],
+		},
+		{  # 2
+			"title": "IT WAS YOU",
+			"description": "The intern has been on holiday for a week. It was you. It's always you.",
+			"choices": [{"text": "Accept reality", "effects": {"will_to_live": -3}, "next": 4}],
+		},
+		{  # 3
+			"title": "IT CAME BACK",
+			"description": "You restarted it. It came back. You learned nothing and fixed nothing, but it's up.",
+			"choices": [{"text": "Ship it and leave", "effects": {"stability": 5}, "next": -1}],
+		},
+		{  # 4
+			"title": "ROOT CAUSE",
+			"description": "It's a version mismatch: left-pad@2.0 changed a default. Classic.\n\nHow do you fix it?",
+			"choices": [
+				{"text": "Proper fix: pin versions + a test", "effects": {"tokens": -20, "stability": 15}, "next": 6},
+				{"text": "Quick hotfix: try/catch, move on", "effects": {"technical_debt": 12, "stability": 5}, "next": 7},
+			],
+		},
+		{  # 5
+			"title": "ASK THE AI",
+			"description": "You paste the stack trace and ask your current model to diagnose it...",
+			"choices": [
+				{"text": "Trust the diagnosis", "ai_gamble": true, "next_success": 4, "next_fail": 8},
+			],
+		},
+		{  # 6
+			"title": "FIXED (properly)",
+			"description": "Pinned, tested, documented. The on-call engineer wept with joy. You are, briefly, a hero.",
+			"choices": [{"text": "Claim your reward", "effects": {"tokens": 120, "reputation": 10}, "achievement": "i_can_explain", "next": -1}],
+		},
+		{  # 7
+			"title": "HOTFIXED",
+			"description": "A try/catch and a shrug. It'll be fine. (It will not be fine, but not today.)",
+			"choices": [{"text": "Ship the hotfix", "effects": {"tokens": 60}, "next": -1}],
+		},
+		{  # 8
+			"title": "CONFIDENTLY WRONG",
+			"description": "The AI confidently blamed CSS. It was not CSS. You wasted 30 minutes and some faith.",
+			"choices": [{"text": "Do it yourself", "effects": {"will_to_live": -5}, "next": 4}],
+		},
+	]
+
 ## Production incident: the classic "what do we do" panic, including the DNS gag.
 static func production_incident() -> Array:
 	return [
