@@ -10,17 +10,20 @@ func _ready() -> void:
 Stability: %d
 Security: %d
 Technical Debt: %d
+Architecture Ridiculousness: %d
 Quests Completed: %d
 Deaths: %d
 Play Time: %s""" % [
 		results.features, results.stability,
 		DreamAppManager.get_totals().security,
 		results.technical_debt,
+		results.get("architecture_ridiculousness", 0),
 		results.quests_completed,
 		results.deaths,
 		_format_time(results.play_time),
 	]
-	$Panel/VBox/Flavor.text = _get_flavor(results.ranking)
+	var roast: Array = GameManager.get_ship_roast()
+	$Panel/VBox/Flavor.text = "%s\n\nTHE ROAST:\n\u2022 %s" % [_get_flavor(results.ranking), "\n\u2022 ".join(roast)]
 	$Panel/VBox/ContinueBtn.text = "Continue in Post-Game"
 	$Panel/VBox/MenuBtn.text = "Return to Main Menu"
 	$Panel/VBox/ContinueBtn.pressed.connect(_on_continue)

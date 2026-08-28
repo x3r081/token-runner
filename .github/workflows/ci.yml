@@ -70,6 +70,9 @@ jobs:
       - name: Run branching debug-quest regression test
         run: godot --headless --path . --scene tests/debug_quest_test.tscn
 
+      - name: Run ship-results roast regression test
+        run: godot --headless --path . --scene tests/results_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 

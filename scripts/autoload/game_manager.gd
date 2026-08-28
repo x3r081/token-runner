@@ -190,6 +190,39 @@ func trigger_victory() -> void:
 func get_ship_results() -> Dictionary:
 	return _calculate_ship_results()
 
+## A personalized roast assembled from the choices you actually made this run.
+func get_ship_roast() -> Array:
+	var out: Array = []
+	var debt := ResourceManager.get_value("technical_debt")
+	var flags: Dictionary = ArchitectureManager.flags if ArchitectureManager else {}
+	if debt >= 80.0:
+		out.append("Your technical debt qualifies for its own Series B.")
+	elif debt >= 40.0:
+		out.append("Technical debt: the 'restructure the whole team' kind.")
+	if flags.get("structure") == "microservices":
+		out.append("47 microservices. For this. Chef's kiss.")
+	if flags.get("testing") == "later":
+		out.append("Tests? You said 'later.' It is now later. There are none.")
+	if flags.get("security") == "velocity":
+		out.append("You chose velocity over security. The Security Engineer has your address.")
+	if flags.get("hosting") == "cloud":
+		out.append("Your cloud bill has achieved sentience and unionized.")
+	if flags.get("database") == "nosql":
+		out.append("NoSQL: because who needs the data to still be there.")
+	if get_flag("backups"):
+		out.append("You made backups. Weirdly, disturbingly responsible.")
+	else:
+		out.append("No backups. Living blindfolded on a cliff edge.")
+	if death_count >= 5:
+		out.append("You died %d times and kept going. Grit, or a concussion." % death_count)
+	if AchievementManager and AchievementManager.is_unlocked("it_was_dns"):
+		out.append("And yes \u2014 that one time \u2014 it really was DNS.")
+	if ArchitectureManager and ArchitectureManager.ridiculousness >= 8:
+		out.append("Architecture Ridiculousness: MAXIMUM. Frame it.")
+	if out.is_empty():
+		out.append("Somehow you made reasonable choices. Suspicious.")
+	return out
+
 func _calculate_ship_results() -> Dictionary:
 	var app := DreamAppManager.get_totals()
 	var res := ResourceManager.get_all()
