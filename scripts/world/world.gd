@@ -9,13 +9,29 @@ extends Node2D
 var _current_region_node: Node2D
 
 func _ready() -> void:
-	AudioManager.play_music("explore_music")
 	_load_region(GameManager.current_region)
 	QuestManager.on_region_entered(GameManager.current_region)
 	GameManager.region_changed.connect(_on_region_changed)
 	GameManager.player_died.connect(_on_player_died)
 	if player:
 		player.died.connect(_on_player_died)
+		player.can_move = false
+	_set_ambient("localhost")
+	if GameManager.show_opening_sequence:
+		_start_opening_sequence()
+	else:
+		player.can_move = true
+
+func _start_opening_sequence() -> void:
+	var intro := preload("res://scenes/ui/opening_sequence.tscn").instantiate()
+	add_child(intro)
+	intro.sequence_finished.connect(_on_opening_finished)
+
+func _on_opening_finished() -> void:
+	GameManager.show_opening_sequence = false
+	if player:
+		player.can_move = true
+	DialogueManager.start_dialogue("roommate_ai", "greeting")
 
 func _load_region(region_id: String) -> void:
 	if _current_region_node:
@@ -31,6 +47,8 @@ func _load_region(region_id: String) -> void:
 
 func _set_ambient(region_id: String) -> void:
 	match region_id:
+		"localhost":
+			ambient.color = Color(0.55, 0.48, 0.62, 1.0)
 		"production":
 			ambient.color = Color(0.9, 0.5, 0.5, 1.0)
 		"token_vault":

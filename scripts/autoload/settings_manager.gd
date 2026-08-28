@@ -5,9 +5,9 @@ signal settings_changed
 
 const SETTINGS_PATH := "user://settings.cfg"
 const DEFAULTS := {
-	"master_volume": 1.0,
-	"music_volume": 0.7,
-	"sfx_volume": 0.8,
+	"master_volume": 0.6,
+	"music_volume": 0.25,
+	"sfx_volume": 0.35,
 	"fullscreen": false,
 	"resolution_index": 2,
 	"camera_shake": true,
@@ -63,6 +63,9 @@ func apply_setting(key: String) -> void:
 				settings.music_volume,
 				settings.sfx_volume
 			)
+			# Music stays gated until player opts in via settings.
+			if settings.music_volume > 0.3:
+				AudioManager.enable_music()
 		"fullscreen":
 			if settings.fullscreen:
 				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
