@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iterations 16–17 complete — audio-safety hardening + boss visuals/behaviour.
-Next: higher-fi player art, more branching quests with multiple endings,
-results-screen polish, additional NPC personalities.
+Iteration 18 complete — higher-fidelity player character art.
+Next: NPC distinct sprites, more branching quests with multiple endings,
+results-screen polish.
 
 ## Iteration log
 
@@ -235,6 +235,15 @@ results-screen polish, additional NPC personalities.
   scope-creep adds).
 - Regression test `tests/boss_test.tscn` (6/6): boss scaling, slam knockback,
   and architect-only summoning. Wired into CI.
+
+### Iteration 18 — Player character art
+- Rewrote the procedural vibe-coder spritesheet: **3-tone hoodie shading**, hair,
+  a face with eyes, **headphones** with neon accents, white sneakers, and a
+  proper walk cycle (leg stride + arm swing + head bob).
+- Added a **silhouette outline** pass — the single biggest readability upgrade
+  for small pixel characters — so the player pops against any background.
+- Verified in-game at scale (2.2×): clear, distinct, polished character replacing
+  the previous dark blob.
 
 ## Verified test commands
 

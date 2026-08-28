@@ -60,73 +60,137 @@ func _blit_frame(sheet: Image, ox: int, oy: int, size: int, frame: Image) -> voi
 func _draw_vibe_coder(direction: String, pose: String, frame_idx: int) -> Image:
 	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var hoodie := Color(0.14, 0.2, 0.34)
-	var hoodie_hi := Color(0.2, 0.28, 0.42)
-	var skin := Color(0.86, 0.72, 0.6)
+	var outline := Color(0.05, 0.05, 0.09)
+	var hoodie := Color(0.22, 0.30, 0.47)
+	var hoodie_hi := Color(0.31, 0.41, 0.60)
+	var hoodie_sh := Color(0.15, 0.21, 0.35)
+	var skin := Color(0.91, 0.76, 0.63)
+	var skin_sh := Color(0.78, 0.62, 0.51)
+	var hair := Color(0.19, 0.14, 0.11)
+	var jeans := Color(0.18, 0.20, 0.30)
+	var jeans_sh := Color(0.12, 0.14, 0.22)
+	var shoe := Color(0.93, 0.93, 0.97)
+	var cup := Color(0.10, 0.10, 0.14)
 	var glow := Color(0.35, 0.95, 0.85)
-	var jeans := Color(0.12, 0.14, 0.22)
-	var bob := int(sin(float(frame_idx) * 1.2) * 1.5)
-	var leg_l := 0
-	var leg_r := 0
-	if pose == "walk":
-		leg_l = 2 if frame_idx % 2 == 0 else -2
-		leg_r = -leg_l
+
+	var walk := pose == "walk"
+	var bob := (1 if (walk and frame_idx % 2 == 0) else 0)
+	var stride := 0
+	if walk:
+		stride = 3 if frame_idx % 2 == 0 else -3
 	var facing_up := direction == "up"
 	var facing_side := direction == "side"
 	var cx := 32
-	var cy := 28 + bob
-	# Hood + head
+	var hy := 15 + bob        # head center y
+
+	# --- legs + white sneakers (behind torso) ---
+	_fill_rect(img, cx - 7 + stride, 42, 6, 12, jeans)
+	_fill_rect(img, cx - 7 + stride, 48, 6, 6, jeans_sh)
+	_fill_rect(img, cx + 1 - stride, 42, 6, 12, jeans)
+	_fill_rect(img, cx + 1 - stride, 48, 6, 6, jeans_sh)
+	_fill_rect(img, cx - 8 + stride, 53, 8, 4, shoe)
+	_fill_rect(img, cx - stride, 53, 8, 4, shoe)
+
+	# --- torso hoodie with shading ---
+	var ty := 25 + bob
+	_fill_rect(img, cx - 11, ty, 22, 19, hoodie)
+	_fill_rect(img, cx - 11, ty, 4, 19, hoodie_sh)     # left shadow
+	_fill_rect(img, cx + 7, ty, 4, 19, hoodie_hi)      # right highlight
+	_fill_rect(img, cx - 7, ty - 2, 14, 4, hoodie_sh)  # hood collar
+	# hoodie pocket + neon drawstrings
+	_fill_rect(img, cx - 6, ty + 10, 12, 6, hoodie_sh)
 	if not facing_up:
-		_fill_arc(img, cx, cy - 6, 14, hoodie)
-		_fill_circle(img, cx, cy - 8, 9, skin)
-		img.set_pixel(cx - 3, cy - 9, Color(0.1, 0.12, 0.16))
-		img.set_pixel(cx + 3, cy - 9, Color(0.1, 0.12, 0.16))
-		_fill_rect(img, cx - 8, cy - 16, 16, 3, Color(0.22, 0.24, 0.3))
-		img.set_pixel(cx - 9, cy - 13, Color(0.35, 0.9, 0.8))
-		img.set_pixel(cx + 8, cy - 13, Color(0.35, 0.9, 0.8))
-	else:
-		_fill_arc(img, cx, cy - 4, 14, hoodie.darkened(0.1))
-		_fill_rect(img, cx - 10, cy - 18, 20, 8, hoodie)
-	# Torso
-	_fill_rect(img, cx - 12, cy, 24, 22, hoodie)
-	_fill_rect(img, cx - 10, cy + 2, 20, 4, hoodie_hi)
-	# Laptop glow
-	if pose != "phone" and pose != "panic":
-		_fill_rect(img, cx - 9, cy + 8, 18, 12, Color(0.04, 0.07, 0.1))
-		for x in range(cx - 7, cx + 8):
-			for y in range(cy + 10, cy + 18):
-				if (x * 3 + y * 7 + frame_idx) % 5 == 0:
-					img.set_pixel(x, y, glow)
-	if pose == "laptop":
-		_fill_rect(img, cx - 11, cy + 6, 22, 14, Color(0.08, 0.1, 0.14))
-		img.set_pixel(cx, cy + 10, Color(0.95, 0.3, 0.3))
-	if pose == "phone":
-		_fill_rect(img, cx + 6, cy - 2, 6, 10, Color(0.15, 0.15, 0.2))
-		img.set_pixel(cx + 8, cy + 2, Color(0.3, 0.95, 0.85))
-	if pose == "panic":
-		for i in 4:
-			img.set_pixel(cx - 8 + i * 5, cy - 18, Color(0.9, 0.2, 0.2))
-	if pose == "celebrate" or pose == "coffee":
-		_fill_rect(img, cx + 10, cy + 4, 5, 8, Color(0.75, 0.28, 0.12))
-	# Arms
+		img.set_pixel(cx - 2, ty + 3, glow)
+		img.set_pixel(cx - 2, ty + 6, glow)
+		img.set_pixel(cx + 2, ty + 3, glow)
+		img.set_pixel(cx + 2, ty + 6, glow)
+
+	# --- arms ---
+	var sw := stride
 	if facing_side:
-		_fill_rect(img, cx + (10 if frame_idx % 2 == 0 else 8), cy + 4, 6, 14, hoodie)
-		_fill_rect(img, cx - 16, cy + 6, 6, 12, hoodie)
+		_fill_rect(img, cx + 7, ty + 3 + sw, 5, 12, hoodie)
+		_fill_rect(img, cx + 7, ty + 14 + sw, 5, 3, skin)
 	else:
-		_fill_rect(img, cx - 16, cy + 4, 6, 14, hoodie)
-		_fill_rect(img, cx + 10, cy + 4, 6, 14, hoodie)
-	# Legs
-	_fill_rect(img, cx - 9 + leg_l, cy + 22, 7, 16, jeans)
-	_fill_rect(img, cx + 2 + leg_r, cy + 22, 7, 16, jeans)
-	_fill_rect(img, cx - 10 + leg_l, cy + 36, 9, 4, Color(0.2, 0.2, 0.24))
-	_fill_rect(img, cx + 1 + leg_r, cy + 36, 9, 4, Color(0.2, 0.2, 0.24))
+		_fill_rect(img, cx - 14, ty + 3 + sw, 5, 12, hoodie)
+		_fill_rect(img, cx + 9, ty + 3 - sw, 5, 12, hoodie)
+		_fill_rect(img, cx - 14, ty + 14 + sw, 5, 3, skin)
+		_fill_rect(img, cx + 9, ty + 14 - sw, 5, 3, skin)
+
+	# --- head ---
+	if facing_up:
+		_fill_circle(img, cx, hy, 8, hair)
+		_fill_rect(img, cx - 10, hy - 2, 20, 3, cup)     # headphone band
+		_fill_circle(img, cx - 9, hy + 1, 3, cup)
+		_fill_circle(img, cx + 9, hy + 1, 3, cup)
+	else:
+		_fill_circle(img, cx, hy, 8, skin)
+		# left-side face shadow
+		for x in range(cx - 8, cx):
+			for y in range(hy - 8, hy + 8):
+				if Vector2(x - cx, y - hy).length() <= 8 and img.get_pixel(x, y).a > 0:
+					img.set_pixel(x, y, skin_sh)
+		# hair cap
+		_fill_arc(img, cx, hy - 1, 9, hair)
+		_fill_rect(img, cx - 9, hy - 9, 18, 4, hair)
+		# eyes
+		if facing_side:
+			_fill_rect(img, cx + 3, hy - 1, 2, 2, Color(0.08, 0.06, 0.05))
+		else:
+			_fill_rect(img, cx - 4, hy - 1, 2, 2, Color(0.08, 0.06, 0.05))
+			_fill_rect(img, cx + 2, hy - 1, 2, 2, Color(0.08, 0.06, 0.05))
+		# headphones over ears + neon accents
+		_fill_rect(img, cx - 10, hy - 6, 20, 2, cup)
+		_fill_circle(img, cx - 8, hy + 1, 3, cup)
+		_fill_circle(img, cx + 8, hy + 1, 3, cup)
+		img.set_pixel(cx - 8, hy + 1, glow)
+		img.set_pixel(cx + 8, hy + 1, glow)
+
+	# --- pose props ---
+	if pose == "phone":
+		_fill_rect(img, cx + 6, ty + 6, 6, 10, Color(0.14, 0.14, 0.2))
+		img.set_pixel(cx + 8, ty + 10, glow)
+	elif pose == "laptop":
+		_fill_rect(img, cx - 10, ty + 8, 20, 12, Color(0.08, 0.10, 0.14))
+		for x in range(cx - 8, cx + 8):
+			for y in range(ty + 10, ty + 18):
+				if (x * 3 + y * 7 + frame_idx) % 4 == 0:
+					img.set_pixel(x, y, glow)
+	elif pose == "panic":
+		for i in 4:
+			img.set_pixel(cx - 8 + i * 5, hy - 12, Color(0.95, 0.25, 0.25))
+	elif pose == "celebrate" or pose == "coffee":
+		_fill_rect(img, cx + 11, ty + 6, 5, 8, Color(0.75, 0.28, 0.12))
+		_fill_rect(img, cx + 11, ty + 4, 5, 2, Color(0.85, 0.4, 0.2))
+
+	_outline_silhouette(img, outline)
+
 	if pose == "hurt":
 		for y in 64:
 			for x in 64:
 				var p := img.get_pixel(x, y)
 				if p.a > 0:
-					img.set_pixel(x, y, p.lerp(Color(0.95, 0.25, 0.3), 0.4))
+					img.set_pixel(x, y, p.lerp(Color(0.95, 0.25, 0.3), 0.45))
 	return img
+
+## Add a 1px dark outline around the whole silhouette — the single biggest
+## readability upgrade for small pixel-art characters.
+func _outline_silhouette(img: Image, color: Color) -> void:
+	var w := img.get_width()
+	var h := img.get_height()
+	var src := img.duplicate()
+	for x in w:
+		for y in h:
+			if src.get_pixel(x, y).a > 0.0:
+				continue
+			var touching := false
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var nx: int = x + int(d.x)
+				var ny: int = y + int(d.y)
+				if nx >= 0 and ny >= 0 and nx < w and ny < h and src.get_pixel(nx, ny).a > 0.0:
+					touching = true
+					break
+			if touching:
+				img.set_pixel(x, y, color)
 
 func _generate_player_sprites() -> void:
 	pass

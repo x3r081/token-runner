@@ -20,8 +20,8 @@ every iteration by fresh playtesting. Priorities:
   add foreground occlusion.)*
 - [x] **Stamped floor**: was grass-tile field. *(It2: wood plank interior floor,
   de-tiled with jitter/grime; knot repetition removed.)*
-- [ ] **Player art**: still crude; needs coherent character with readable
-  silhouette + animation set. *(Hoodie coder is okay but low-res; revisit.)*
+- [x] **Player art**: rewritten with shading, hair, face, headphones, white
+  sneakers, outline, and a proper walk cycle. Reads clearly at game scale. *(It18)*
 - [~] **Enemy identity**: distinct silhouettes done for bug (beetle),
   rate_limiter (barrier), memory_leak (dripping blob), merge_conflict
   (split red/blue), scope_creep (expanding arrows), dependency_demon (spider
