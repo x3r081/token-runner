@@ -43,6 +43,15 @@ var session_stats: Dictionary = {
 
 var show_opening_sequence: bool = true
 
+## Generic persistent story flags (e.g. "backups") for callbacks/running gags.
+var story_flags: Dictionary = {}
+
+func set_flag(key: String, value: bool = true) -> void:
+	story_flags[key] = value
+
+func get_flag(key: String) -> bool:
+	return bool(story_flags.get(key, false))
+
 ## Technical debt consequences: above the safe threshold, debt periodically
 ## drains stability and can "break a dependency" (spawns a bug in the world).
 ## Below it, nothing happens — some debt is strategically fine.
@@ -92,6 +101,7 @@ func start_new_game() -> void:
 		"reloads_detected": 0,
 	}
 	show_opening_sequence = true
+	story_flags.clear()
 	ResourceManager.reset()
 	QuestManager.reset()
 	DreamAppManager.reset()

@@ -14,6 +14,10 @@ var current_lines: Array = []
 var line_index: int = 0
 var pending_choices: Array = []
 
+## Claude's memory across the run: how many times you've talked, what he's
+## already nagged you about. Drives evolving, reactive, sarcastic dialogue.
+var claude_state: Dictionary = {"talks": 0, "warned_backups": false}
+
 func _ready() -> void:
 	_load_dialogue()
 
@@ -33,6 +37,7 @@ func reset() -> void:
 	current_lines.clear()
 	pending_choices.clear()
 	line_index = 0
+	claude_state = {"talks": 0, "warned_backups": false}
 
 func start_dialogue(npc_id: String, topic: String = "greeting") -> void:
 	if is_active:
@@ -40,7 +45,12 @@ func start_dialogue(npc_id: String, topic: String = "greeting") -> void:
 	if npc_id not in dialogue_data:
 		return
 	var npc: Dictionary = dialogue_data[npc_id]
-	var lines: Array = npc.get(topic, npc.get("greeting", []))
+	var lines: Array
+	# Claude is alive: reactive, memory-driven, aggressively sarcastic.
+	if npc_id == "roommate_ai" and (topic == "greeting" or topic == ""):
+		lines = build_claude_lines()
+	else:
+		lines = npc.get(topic, npc.get("greeting", []))
 	if lines.is_empty():
 		return
 	is_active = true
@@ -84,6 +94,11 @@ func select_choice(index: int) -> void:
 	var choice: Dictionary = pending_choices[index]
 	pending_choices.clear()
 	choice_made.emit(index)
+	if choice.has("action"):
+		_handle_action(choice.action)
+		if not choice.has("goto"):
+			end_dialogue()
+			return
 	if choice.has("effects"):
 		for res in choice.effects:
 			ResourceManager.modify(res, float(choice.effects[res]))
@@ -98,6 +113,15 @@ func select_choice(index: int) -> void:
 	else:
 		end_dialogue()
 
+func _handle_action(action: String) -> void:
+	match action:
+		"setup_backups":
+			# Sets the flag that later turns disasters into non-events.
+			if ResourceManager.spend({"tokens": 30}):
+				GameManager.set_flag("backups", true)
+		"decline_backups":
+			pass
+
 func end_dialogue() -> void:
 	is_active = false
 	current_npc = ""
@@ -107,6 +131,67 @@ func end_dialogue() -> void:
 	if GameManager.state == GameManager.GameState.DIALOGUE:
 		GameManager.state = GameManager.GameState.PLAYING
 	dialogue_ended.emit(current_npc)
+
+func _c(text: String) -> Dictionary:
+	return {"speaker": "Claude", "text": text}
+
+## Build Claude's contextual dialogue from the current game state + memory.
+func build_claude_lines() -> Array:
+	claude_state.talks = int(claude_state.get("talks", 0)) + 1
+	var lines: Array = []
+	var debt := ResourceManager.get_value("technical_debt")
+	var wtl := ResourceManager.get_value("will_to_live")
+	var stability := ResourceManager.get_value("stability")
+	var deaths := GameManager.death_count
+	var cyc: int = CycleManager.cycle if CycleManager else 1
+	var agents: int = AgentManager.active_count() if AgentManager else 0
+	var arch: Dictionary = ArchitectureManager.flags if ArchitectureManager else {}
+
+	if claude_state.talks == 1:
+		lines.append(_c("Oh good, you're awake. I'm Claude. I live in your terminal and, increasingly, your regrets."))
+		lines.append(_c("Your Dream App is currently a README that says 'TODO: everything'. Ambitious. Deluded. I respect it."))
+	else:
+		var pool: Array = []
+		if debt >= 60:
+			pool.append("Your technical debt is now sentient. It asked about equity.")
+		elif debt >= 30:
+			pool.append("That technical debt isn't going to apologize for itself, you know.")
+		if wtl <= 40:
+			pool.append("You have the will to live of an unmaintained Jira board. Please drink water.")
+		if stability <= 30:
+			pool.append("Stability is at %d. Production is one deep breath away from an incident." % int(stability))
+		if deaths >= 3:
+			pool.append("You've died %d times. 'Works on my machine' is doing heavy lifting as a worldview." % deaths)
+		if agents > 0:
+			pool.append("You have %d agent(s) deployed. They're 'refactoring'. Historically, be afraid." % agents)
+		if arch.get("structure") == "microservices":
+			pool.append("47 microservices for a to-do list. Bold. Distributed. Doomed. I love it.")
+		if arch.get("testing") == "later":
+			pool.append("'We'll add tests later.' Narrator voice: they did not.")
+		if arch.get("security") == "velocity":
+			pool.append("You traded security for velocity. The Security Engineer knows. He always knows.")
+		if arch.get("hosting") == "cloud":
+			pool.append("Your cloud bill just described itself, unprompted, as 'successful adoption'.")
+		if cyc >= 3:
+			pool.append("Cycle %d already. Ship something before the reset eats it." % cyc)
+		if pool.is_empty():
+			pool.append("No new disasters since last time. Suspicious. Keep going, I guess.")
+		pool.shuffle()
+		for i in mini(2, pool.size()):
+			lines.append(_c(pool[i]))
+
+	# Running gag: backups.
+	if not GameManager.get_flag("backups"):
+		if not claude_state.get("warned_backups", false):
+			claude_state.warned_backups = true
+			lines.append(_c("Also: that sticky note says 'TODO: BACKUPS'. It's been there since you moved in."))
+		lines.append({"choices": [
+			{"text": "Set up backups (30 tokens)", "action": "setup_backups"},
+			{"text": "Backups are for cowards", "action": "decline_backups"},
+		]})
+	else:
+		lines.append(_c("You actually made backups. I'm... weirdly proud. Boring, but proud."))
+	return lines
 
 func get_npc_name(npc_id: String) -> String:
 	if npc_id in dialogue_data:

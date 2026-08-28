@@ -79,11 +79,21 @@ func apply_delayed() -> void:
 		ResourceManager.modify("tokens", -12.0)
 		delayed_consequence.emit("Cloud invoice: 'successful adoption.' -12 tokens.")
 	if flags.get("database") == "nosql" and _rng.randf() < 0.2:
-		ResourceManager.modify("stability", -10.0)
-		delayed_consequence.emit("NoSQL ate a document. It was load-bearing.")
+		if GameManager.get_flag("backups"):
+			ResourceManager.modify("stability", -2.0)
+			AchievementManager.unlock("boring_responsible_adult")
+			delayed_consequence.emit("NoSQL ate a document. You restored from backup. Nerd.")
+		else:
+			ResourceManager.modify("stability", -10.0)
+			delayed_consequence.emit("NoSQL ate a document. It was load-bearing.")
 	if flags.get("security") == "velocity" and _rng.randf() < 0.15:
-		ResourceManager.modify("stability", -15.0)
-		delayed_consequence.emit("Breach. The Security Engineer said nothing. Just stared.")
+		if GameManager.get_flag("backups"):
+			ResourceManager.modify("stability", -3.0)
+			AchievementManager.unlock("boring_responsible_adult")
+			delayed_consequence.emit("Breach! But your backups saved you. The Security Engineer nodded. Once.")
+		else:
+			ResourceManager.modify("stability", -15.0)
+			delayed_consequence.emit("Breach. The Security Engineer said nothing. Just stared.")
 
 func menu_stages() -> Array:
 	var pending: Array = []

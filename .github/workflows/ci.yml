@@ -55,6 +55,9 @@ jobs:
       - name: Run architecture-decisions regression test
         run: godot --headless --path . --scene tests/architecture_test.tscn
 
+      - name: Run Claude dialogue/callback regression test
+        run: godot --headless --path . --scene tests/dialogue_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 

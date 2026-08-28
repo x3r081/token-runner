@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 13 complete — Dream App architecture tradeoffs.
-Next: NPC memory/personality (Claude), running-gag callbacks (backups),
-boss telegraphs, higher-fi player art, more branching quests/endings, 1440p pass.
+Iteration 14 complete — Claude reactive personality + memory + backups callback.
+Next: boss telegraphs/visuals, higher-fi player art, more branching quests with
+multiple endings, IT-WAS-DNS production incident, safe-audio pass.
 
 ## Iteration log
 
@@ -185,6 +185,22 @@ boss telegraphs, higher-fi player art, more branching quests/endings, 1440p pass
 - Regression test `tests/architecture_test.tscn` (11/11): immediate effects,
   ridiculousness, delayed consequences (direct + at cycle reset), and the
   pending-decision menu. Wired into CI.
+
+### Iteration 14 — Claude: reactive personality, memory & callbacks
+- Claude (`roommate_ai`) is now **alive**: his dialogue is generated from the
+  live game state instead of static JSON. He reacts to technical debt, low will
+  to live, low stability, deaths ("works on my machine"), deployed agents, and
+  every architecture decision (microservices, tests-later, velocity, cloud), and
+  escalates by cycle. He **remembers** how many times you've talked.
+- **Backups running gag**: Claude nags about the `TODO: BACKUPS` sticky note and
+  offers to set them up (30 tokens → `GameManager` flag). Later, a NoSQL data
+  loss or a security breach (architecture delayed consequences) becomes **trivial
+  if you have backups**, unlocking **Boring Responsible Adult** — otherwise it's
+  a real stability hit. Dialogue choices now support `action` handlers.
+- Added generic persistent `GameManager` story flags for callbacks.
+- Regression test `tests/dialogue_test.tscn` (9/9): intro + memory, reactive
+  barbs (microservices, debt), the backups offer/flag/cost, grudging pride when
+  backed up, and the breach-survival achievement payoff. Wired into CI.
 
 ## Verified test commands
 

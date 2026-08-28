@@ -50,7 +50,9 @@ every iteration by fresh playtesting. Priorities:
   spawn on dependency-break incidents (safe below threshold). *(It7)*
 - [x] Ship-before-reset cycle system: timed cycles with quota refill, debt
   reckoning, vendor price shifts, reset warning + HUD readout. *(It8)*
-- [ ] NPC personalities with memory and evolving dialogue (Claude + archetypes).
+- [~] NPC personalities with memory and evolving dialogue: **Claude** is now
+  fully reactive with memory + a backups running-gag callback. Other archetype
+  NPCs still use static dialogue.
 - [~] Combat abilities beyond Prompt Blast/Cache/Dash: added **Rubber Duck**
   (AoE stun) and **Stack Trace** (piercing); **HUD ability bar** now shows all
   5 slots with keys/costs and dims when on cooldown/unaffordable. Still open:
