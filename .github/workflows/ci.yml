@@ -61,6 +61,9 @@ jobs:
       - name: Run production-incident (IT WAS DNS) regression test
         run: godot --headless --path . --scene tests/production_test.tscn
 
+      - name: Run audio-safety regression test
+        run: godot --headless --path . --scene tests/audio_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 

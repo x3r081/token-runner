@@ -46,7 +46,21 @@ func _setup_buses() -> void:
 		AudioServer.add_bus(sfx_idx)
 		AudioServer.set_bus_name(sfx_idx, "SFX")
 		AudioServer.set_bus_send(sfx_idx, "Master")
+	_ensure_master_limiter()
 	_bus_ready = true
+
+## Guarantee a hard output ceiling so nothing can ever blast the player, no
+## matter how many SFX stack or what a future stream contains.
+func _ensure_master_limiter() -> void:
+	var master_idx := AudioServer.get_bus_index("Master")
+	if master_idx < 0:
+		return
+	for e in AudioServer.get_bus_effect_count(master_idx):
+		if AudioServer.get_bus_effect(master_idx, e) is AudioEffectHardLimiter:
+			return
+	var limiter := AudioEffectHardLimiter.new()
+	limiter.ceiling_db = -3.0
+	AudioServer.add_bus_effect(master_idx, limiter)
 
 func enable_music() -> void:
 	music_enabled = true
