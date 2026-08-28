@@ -211,7 +211,7 @@ func take_damage(amount: int, _source: String = "") -> void:
 	if SettingsManager.get_setting("camera_shake"):
 		var cam := get_viewport().get_camera_2d()
 		if cam and cam.has_method("shake"):
-			cam.shake(0.3, 8.0)
+			cam.shake(0.3, 3.0)
 	is_invincible = true
 	invincibility.start(0.8)
 	if hp <= 0:

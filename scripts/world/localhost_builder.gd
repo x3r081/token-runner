@@ -253,7 +253,7 @@ static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 		tokens.add_child(t)
 
 	var enemy_scene := preload("res://scenes/combat/enemy.tscn")
-	for pos in [Vector2(980, 620), Vector2(1150, 850), Vector2(720, 820)]:
+	for pos in [Vector2(1050, 520), Vector2(1180, 900), Vector2(480, 900)]:
 		var en = enemy_scene.instantiate()
 		en.enemy_type = "bug"
 		en.max_hp = 20

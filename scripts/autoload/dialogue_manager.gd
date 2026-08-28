@@ -25,9 +25,18 @@ func _load_dialogue() -> void:
 			dialogue_data = data.get("npcs", {})
 		file.close()
 
+func reset() -> void:
+	if is_active:
+		end_dialogue()
+	is_active = false
+	current_npc = ""
+	current_lines.clear()
+	pending_choices.clear()
+	line_index = 0
+
 func start_dialogue(npc_id: String, topic: String = "greeting") -> void:
 	if is_active:
-		return
+		end_dialogue()
 	if npc_id not in dialogue_data:
 		return
 	var npc: Dictionary = dialogue_data[npc_id]

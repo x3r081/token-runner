@@ -1,5 +1,7 @@
 extends CanvasLayer
 
+const _GameTheme = preload("res://scripts/ui/game_theme.gd")
+
 @onready var panel: PanelContainer = $Panel
 @onready var speaker_label: Label = $Panel/Margin/VBox/Speaker
 @onready var text_label: RichTextLabel = $Panel/Margin/VBox/Text
@@ -7,6 +9,8 @@ extends CanvasLayer
 @onready var continue_btn: Button = $Panel/Margin/VBox/ContinueBtn
 
 func _ready() -> void:
+	layer = 20
+	panel.theme = _GameTheme.create()
 	DialogueManager.dialogue_line.connect(_on_line)
 	DialogueManager.choice_presented.connect(_on_choices)
 	DialogueManager.dialogue_ended.connect(_on_ended)
@@ -41,3 +45,13 @@ func _on_continue() -> void:
 
 func _on_ended(_npc_id: String) -> void:
 	panel.visible = false
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not panel.visible:
+		return
+	if not (event.is_action_pressed("interact") or event.is_action_pressed("ui_accept")):
+		return
+	if choices_box.visible:
+		return
+	_on_continue()
+	get_viewport().set_input_as_handled()

@@ -74,6 +74,7 @@ func start_new_game() -> void:
 	DreamAppManager.reset()
 	EventManager.reset()
 	AchievementManager.reset()
+	DialogueManager.reset()
 	state = GameState.PLAYING
 	game_started.emit()
 	_change_scene("res://scenes/world/world.tscn")

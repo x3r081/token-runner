@@ -32,6 +32,9 @@ func _ready() -> void:
 	attack_timer.start(randf_range(1.0, 2.0))
 
 func _physics_process(delta: float) -> void:
+	if _combat_paused():
+		velocity = Vector2.ZERO
+		return
 	if not target or not is_instance_valid(target):
 		target = get_tree().get_first_node_in_group("player")
 		return
@@ -39,6 +42,16 @@ func _physics_process(delta: float) -> void:
 	velocity = dir * speed
 	move_and_slide()
 	sprite.flip_h = dir.x < 0
+
+func _combat_paused() -> bool:
+	if GameManager.state != GameManager.GameState.PLAYING:
+		return true
+	if DialogueManager.is_active:
+		return true
+	var player := get_tree().get_first_node_in_group("player")
+	if player and "can_move" in player and not player.can_move:
+		return true
+	return false
 
 func take_damage(amount: int) -> void:
 	hp -= amount
@@ -54,6 +67,9 @@ func _flash_damage() -> void:
 	_flash_tween.tween_property(sprite, "modulate", Color.WHITE, 0.15)
 
 func _attack() -> void:
+	if _combat_paused():
+		attack_timer.start(1.0)
+		return
 	if not target or global_position.distance_to(target.global_position) > 40:
 		attack_timer.start(1.0)
 		return

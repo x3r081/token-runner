@@ -9,6 +9,7 @@ extends Node2D
 var _current_region_node: Node2D
 
 func _ready() -> void:
+	GameManager.state = GameManager.GameState.PLAYING
 	_load_region(GameManager.current_region)
 	QuestManager.on_region_entered(GameManager.current_region)
 	GameManager.region_changed.connect(_on_region_changed)
@@ -33,7 +34,7 @@ func _on_opening_finished() -> void:
 	GameManager.show_opening_sequence = false
 	if player and "can_move" in player:
 		player.can_move = true
-	DialogueManager.start_dialogue("roommate_ai", "greeting")
+	# Let the player explore briefly; Claude dialogue starts on first interact.
 	if SettingsManager.get_setting("music_enabled"):
 		AudioManager.enable_music()
 		AudioManager.play_music("explore_music")
