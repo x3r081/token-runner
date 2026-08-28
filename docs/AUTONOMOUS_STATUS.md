@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 12 complete — deployable-agent gameplay system.
-Next: Dream App architecture tradeoffs, NPC memory/personality, boss telegraphs,
-higher-fi player art, running-gag callbacks, more branching quests/endings.
+Iteration 13 complete — Dream App architecture tradeoffs.
+Next: NPC memory/personality (Claude), running-gag callbacks (backups),
+boss telegraphs, higher-fi player art, more branching quests/endings, 1440p pass.
 
 ## Iteration log
 
@@ -172,6 +172,19 @@ higher-fi player art, running-gag callbacks, more branching quests/endings.
 - Regression test `tests/agent_test.tscn` (12/12): deploy cost, unaffordable
   guard, resolution yields tokens, junior traits (hallucinate/overengineer/debt),
   and automatic resolution at cycle reset. Wired into CI.
+
+### Iteration 13 — Dream App architecture tradeoffs
+- New `ArchitectureManager` autoload: five binary decisions (Structure
+  Monolith/Microservices, Database SQL/NoSQL, Testing now/later, Security
+  right/velocity, Hosting Cloud/self-host), each with an **immediate** effect and
+  a **delayed consequence** that emerges at later cycle RESETs (microservice
+  flakiness, cloud invoices, NoSQL data loss, security breaches).
+- "Ridiculous" choices raise the app's **ridiculousness**, surfaced in the ship
+  results. Decisions made at the Localhost **Dream App terminal** (a repeatable
+  console listing pending decisions); HUD toasts on delayed consequences.
+- Regression test `tests/architecture_test.tscn` (11/11): immediate effects,
+  ridiculousness, delayed consequences (direct + at cycle reset), and the
+  pending-decision menu. Wired into CI.
 
 ## Verified test commands
 

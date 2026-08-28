@@ -32,6 +32,7 @@ UIManager="*res://scripts/autoload/ui_manager.gd"
 CycleManager="*res://scripts/autoload/cycle_manager.gd"
 ModelManager="*res://scripts/autoload/model_manager.gd"
 AgentManager="*res://scripts/autoload/agent_manager.gd"
+ArchitectureManager="*res://scripts/autoload/architecture_manager.gd"
 
 [display]
 

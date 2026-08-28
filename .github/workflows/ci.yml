@@ -52,6 +52,9 @@ jobs:
       - name: Run deployable-agent regression test
         run: godot --headless --path . --scene tests/agent_test.tscn
 
+      - name: Run architecture-decisions regression test
+        run: godot --headless --path . --scene tests/architecture_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 

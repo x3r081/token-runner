@@ -101,6 +101,7 @@ func start_new_game() -> void:
 	CycleManager.reset()
 	ModelManager.reset()
 	AgentManager.reset()
+	ArchitectureManager.reset()
 	state = GameState.PLAYING
 	game_started.emit()
 	_change_scene("res://scenes/world/world.tscn")
@@ -217,6 +218,7 @@ func _calculate_ship_results() -> Dictionary:
 		"quests_completed": session_stats.quests_completed,
 		"play_time": play_time_seconds,
 		"deaths": death_count,
+		"architecture_ridiculousness": ArchitectureManager.ridiculousness,
 	}
 
 func can_ship() -> bool:

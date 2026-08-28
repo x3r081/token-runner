@@ -75,6 +75,7 @@ func _setup_cycle_readout() -> void:
 	ModelManager.model_changed.connect(_on_model_changed)
 	AgentManager.agent_deployed.connect(_on_agent_deployed)
 	AgentManager.agent_resolved.connect(_on_agent_resolved)
+	ArchitectureManager.delayed_consequence.connect(_on_arch_consequence)
 
 func _on_cycle_warning(seconds_left: int) -> void:
 	_show_notification("\u26a0 TOKEN RESET IN %ds\nShip something before it's gone!" % seconds_left, Color(1.0, 0.55, 0.3))
@@ -90,6 +91,9 @@ func _on_agent_deployed(display_name: String) -> void:
 
 func _on_agent_resolved(display_name: String, summary: String) -> void:
 	_show_notification("\ud83e\udd16 %s: %s" % [display_name, summary], Color(0.8, 0.9, 1.0))
+
+func _on_arch_consequence(text: String) -> void:
+	_show_notification("\ud83c\udff7 %s" % text, Color(1.0, 0.6, 0.5))
 
 func _setup_ability_bar() -> void:
 	var bar := HBoxContainer.new()

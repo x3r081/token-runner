@@ -106,6 +106,8 @@ func resolve(choice_index: int) -> void:
 		AchievementManager.unlock(choice.achievement)
 	if choice.has("deploy_agent"):
 		AgentManager.deploy(choice.deploy_agent)
+	if choice.has("architecture"):
+		ArchitectureManager.choose(choice.architecture.decision, choice.architecture.option)
 
 	if active_event.get("scripted", false):
 		_resolve_scripted(choice)

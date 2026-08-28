@@ -10,7 +10,10 @@ func _on_interact(_player: Node) -> void:
 			else:
 				_show_message("Dream App not ready. Check upgrade requirements (B key).")
 		"dream_app_terminal":
-			_show_message("Open Dream App panel with [B] to upgrade.")
+			if EventManager.has_active_event():
+				return
+			# Architecture decisions console (repeatable until all decided).
+			EventManager.start_scripted("menu_arch", ArchitectureManager.menu_stages(), true)
 		"client_email":
 			if EventManager.has_active_event():
 				return

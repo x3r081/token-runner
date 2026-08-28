@@ -29,8 +29,9 @@ every iteration by fresh playtesting. Priorities:
   behaviors / death effects**, and boss visuals (enterprise_architect,
   legacy_monolith, infinite_context).
 - [~] **Gameplay depth**: added combat abilities, model selection, technical-debt
-  consequences, the reset cycle, and a deployable-agent system. Still open: Dream
-  App architecture tradeoffs, more branching quests with multiple endings.
+  consequences, the reset cycle, a deployable-agent system, and Dream App
+  architecture tradeoffs. Still open: more branching quests with multiple endings,
+  NPC memory/personality, running-gag callbacks.
 - [~] **Comedy as mechanics**: staged storyline engine shipped; **Just One Tiny
   Change** implemented end-to-end. Still to do: Free Tier, The Autonomous Agent,
   and more branching scenarios with consequences.
