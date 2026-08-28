@@ -1,0 +1,97 @@
+{
+  "branches": {
+    "frontend": {
+      "display": "Frontend",
+      "tiers": [
+        {"name": "Static HTML", "description": "It renders. Technically.", "cost": {"tokens": 30}, "features": 1, "stability": 1},
+        {"name": "React Boilerplate", "description": "node_modules now weighs more than your laptop.", "cost": {"tokens": 60, "compute": 5}, "features": 2, "stability": 0, "debt": 3},
+        {"name": "Component Library", "description": "47 shades of gray. All slightly different.", "cost": {"tokens": 100}, "features": 3, "stability": 1},
+        {"name": "Design System", "description": "Nobody uses it except the person who built it.", "cost": {"tokens": 150, "reputation": 10}, "features": 4, "stability": 2},
+        {"name": "Micro-Frontends", "description": "Now you have four apps that don't talk to each other.", "cost": {"tokens": 250, "compute": 20}, "features": 5, "stability": -2, "debt": 10}
+      ]
+    },
+    "backend": {
+      "display": "Backend",
+      "tiers": [
+        {"name": "Single Route", "description": "return 'OK'", "cost": {"tokens": 25}, "features": 1, "stability": 2},
+        {"name": "REST API", "description": "Finally, something POSTs.", "cost": {"tokens": 50}, "features": 2, "stability": 1},
+        {"name": "GraphQL", "description": "Clients can query anything. They will query everything.", "cost": {"tokens": 100, "compute": 10}, "features": 3, "stability": 0, "debt": 5},
+        {"name": "Event-Driven", "description": "Messages go in. Prayers go out.", "cost": {"tokens": 180, "compute": 15}, "features": 4, "stability": 1, "debt": 8},
+        {"name": "Serverless", "description": "Cold starts are a feature. Apparently.", "cost": {"tokens": 300, "api_credits": 20}, "features": 5, "stability": -1, "debt": 12}
+      ]
+    },
+    "database": {
+      "display": "Database",
+      "tiers": [
+        {"name": "SQLite", "description": "One file to rule them all.", "cost": {"tokens": 20}, "features": 1, "stability": 3},
+        {"name": "Postgres", "description": "Now we're serious. Sort of.", "cost": {"tokens": 60, "compute": 5}, "features": 2, "stability": 3},
+        {"name": "Distributed Database", "description": "CAP theorem chose violence.", "cost": {"tokens": 150, "compute": 20}, "features": 3, "stability": 1, "debt": 8},
+        {"name": "Global Replication", "description": "Eventually consistent. Eventually.", "cost": {"tokens": 280, "compute": 30}, "features": 4, "stability": 2, "debt": 15},
+        {"name": "We Have Created A Consensus Problem", "description": "The database is debating itself.", "cost": {"tokens": 400, "compute": 50}, "features": 5, "stability": -3, "debt": 25}
+      ]
+    },
+    "ai": {
+      "display": "AI",
+      "tiers": [
+        {"name": "Cheap Model", "description": "Confidently wrong at scale.", "cost": {"tokens": 40}, "features": 2, "ai_dependency": 1},
+        {"name": "Slightly Less Cheap Model", "description": "Wrong, but with better vocabulary.", "cost": {"tokens": 80, "api_credits": 10}, "features": 3, "ai_dependency": 2},
+        {"name": "Agent", "description": "It has opinions now.", "cost": {"tokens": 150, "compute": 15}, "features": 4, "ai_dependency": 4, "debt": 5},
+        {"name": "Multi-Agent System", "description": "Agents arguing with agents. Like standup, but worse.", "cost": {"tokens": 300, "compute": 30}, "features": 5, "ai_dependency": 6, "debt": 12},
+        {"name": "Autonomous Software Factory", "description": "Nobody knows what the agents are doing.", "cost": {"tokens": 500, "compute": 50, "api_credits": 30}, "features": 6, "ai_dependency": 10, "debt": 20},
+        {"name": "Nobody Knows What The Agents Are Doing", "description": "Ship it anyway.", "cost": {"tokens": 800, "compute": 80}, "features": 8, "ai_dependency": 15, "debt": 30}
+      ]
+    },
+    "infrastructure": {
+      "display": "Infrastructure",
+      "tiers": [
+        {"name": "Laptop", "description": "Runs hot. Runs everything. Runs from responsibility.", "cost": {"tokens": 10}, "features": 0, "stability": 1},
+        {"name": "VPS", "description": "Someone else's computer. Someone else's problem. Mostly.", "cost": {"tokens": 50, "api_credits": 5}, "features": 1, "stability": 2},
+        {"name": "Cloud", "description": "Elastic pricing. Inelastic regret.", "cost": {"tokens": 120, "api_credits": 15}, "features": 2, "stability": 2, "money_spent": 100},
+        {"name": "Kubernetes", "description": "Congratulations. Your three-user app now requires seventeen YAML files.", "cost": {"tokens": 250, "compute": 25}, "features": 3, "stability": 1, "debt": 15, "money_spent": 300},
+        {"name": "Multi-Cloud", "description": "Twice the bills. Half the understanding.", "cost": {"tokens": 400, "api_credits": 30}, "features": 4, "stability": 0, "debt": 20, "money_spent": 500},
+        {"name": "Why Did We Do This?", "description": "An honest upgrade name.", "cost": {"tokens": 600, "compute": 40}, "features": 5, "stability": -2, "debt": 30, "money_spent": 800}
+      ]
+    },
+    "security": {
+      "display": "Security",
+      "tiers": [
+        {"name": "Password", "description": "admin123", "cost": {"tokens": 15}, "security": 1},
+        {"name": "Better Password", "description": "Admin123!", "cost": {"tokens": 30}, "security": 2},
+        {"name": "Authentication", "description": "Users can log in. Users will complain.", "cost": {"tokens": 70}, "security": 4, "features": 1},
+        {"name": "MFA", "description": "Lost your phone? Lost your app.", "cost": {"tokens": 120}, "security": 6, "features": 1},
+        {"name": "Zero Trust", "description": "Trust nothing. Including this upgrade.", "cost": {"tokens": 200, "compute": 10}, "security": 8, "debt": 5},
+        {"name": "Nobody Can Log In Anymore", "description": "Secure! And empty.", "cost": {"tokens": 350}, "security": 10, "stability": -3}
+      ]
+    },
+    "marketing": {
+      "display": "Marketing",
+      "tiers": [
+        {"name": "Landing Page", "description": "'Revolutionary AI-powered synergy.'", "cost": {"tokens": 40}, "features": 1, "reputation": 5},
+        {"name": "Waitlist", "description": "12 signups. 11 are you.", "cost": {"tokens": 60}, "features": 1, "reputation": 10},
+        {"name": "Product Hunt Launch", "description": "#4 Product of the Day in 'Tools nobody asked for.'", "cost": {"tokens": 100, "reputation": 20}, "features": 2, "reputation": 25},
+        {"name": "AI-First Rebrand", "description": "Same app. More buzzwords.", "cost": {"tokens": 200}, "features": 1, "reputation": 40, "ai_dependency": 3},
+        {"name": "Enterprise Ready™", "description": "Added a pricing page. $999/month.", "cost": {"tokens": 350, "reputation": 30}, "features": 2, "reputation": 60, "debt": 10}
+      ]
+    },
+    "observability": {
+      "display": "Observability",
+      "tiers": [
+        {"name": "console.log", "description": "The OG observability stack.", "cost": {"tokens": 10}, "stability": 1},
+        {"name": "Logging", "description": "Now you have logs. So many logs.", "cost": {"tokens": 50}, "stability": 2},
+        {"name": "Metrics", "description": "Grafana dashboards nobody looks at.", "cost": {"tokens": 90, "compute": 5}, "stability": 3},
+        {"name": "Tracing", "description": "Follow the request. Follow your despair.", "cost": {"tokens": 150, "compute": 10}, "stability": 4},
+        {"name": "We Have Observability Now", "description": "Congratulations: you can watch it fail in real time.", "cost": {"tokens": 250, "compute": 15}, "stability": 5, "features": 1}
+      ]
+    },
+    "architecture": {
+      "display": "Architecture",
+      "tiers": [
+        {"name": "Spaghetti Code", "description": "Honest naming.", "cost": {"tokens": 0}, "features": 1, "debt": 5},
+        {"name": "MVC", "description": "Separation of concerns. Separation of bugs.", "cost": {"tokens": 60}, "features": 2, "stability": 2},
+        {"name": "Microservices", "description": "Distributed monolith, but make it expensive.", "cost": {"tokens": 200, "compute": 20}, "features": 4, "stability": 1, "debt": 15},
+        {"name": "Enterprise Architecture Diagram", "description": "Nobody understands it, which is how you know it's important.", "cost": {"tokens": 350, "reputation": 20}, "features": 3, "debt": 20},
+        {"name": "Event Sourcing", "description": "Every mistake, preserved forever.", "cost": {"tokens": 500, "compute": 30}, "features": 5, "stability": 2, "debt": 25}
+      ]
+    }
+  }
+}

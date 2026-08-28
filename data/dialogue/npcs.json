@@ -1,0 +1,175 @@
+{
+  "npcs": {
+    "roommate_ai": {
+      "display_name": "Claude (Your Roommate)",
+      "greeting": [
+        {"speaker": "Claude", "text": "Good morning. You've been staring at that blank README for six hours."},
+        {"speaker": "Claude", "text": "Have you considered... writing code?"},
+        {"speaker": "You", "text": "I was vibe-coding in my head."},
+        {"speaker": "Claude", "text": "Your dream app won't ship itself. Unless you build an agent. Which you can't afford."},
+        {"choices": [
+          {"text": "What's the plan?", "goto": "plan"},
+          {"text": "How many tokens do I have?", "goto": "tokens"},
+          {"text": "I'll figure it out.", "effects": {"will_to_live": -2}}
+        ]}
+      ],
+      "plan": [
+        {"speaker": "Claude", "text": "Collect tokens. Complete quests. Upgrade the Dream App. Ship before the reset."},
+        {"speaker": "Claude", "text": "Simple. Unlike your architecture will be."},
+        {"speaker": "Claude", "text": "Start in your apartment. Collect tokens. Talk to me when you're ready for real work."}
+      ],
+      "tokens": [
+        {"speaker": "Claude", "text": "Not enough. There's a theme here."},
+        {"speaker": "Claude", "text": "Go collect some from around the apartment. They're everywhere. Like TODO comments."}
+      ]
+    },
+    "maintainer": {
+      "display_name": "Abandoned Package Maintainer",
+      "greeting": [
+        {"speaker": "Maintainer", "text": "Oh. A user. I haven't seen one of those since 2019."},
+        {"speaker": "You", "text": "Is this package still maintained?"},
+        {"speaker": "Maintainer", "text": "Define 'maintained.' I replied to an issue once. With a thumbs up."},
+        {"speaker": "Maintainer", "text": "If you want Node installed, you'll need to fight the Dependency Demons first."},
+        {"choices": [
+          {"text": "I'll handle the demons.", "quest": "install_node"},
+          {"text": "Any security vulnerabilities?", "goto": "security"},
+          {"text": "Thanks for nothing.", "effects": {"reputation": -5}}
+        ]}
+      ],
+      "security": [
+        {"speaker": "Maintainer", "text": "Only 47 CVEs. All marked 'won't fix.'"},
+        {"speaker": "Maintainer", "text": "It's a feature. Immune to exploits nobody checks for."}
+      ]
+    },
+    "stackoverflow_hermit": {
+      "display_name": "Stack Overflow Hermit",
+      "greeting": [
+        {"speaker": "Hermit", "text": "Your question has been marked as duplicate."},
+        {"speaker": "You", "text": "I haven't asked anything yet."},
+        {"speaker": "Hermit", "text": "Marked as duplicate. — Ancient SO Wisdom, circa 2013"},
+        {"speaker": "Hermit", "text": "Seek the cached tokens in these ruins. The answers are outdated but the tokens are real."},
+        {"choices": [
+          {"text": "I'll search the ruins.", "quest": "stackoverflow_pilgrimage"},
+          {"text": "Is this answer still valid?", "goto": "valid"},
+          {"text": "Marked as duplicate.", "effects": {"reputation": 5}}
+        ]}
+      ],
+      "valid": [
+        {"speaker": "Hermit", "text": "Last updated: 2013. Works on my machine. Probably."},
+        {"speaker": "Hermit", "text": "Use at your own risk. Which is all risks."}
+      ]
+    },
+    "api_reseller": {
+      "display_name": "Shady API Reseller",
+      "greeting": [
+        {"speaker": "Reseller", "text": "Premium tokens! Frontier models! Definitely legitimate API keys!"},
+        {"speaker": "You", "text": "How much?"},
+        {"speaker": "Reseller", "text": "For you? Only slightly more than retail. Limited time offer. Always."},
+        {"speaker": "Reseller", "text": "But first — survive the Rate Limiters. They're picky about payment."},
+        {"choices": [
+          {"text": "One more API call.", "quest": "one_more_api_call"},
+          {"text": "What's your refund policy?", "goto": "refund"},
+          {"text": "I'll build my own API.", "effects": {"technical_debt": 10}}
+        ]}
+      ],
+      "refund": [
+        {"speaker": "Reseller", "text": "Refund policy: no."},
+        {"speaker": "Reseller", "text": "Terms of service: also no."}
+      ]
+    },
+    "cloud_salesperson": {
+      "display_name": "Cloud Salesperson",
+      "greeting": [
+        {"speaker": "Salesperson", "text": "Have you considered moving to the cloud?"},
+        {"speaker": "You", "text": "Why?"},
+        {"speaker": "Salesperson", "text": "Cloud."},
+        {"speaker": "Salesperson", "text": "It's elastic. Like your budget after you migrate."},
+        {"choices": [
+          {"text": "Fine. Cloud.", "quest": "cloud_migration"},
+          {"text": "What's the pricing?", "goto": "pricing"},
+          {"text": "I have a Raspberry Pi.", "effects": {"reputation": 10}}
+        ]}
+      ],
+      "pricing": [
+        {"speaker": "Salesperson", "text": "Pay per use! You'll only pay for what you need."},
+        {"speaker": "Salesperson", "text": "And you'll need everything. Forever."}
+      ]
+    },
+    "oss_maintainer": {
+      "display_name": "Open Source Maintainer",
+      "greeting": [
+        {"speaker": "Maintainer", "text": "Thanks for using my library. Please don't open issues."},
+        {"speaker": "You", "text": "It saved my project."},
+        {"speaker": "Maintainer", "text": "Great. I accept payment in stars and guilt."},
+        {"speaker": "Maintainer", "text": "There's a Legacy System blocking the path. It's older than me."},
+        {"choices": [
+          {"text": "I'll handle the legacy system.", "quest": "license_puzzle"},
+          {"text": "Can I sponsor you?", "effects": {"tokens": -50, "reputation": 20}},
+          {"text": "What license is this?", "goto": "license"}
+        ]}
+      ],
+      "license": [
+        {"speaker": "Maintainer", "text": "MIT. Or AGPL. Depends on my mood and your legal team."},
+        {"speaker": "Maintainer", "text": "Read the fine print. Actually, don't. There is no fine print."}
+      ]
+    },
+    "svp_ai": {
+      "display_name": "SVP of AI Transformation Excellence",
+      "greeting": [
+        {"speaker": "SVP", "text": "We need to leverage AI to disrupt the paradigm of synergistic innovation."},
+        {"speaker": "You", "text": "What does that mean?"},
+        {"speaker": "SVP", "text": "AI."},
+        {"speaker": "SVP", "text": "The board wants an AI strategy by Friday. You have until Thursday."},
+        {"choices": [
+          {"text": "I'll add AI.", "quest": "enterprise_ready"},
+          {"text": "Can we define requirements?", "goto": "requirements"},
+          {"text": "I'm a vibe coder, not a strategist.", "effects": {"will_to_live": -10}}
+        ]}
+      ],
+      "requirements": [
+        {"speaker": "SVP", "text": "Requirements? Just make it AI-first."},
+        {"speaker": "SVP", "text": "And blockchain. And Web3. Actually, just AI. I have a meeting."}
+      ]
+    },
+    "gpu_foreman": {
+      "display_name": "GPU Mine Foreman",
+      "greeting": [
+        {"speaker": "Foreman", "text": "Welcome to the mines. Mind the memory leaks."},
+        {"speaker": "Foreman", "text": "We extract compute here. The GPUs run hot. So do the bills."},
+        {"choices": [
+          {"text": "Put me to work.", "quest": "gpu_rush"},
+          {"text": "Is this environmentally friendly?", "goto": "environment"},
+          {"text": "I'll mine from my laptop.", "effects": {"compute": -10}}
+        ]}
+      ],
+      "environment": [
+        {"speaker": "Foreman", "text": "We offset our carbon by buying credits from a startup we invested in."},
+        {"speaker": "Foreman", "text": "It's called synergy."}
+      ]
+    },
+    "oncall_engineer": {
+      "display_name": "On-Call Engineer",
+      "greeting": [
+        {"speaker": "Engineer", "text": "PRODUCTION IS DOWN. I've been awake for 38 hours."},
+        {"speaker": "You", "text": "What happened?"},
+        {"speaker": "Engineer", "text": "Someone deployed on Friday. It wasn't me. It was definitely me."},
+        {"speaker": "Engineer", "text": "The Legacy Monolith is awake. And angry."},
+        {"choices": [
+          {"text": "I'll help fix production.", "quest": "production_down"},
+          {"text": "Have you tried turning it off and on?", "effects": {"stability": 5, "reputation": -5}},
+          {"text": "Blame DNS.", "effects": {"will_to_live": 10}}
+        ]}
+      ]
+    },
+    "junior_agent": {
+      "display_name": "The Junior Agent",
+      "greeting": [
+        {"speaker": "Agent", "text": "I optimized the database!"},
+        {"speaker": "You", "text": "Optimized how?"},
+        {"speaker": "Agent", "text": "I deleted it. Fewer rows = faster queries. I'm 100% confident."},
+        {"speaker": "You", "text": "..."},
+        {"speaker": "Agent", "text": "Shall I optimize the backups too?"}
+      ]
+    }
+  }
+}

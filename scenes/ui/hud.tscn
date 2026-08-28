@@ -1,0 +1,71 @@
+[gd_scene load_steps=2 format=3 uid="uid://hud001"]
+
+[ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1"]
+
+[node name="HUD" type="CanvasLayer"]
+script = ExtResource("1")
+
+[node name="Margin" type="MarginContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="VBox" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+size_flags_vertical = 0
+
+[node name="RegionLabel" type="Label" parent="Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Localhost"
+
+[node name="Resources" type="HBoxContainer" parent="Margin/VBox"]
+layout_mode = 2
+
+[node name="TokenLabel" type="Label" parent="Margin/VBox/Resources"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Tokens: 0"
+
+[node name="ComputeLabel" type="Label" parent="Margin/VBox/Resources"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Compute: 0"
+
+[node name="HPBar" type="ProgressBar" parent="Margin/VBox"]
+custom_minimum_size = Vector2(200, 12)
+layout_mode = 2
+max_value = 100.0
+value = 100.0
+show_percentage = false
+
+[node name="FocusBar" type="ProgressBar" parent="Margin/VBox"]
+custom_minimum_size = Vector2(200, 8)
+layout_mode = 2
+max_value = 100.0
+value = 100.0
+show_percentage = false
+
+[node name="QuestTracker" type="Label" parent="Margin/VBox"]
+custom_minimum_size = Vector2(350, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Quest tracker"
+autowrap_mode = 3
+
+[node name="Notification" type="Label" parent="."]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -200.0
+offset_top = 80.0
+offset_right = 200.0
+offset_bottom = 140.0
+theme_override_font_sizes/font_size = 20
+text = ""
+horizontal_alignment = 1
+autowrap_mode = 2

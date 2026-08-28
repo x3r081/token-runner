@@ -1,0 +1,47 @@
+[gd_scene load_steps=2 format=3 uid="uid://dialogue001"]
+
+[ext_resource type="Script" path="res://scripts/ui/dialogue_ui.gd" id="1"]
+
+[node name="DialogueUI" type="CanvasLayer"]
+layer = 10
+script = ExtResource("1")
+
+[node name="Panel" type="PanelContainer" parent="."]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -450.0
+offset_top = -220.0
+offset_right = 450.0
+offset_bottom = -20.0
+
+[node name="Margin" type="MarginContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 16
+
+[node name="VBox" type="VBoxContainer" parent="Panel/Margin"]
+layout_mode = 2
+
+[node name="Speaker" type="Label" parent="Panel/Margin/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Speaker"
+
+[node name="Text" type="RichTextLabel" parent="Panel/Margin/VBox"]
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+bbcode_enabled = true
+text = "Dialogue text"
+fit_content = true
+
+[node name="Choices" type="VBoxContainer" parent="Panel/Margin/VBox"]
+layout_mode = 2
+
+[node name="ContinueBtn" type="Button" parent="Panel/Margin/VBox"]
+layout_mode = 2
+text = "Continue"

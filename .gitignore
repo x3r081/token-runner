@@ -1,0 +1,30 @@
+# Godot
+.godot/
+*.import
+export/
+export_presets.cfg.bak
+*.translation
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artifacts
+build/
+dist/
+*.exe
+*.pck
+*.zip
+
+# Logs
+*.log
+
+# Local env
+.env
+.env.*

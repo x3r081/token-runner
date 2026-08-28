@@ -1,0 +1,186 @@
+{
+  "quests": {
+    "hello_localhost": {
+      "name": "Wake Up, Vibe Coder",
+      "description": "Your IDE is open. Your coffee is cold. Your dream app is a README with 'TODO: everything.' Time to start.",
+      "region": "localhost",
+      "auto_start": true,
+      "objectives": [
+        {"id": "talk_roommate", "type": "talk", "target": "roommate_ai", "count": 1, "text": "Talk to your AI roommate"},
+        {"id": "collect_tokens", "type": "collect_tokens", "target": "any", "count": 10, "text": "Collect 10 tokens from your apartment"}
+      ],
+      "rewards": {"tokens": 50, "coffee": 1},
+      "giver": "roommate_ai"
+    },
+    "tiny_change": {
+      "name": "Just One Tiny Change",
+      "description": "The client has requested one small adjustment. Estimated impact: catastrophic.",
+      "region": "localhost",
+      "prerequisites": ["hello_localhost"],
+      "objectives": [
+        {"id": "defeat_scope", "type": "defeat", "target": "scope_creep", "count": 1, "text": "Defeat the Scope Creep"},
+        {"id": "deliver", "type": "interact", "target": "client_email", "count": 1, "text": "Respond to the client email"}
+      ],
+      "rewards": {"tokens": 350, "technical_debt": 12, "will_to_live": -8},
+      "giver": "roommate_ai"
+    },
+    "install_node": {
+      "name": "Install Node",
+      "description": "How hard can it be? (Famous last words.)",
+      "region": "dependency_district",
+      "prerequisites": ["tiny_change"],
+      "objectives": [
+        {"id": "visit_dep", "type": "visit", "target": "dependency_district", "count": 1, "text": "Enter the Dependency District"},
+        {"id": "defeat_deps", "type": "defeat", "target": "dependency_demon", "count": 3, "text": "Defeat 3 Dependency Demons"},
+        {"id": "find_package", "type": "interact", "target": "abandoned_package", "count": 1, "text": "Recover the abandoned package"}
+      ],
+      "rewards": {"tokens": 200, "compute": 15, "unlock_region": "stackoverflow_ruins"},
+      "giver": "maintainer"
+    },
+    "stackoverflow_pilgrimage": {
+      "name": "Accepted Answer (2013)",
+      "description": "Seek ancient wisdom in the Stack Overflow Ruins. Warning: may be deprecated.",
+      "region": "stackoverflow_ruins",
+      "prerequisites": ["install_node"],
+      "objectives": [
+        {"id": "visit_so", "type": "visit", "target": "stackoverflow_ruins", "count": 1, "text": "Enter Stack Overflow Ruins"},
+        {"id": "talk_hermit", "type": "talk", "target": "stackoverflow_hermit", "count": 1, "text": "Consult the Hermit"},
+        {"id": "collect_answers", "type": "collect_tokens", "target": "cached", "count": 25, "text": "Collect 25 cached tokens"}
+      ],
+      "rewards": {"tokens": 300, "context": 20, "unlock_region": "api_bazaar"},
+      "giver": "stackoverflow_hermit"
+    },
+    "one_more_api_call": {
+      "name": "One More API Call",
+      "description": "What's the worst that could happen? (Everything. Everything could happen.)",
+      "region": "api_bazaar",
+      "prerequisites": ["stackoverflow_pilgrimage"],
+      "objectives": [
+        {"id": "visit_bazaar", "type": "visit", "target": "api_bazaar", "count": 1, "text": "Enter the API Bazaar"},
+        {"id": "talk_reseller", "type": "talk", "target": "api_reseller", "count": 1, "text": "Negotiate with the API Reseller"},
+        {"id": "defeat_rate", "type": "defeat", "target": "rate_limiter", "count": 2, "text": "Survive 2 Rate Limiters"}
+      ],
+      "rewards": {"tokens": 400, "api_credits": 25, "unlock_region": "cloud_district"},
+      "giver": "api_reseller"
+    },
+    "cloud_migration": {
+      "name": "We Should Move To The Cloud",
+      "description": "Nobody knows why. That's not important. Cloud.",
+      "region": "cloud_district",
+      "prerequisites": ["one_more_api_call"],
+      "objectives": [
+        {"id": "visit_cloud", "type": "visit", "target": "cloud_district", "count": 1, "text": "Enter the Cloud District"},
+        {"id": "talk_sales", "type": "talk", "target": "cloud_salesperson", "count": 1, "text": "Endure the sales pitch"},
+        {"id": "survive_bill", "type": "defeat", "target": "cloud_bill", "count": 1, "text": "Survive the $700 Cloud Bill"}
+      ],
+      "rewards": {"tokens": 500, "compute": 40, "technical_debt": 20, "unlock_region": "open_source_wildlands"},
+      "giver": "cloud_salesperson"
+    },
+    "license_puzzle": {
+      "name": "The Dependency That Nobody Maintains",
+      "description": "An open-source library saved your project. Its license might end your career.",
+      "region": "open_source_wildlands",
+      "prerequisites": ["cloud_migration"],
+      "objectives": [
+        {"id": "visit_os", "type": "visit", "target": "open_source_wildlands", "count": 1, "text": "Enter Open Source Wildlands"},
+        {"id": "talk_maintainer", "type": "talk", "target": "oss_maintainer", "count": 1, "text": "Thank the Maintainer"},
+        {"id": "defeat_legacy", "type": "defeat", "target": "legacy_system", "count": 1, "text": "Defeat a Legacy System"}
+      ],
+      "rewards": {"tokens": 450, "reputation": 30, "unlock_region": "corporate_enterprise"},
+      "giver": "oss_maintainer"
+    },
+    "enterprise_ready": {
+      "name": "Just Add AI",
+      "description": "The Senior VP demands AI transformation by Friday. You demand a miracle.",
+      "region": "corporate_enterprise",
+      "prerequisites": ["license_puzzle"],
+      "objectives": [
+        {"id": "visit_corp", "type": "visit", "target": "corporate_enterprise", "count": 1, "text": "Enter Corporate Enterprise"},
+        {"id": "talk_vp", "type": "talk", "target": "svp_ai", "count": 1, "text": "Meet the SVP of AI Transformation Excellence"},
+        {"id": "defeat_architect", "type": "defeat", "target": "enterprise_architect", "count": 1, "text": "Survive the Enterprise Architect"}
+      ],
+      "rewards": {"tokens": 600, "reputation": 50, "unlock_region": "gpu_mines"},
+      "giver": "svp_ai"
+    },
+    "gpu_rush": {
+      "name": "Mine Your Own Business",
+      "description": "Acquire compute. Avoid thermal throttling. Question life choices.",
+      "region": "gpu_mines",
+      "prerequisites": ["enterprise_ready"],
+      "objectives": [
+        {"id": "visit_mines", "type": "visit", "target": "gpu_mines", "count": 1, "text": "Enter the GPU Mines"},
+        {"id": "collect_compute", "type": "collect_tokens", "target": "compute", "count": 50, "text": "Mine 50 compute worth of resources"},
+        {"id": "defeat_leak", "type": "defeat", "target": "memory_leak", "count": 3, "text": "Plug 3 Memory Leaks"}
+      ],
+      "rewards": {"compute": 80, "tokens": 400, "unlock_region": "production"},
+      "giver": "gpu_foreman"
+    },
+    "production_down": {
+      "name": "Production Is Down",
+      "description": "PagerDuty is screaming. Users are tweeting. Your manager is 'just checking in.'",
+      "region": "production",
+      "prerequisites": ["gpu_rush"],
+      "objectives": [
+        {"id": "visit_prod", "type": "visit", "target": "production", "count": 1, "text": "Enter Production"},
+        {"id": "defeat_monolith", "type": "defeat", "target": "legacy_monolith", "count": 1, "text": "Confront the Legacy Monolith"},
+        {"id": "defeat_hallucination", "type": "defeat", "target": "hallucination", "count": 2, "text": "Banish 2 Hallucinations"}
+      ],
+      "rewards": {"tokens": 800, "stability": 20, "unlock_region": "token_vault"},
+      "giver": "oncall_engineer"
+    },
+    "ship_dream_app": {
+      "name": "Deploy To Production",
+      "description": "Sure. Why not. What could go wrong?",
+      "region": "localhost",
+      "prerequisites": ["production_down"],
+      "objectives": [
+        {"id": "upgrade_app", "type": "interact", "target": "dream_app_terminal", "count": 1, "text": "Prepare the Dream App for shipping"},
+        {"id": "visit_vault", "type": "visit", "target": "token_vault", "count": 1, "text": "Claim the Token Vault reserves"},
+        {"id": "ship", "type": "interact", "target": "deploy_button", "count": 1, "text": "Hit Deploy"}
+      ],
+      "rewards": {"tokens": 2000, "reputation": 100, "achievement": "ship_it"},
+      "giver": "roommate_ai"
+    },
+    "fix_without_touching": {
+      "name": "Fix It Without Touching Anything",
+      "description": "Management has forbidden code changes. Good luck.",
+      "region": "dependency_district",
+      "prerequisites": ["install_node"],
+      "objectives": [
+        {"id": "defeat_bug", "type": "defeat", "target": "null_reference", "count": 5, "text": "Defeat 5 Null References without dying"}
+      ],
+      "rewards": {"tokens": 250, "will_to_live": -5, "reputation": 10}
+    },
+    "junior_agent": {
+      "name": "The Junior Agent Deleted The Database",
+      "description": "Escort the agent to safety. Try not to let it 'optimize' anything else.",
+      "region": "api_bazaar",
+      "prerequisites": ["one_more_api_call"],
+      "objectives": [
+        {"id": "talk_agent", "type": "talk", "target": "junior_agent", "count": 1, "text": "Find the Junior Agent"},
+        {"id": "escort", "type": "interact", "target": "backup_server", "count": 1, "text": "Escort to the backup server"}
+      ],
+      "rewards": {"tokens": 300, "stability": -15, "api_credits": 15}
+    },
+    "merge_conflict_hell": {
+      "name": "Merge Conflict From Hell",
+      "description": "Two branches. One truth. Zero sanity.",
+      "region": "stackoverflow_ruins",
+      "prerequisites": ["stackoverflow_pilgrimage"],
+      "objectives": [
+        {"id": "defeat_merge", "type": "defeat", "target": "merge_conflict", "count": 1, "text": "Resolve the Merge Conflict boss"}
+      ],
+      "rewards": {"tokens": 350, "context": 15, "achievement": "i_can_explain"}
+    },
+    "context_window_full": {
+      "name": "Context Window Full",
+      "description": "You've pasted too much. The model can see your regrets.",
+      "region": "cloud_district",
+      "prerequisites": ["cloud_migration"],
+      "objectives": [
+        {"id": "defeat_context", "type": "defeat", "target": "infinite_context", "count": 1, "text": "Defeat THE INFINITE CONTEXT"}
+      ],
+      "rewards": {"context": 50, "tokens": 400, "achievement": "context_is_social_construct"}
+    }
+  }
+}

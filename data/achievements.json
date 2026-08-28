@@ -1,0 +1,14 @@
+{
+  "achievements": {
+    "ship_it": {"name": "Ship It", "description": "You deployed. History will judge."},
+    "works_on_my_machine": {"name": "Works On My Machine", "description": "Failed to reproduce the same bug three times."},
+    "zero_tests_zero_fear": {"name": "Zero Tests, Zero Fear", "description": "Shipped with 20 features and negative stability."},
+    "one_more_account": {"name": "One More Account", "description": "Collected 5000 tokens. Your wallet disagrees."},
+    "enterprise_ready": {"name": "Enterprise Ready™", "description": "Accumulated 100 technical debt. Synergy achieved."},
+    "i_can_explain": {"name": "I Can Explain", "description": "Resolved the Merge Conflict From Hell."},
+    "context_is_social_construct": {"name": "Context Is A Social Construct", "description": "Defeated THE INFINITE CONTEXT."},
+    "we_have_observability_now": {"name": "We Have Observability Now", "description": "Production went down and you watched it happen live."},
+    "dependency_archaeologist": {"name": "Dependency Archaeologist", "description": "Survived the Dependency District."},
+    "actually_i_cannot_explain": {"name": "Actually, I Cannot Explain", "description": "Died 10 times. Still shipping."}
+  }
+}

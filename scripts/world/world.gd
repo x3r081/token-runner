@@ -1,0 +1,107 @@
+extends Node2D
+
+@onready var player: Player = $Player
+@onready var camera: GameCamera = $Player/Camera2D
+@onready var region_container: Node2D = $RegionContainer
+@onready var hud: CanvasLayer = $HUD
+@onready var ambient: CanvasModulate = $AmbientLight
+
+var _current_region_node: Node2D
+
+func _ready() -> void:
+	AudioManager.play_music("explore_music")
+	_load_region(GameManager.current_region)
+	QuestManager.on_region_entered(GameManager.current_region)
+	GameManager.region_changed.connect(_on_region_changed)
+	GameManager.player_died.connect(_on_player_died)
+	if player:
+		player.died.connect(_on_player_died)
+
+func _load_region(region_id: String) -> void:
+	if _current_region_node:
+		_current_region_node.queue_free()
+	_current_region_node = Node2D.new()
+	_current_region_node.name = region_id
+	region_container.add_child(_current_region_node)
+	var data := RegionBuilder.build(_current_region_node, region_id)
+	if player:
+		player.global_position = data.spawn
+		camera.enabled = true
+	_set_ambient(region_id)
+
+func _set_ambient(region_id: String) -> void:
+	match region_id:
+		"production":
+			ambient.color = Color(0.9, 0.5, 0.5, 1.0)
+		"token_vault":
+			ambient.color = Color(1.0, 0.95, 0.7, 1.0)
+		"cloud_district":
+			ambient.color = Color(0.7, 0.8, 1.0, 1.0)
+		"gpu_mines":
+			ambient.color = Color(1.0, 0.7, 0.5, 1.0)
+		_:
+			ambient.color = Color(0.85, 0.85, 0.95, 1.0)
+
+func _on_region_changed(region_id: String) -> void:
+	_load_region(region_id)
+	QuestManager.on_region_entered(region_id)
+
+func on_region_changed(region_id: String) -> void:
+	_on_region_changed(region_id)
+
+func _on_player_died(_msg: String = "") -> void:
+	get_tree().paused = false
+	var death_scene := preload("res://scenes/ui/death_screen.tscn")
+	var death = death_scene.instantiate()
+	add_child(death)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("pause"):
+		if GameManager.state == GameManager.GameState.PLAYING:
+			_open_pause()
+		elif GameManager.state == GameManager.GameState.PAUSED:
+			_close_pause()
+	if event.is_action_pressed("quest_log"):
+		_toggle_quest_log()
+	if event.is_action_pressed("dream_app"):
+		_toggle_dream_app()
+	if event.is_action_pressed("map"):
+		_toggle_map()
+
+func _open_pause() -> void:
+	GameManager.pause_game(true)
+	var pause := preload("res://scenes/ui/pause_menu.tscn").instantiate()
+	add_child(pause)
+
+func _close_pause() -> void:
+	GameManager.pause_game(false)
+	for c in get_children():
+		if c.name == "PauseMenu":
+			c.queue_free()
+
+func _toggle_quest_log() -> void:
+	var existing := hud.get_node_or_null("QuestLogPanel")
+	if existing:
+		existing.queue_free()
+		return
+	var panel := preload("res://scenes/ui/quest_log.tscn").instantiate()
+	panel.name = "QuestLogPanel"
+	hud.add_child(panel)
+
+func _toggle_dream_app() -> void:
+	var existing := hud.get_node_or_null("DreamAppPanel")
+	if existing:
+		existing.queue_free()
+		return
+	var panel := preload("res://scenes/ui/dream_app_panel.tscn").instantiate()
+	panel.name = "DreamAppPanel"
+	hud.add_child(panel)
+
+func _toggle_map() -> void:
+	var existing := hud.get_node_or_null("MapPanel")
+	if existing:
+		existing.queue_free()
+		return
+	var panel := preload("res://scenes/ui/map_panel.tscn").instantiate()
+	panel.name = "MapPanel"
+	hud.add_child(panel)

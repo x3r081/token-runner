@@ -1,0 +1,92 @@
+{
+  "events": [
+    {
+      "id": "provider_outage",
+      "title": "MODEL PROVIDER OUTAGE",
+      "description": "Your AI provider is down. Your agent is idle. Your deadline is not.",
+      "min_act": 1,
+      "choices": [
+        {"text": "Wait it out (-20 tokens, +5 will_to_live)", "effects": {"tokens": -20, "will_to_live": 5}},
+        {"text": "Switch providers (-50 tokens, +30 compute)", "effects": {"tokens": -50, "compute": 30}},
+        {"text": "Code it yourself (+15 technical_debt, +10 reputation)", "effects": {"technical_debt": 15, "reputation": 10}}
+      ]
+    },
+    {
+      "id": "token_price_increase",
+      "title": "TOKEN PRICE INCREASE",
+      "description": "Provider pricing updated. Your wallet felt that from here.",
+      "min_act": 2,
+      "choices": [
+        {"text": "Accept fate (-100 tokens)", "effects": {"tokens": -100}},
+        {"text": "Buy annual plan (-200 tokens, +50 api_credits)", "effects": {"tokens": -200, "api_credits": 50}},
+        {"text": "Complain on Twitter (+5 reputation, -5 will_to_live)", "effects": {"reputation": 5, "will_to_live": -5}}
+      ]
+    },
+    {
+      "id": "agent_rogue",
+      "title": "AGENT WENT ROGUE",
+      "description": "Your autonomous agent refactored production. Into poetry.",
+      "min_act": 2,
+      "choices": [
+        {"text": "Rollback (-30 compute)", "effects": {"compute": -30, "stability": 10}},
+        {"text": "Ship the poetry (+20 reputation, +25 technical_debt)", "effects": {"reputation": 20, "technical_debt": 25}},
+        {"text": "Blame DNS (+0 everything, +10 will_to_live)", "effects": {"will_to_live": 10}}
+      ]
+    },
+    {
+      "id": "free_credits",
+      "title": "FREE API CREDITS",
+      "description": "A provider sent promotional credits. They expire in 14 seconds.",
+      "min_act": 1,
+      "choices": [
+        {"text": "Use them now (+40 api_credits)", "effects": {"api_credits": 40}},
+        {"text": "Hoard them (+20 api_credits, they still expire)", "effects": {"api_credits": 20}},
+        {"text": "Ignore (you'll regret this)", "effects": {"will_to_live": -3}}
+      ]
+    },
+    {
+      "id": "cfo_cloud_bill",
+      "title": "CFO SAW CLOUD BILL",
+      "description": "Finance has questions. You have Kubernetes.",
+      "min_act": 3,
+      "choices": [
+        {"text": "Explain 'elastic' (-50 reputation)", "effects": {"reputation": -50}},
+        {"text": "Downgrade (-100 compute, +30 stability)", "effects": {"compute": -100, "stability": 30}},
+        {"text": "Blame the intern (+20 technical_debt)", "effects": {"technical_debt": 20, "will_to_live": 5}}
+      ]
+    },
+    {
+      "id": "viral_launch",
+      "title": "VIRAL PRODUCT LAUNCH",
+      "description": "Someone posted your app. Traffic spiked. So did your anxiety.",
+      "min_act": 3,
+      "choices": [
+        {"text": "Scale up (-80 tokens, +50 reputation)", "effects": {"tokens": -80, "reputation": 50}},
+        {"text": "Rate limit users (+30 stability, -20 reputation)", "effects": {"stability": 30, "reputation": -20}},
+        {"text": "Take the site down 'for maintenance' (+10 will_to_live)", "effects": {"will_to_live": 10, "reputation": -10}}
+      ]
+    },
+    {
+      "id": "zero_day",
+      "title": "ZERO-DAY DEPENDENCY",
+      "description": "A package you installed in 2019 just became a CVE.",
+      "min_act": 2,
+      "choices": [
+        {"text": "npm audit fix (+20 technical_debt)", "effects": {"technical_debt": 20, "stability": 5}},
+        {"text": "Pin the version (+10 stability)", "effects": {"stability": 10, "compute": -10}},
+        {"text": "Delete node_modules and pray (-30 will_to_live, +15 stability)", "effects": {"will_to_live": -30, "stability": 15}}
+      ]
+    },
+    {
+      "id": "board_ai_strategy",
+      "title": "BOARD WANTS AI STRATEGY BY FRIDAY",
+      "description": "They want a slide deck about intelligence. You have a todo list.",
+      "min_act": 4,
+      "choices": [
+        {"text": "Generate slides with AI (-100 tokens, +40 reputation)", "effects": {"tokens": -100, "reputation": 40}},
+        {"text": "Say 'AI-first' repeatedly (+20 reputation, +15 technical_debt)", "effects": {"reputation": 20, "technical_debt": 15}},
+        {"text": "Resign (+100 will_to_live, -50 reputation)", "effects": {"will_to_live": 100, "reputation": -50}}
+      ]
+    }
+  ]
+}
