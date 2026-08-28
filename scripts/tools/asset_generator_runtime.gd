@@ -13,6 +13,8 @@ func generate_all() -> void:
 	_generate_tokens()
 	_generate_ui_elements()
 	_generate_icon()
+	var interior = preload("res://scripts/tools/interior_generator.gd").new()
+	interior.generate()
 	print("Assets generated.")
 
 func _generate_player_spritesheet() -> void:
@@ -178,7 +180,9 @@ func _generate_enemies() -> void:
 		var img := Image.create(32, 32, false, Image.FORMAT_RGBA8)
 		img.fill(Color(0, 0, 0, 0))
 		var c: Color = enemies[ename]
-		if ename == "legacy_monolith":
+		if ename == "bug":
+			_draw_bug(img, c)
+		elif ename == "legacy_monolith":
 			_fill_rect(img, 4, 4, 24, 24, c)
 			for i in range(6, 26, 4):
 				_fill_rect(img, i, 6, 2, 20, c.darkened(0.2))
@@ -192,6 +196,69 @@ func _generate_enemies() -> void:
 			_fill_circle(img, 12, 13, 1, Color.BLACK)
 			_fill_circle(img, 20, 13, 1, Color.BLACK)
 		_save_image(img, "enemy_%s.png" % ename)
+
+## A software "bug" that actually reads as a beetle: dark carapace, red shell
+## segments, six legs, antennae, mandibles and glowing eyes.
+func _draw_bug(img: Image, c: Color) -> void:
+	var shell := Color(0.5, 0.12, 0.16)
+	var carapace := Color(0.16, 0.1, 0.12)
+	var leg := Color(0.08, 0.06, 0.07)
+	# legs (three each side)
+	for sy in [12, 17, 22]:
+		_draw_line_img(img, 12, sy, 3, sy - 3, leg)
+		_draw_line_img(img, 12, sy, 3, sy + 3, leg)
+		_draw_line_img(img, 20, sy, 29, sy - 3, leg)
+		_draw_line_img(img, 20, sy, 29, sy + 3, leg)
+	# abdomen / shell
+	_fill_ellipse(img, 16, 18, 9, 11, shell)
+	_fill_ellipse(img, 16, 18, 9, 11, shell, 1)
+	# wing split down the middle + segment ridges
+	for y in range(9, 29):
+		img.set_pixel(16, y, carapace)
+	for ry in [13, 17, 21, 25]:
+		for x in range(8, 25):
+			if Vector2(x - 16, ry - 18).length() < 10:
+				img.set_pixel(x, ry, shell.darkened(0.25))
+	# head
+	_fill_circle(img, 16, 7, 5, carapace)
+	# mandibles
+	_draw_line_img(img, 13, 4, 11, 1, leg)
+	_draw_line_img(img, 19, 4, 21, 1, leg)
+	# antennae
+	_draw_line_img(img, 14, 4, 10, 0, leg)
+	_draw_line_img(img, 18, 4, 22, 0, leg)
+	# glowing eyes
+	img.set_pixel(14, 7, Color(1.0, 0.85, 0.2))
+	img.set_pixel(18, 7, Color(1.0, 0.85, 0.2))
+
+func _fill_ellipse(img: Image, cx: int, cy: int, rx: int, ry: int, c: Color, inset: int = 0) -> void:
+	for x in img.get_width():
+		for y in img.get_height():
+			var dx := float(x - cx) / float(rx - inset)
+			var dy := float(y - cy) / float(ry - inset)
+			if dx * dx + dy * dy <= 1.0:
+				img.set_pixel(x, y, c if inset == 0 else c.lightened(0.08))
+
+func _draw_line_img(img: Image, x0: int, y0: int, x1: int, y1: int, c: Color) -> void:
+	var dx: int = abs(x1 - x0)
+	var dy: int = -abs(y1 - y0)
+	var sx: int = 1 if x0 < x1 else -1
+	var sy: int = 1 if y0 < y1 else -1
+	var err := dx + dy
+	var x := x0
+	var y := y0
+	for _i in 80:
+		if x >= 0 and y >= 0 and x < img.get_width() and y < img.get_height():
+			img.set_pixel(x, y, c)
+		if x == x1 and y == y1:
+			break
+		var e2 := 2 * err
+		if e2 >= dy:
+			err += dy
+			x += sx
+		if e2 <= dx:
+			err += dx
+			y += sy
 
 func _generate_tokens() -> void:
 	var types := {

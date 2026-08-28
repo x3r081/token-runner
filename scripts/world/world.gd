@@ -49,7 +49,17 @@ func _load_region(region_id: String) -> void:
 	if player:
 		player.global_position = data.spawn
 		camera.enabled = true
+		_apply_camera_bounds(data.get("size", Vector2.ZERO))
 	_set_ambient(region_id)
+
+func _apply_camera_bounds(size: Vector2) -> void:
+	if size == Vector2.ZERO:
+		return
+	# Clamp the camera to the room so empty off-map space is never shown.
+	camera.limit_left = 0
+	camera.limit_top = 0
+	camera.limit_right = int(size.x)
+	camera.limit_bottom = int(size.y)
 
 func _set_ambient(region_id: String) -> void:
 	match region_id:

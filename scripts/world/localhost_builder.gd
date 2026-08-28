@@ -1,121 +1,228 @@
 extends RefCounted
 class_name LocalhostBuilder
-## Hand-crafted 3AM coder apartment — cramped, lived-in, tech-noir comedy.
+## Hand-composed 3AM coder apartment. A deliberately designed, zoned interior —
+## battlestation on a rug, server corner, kitchen with only energy drinks, an
+## unslept-in bed, a node_modules trash heap, a deprecated plant — so the space
+## reads instantly as "this person has destroyed their life shipping an app,"
+## not as a stamped tile field.
 
-const TILE_SCALE := 4.0
-const TILE_PX := 16.0 * TILE_SCALE
-const ROOM_W := 30
-const ROOM_H := 18
-
-const TILE_DIR := "res://assets/external/kenney/tiny-town/Tiles/"
+const GEN := "res://assets/textures/generated/"
+const TILE := 64
+const ROOM_W := 25   # tiles -> 1600 px
+const ROOM_H := 16   # tiles -> 1024 px
+const WALL_LAYER := 32
 
 static func build(parent: Node2D) -> Dictionary:
 	parent.y_sort_enabled = true
-	var spawn := Vector2(ROOM_W * TILE_PX * 0.35, ROOM_H * TILE_PX * 0.72)
+	var size := Vector2(ROOM_W * TILE, ROOM_H * TILE)
+	var spawn := Vector2(720, 640)
 	_build_floor(parent)
+	_build_rug(parent)
 	_build_walls(parent)
+	_build_battlestation(parent)
+	_build_server_corner(parent)
+	_build_kitchen(parent)
+	_build_bedroom(parent)
+	_build_clutter(parent)
 	_build_lighting(parent)
-	_build_furniture(parent)
-	_build_props(parent)
-	_build_labels(parent)
+	_build_signs(parent)
 	_populate_gameplay(parent, spawn)
-	return {"spawn": spawn, "size": Vector2(ROOM_W, ROOM_H) * TILE_PX}
+	return {"spawn": spawn, "size": size}
 
-static func _tile_pos(gx: int, gy: int) -> Vector2:
-	return Vector2(gx * TILE_PX + TILE_PX * 0.5, gy * TILE_PX + TILE_PX * 0.5)
+# ------------------------------------------------------------- helpers ------
 
-static func _add_tile(parent: Node2D, tile_id: String, gx: int, gy: int, modulate: Color = Color.WHITE, z: int = -10) -> Sprite2D:
-	var path := TILE_DIR + tile_id + ".png"
-	if not ResourceLoader.exists(path):
+static func _tex(name: String) -> Texture2D:
+	var path := GEN + name + ".png"
+	return load(path) if ResourceLoader.exists(path) else null
+
+static func _put(parent: Node2D, tex_name: String, pos: Vector2, z: int, scale: float = 1.0, mod: Color = Color.WHITE) -> Sprite2D:
+	var t := _tex(tex_name)
+	if not t:
 		return null
 	var s := Sprite2D.new()
-	s.texture = load(path)
-	s.position = _tile_pos(gx, gy)
-	s.scale = Vector2(TILE_SCALE, TILE_SCALE)
-	s.modulate = modulate
-	s.z_index = z
-	parent.add_child(s)
-	return s
-
-static func _add_sprite(parent: Node2D, tile_id: String, pos: Vector2, modulate: Color = Color.WHITE, scale: float = TILE_SCALE, z: int = 0) -> Sprite2D:
-	var path := TILE_DIR + tile_id + ".png"
-	if not ResourceLoader.exists(path):
-		return null
-	var s := Sprite2D.new()
-	s.texture = load(path)
+	s.texture = t
 	s.position = pos
-	s.scale = Vector2(scale, scale)
-	s.modulate = modulate
 	s.z_index = z
+	s.scale = Vector2(scale, scale)
+	s.modulate = mod
 	parent.add_child(s)
 	return s
+
+## Furniture depth: z tracks the sprite's base Y so it sorts against the player
+## (which sets z_index = int(global_position.y)). Objects lower on screen draw
+## in front, giving real top-down occlusion.
+static func _depth(pos_y: float, half_h: float) -> int:
+	return int(pos_y + half_h)
+
+# -------------------------------------------------------------- floor -------
 
 static func _build_floor(parent: Node2D) -> void:
 	var floor := Node2D.new()
 	floor.name = "Floor"
-	floor.z_index = -20
 	parent.add_child(floor)
-	var wood := Color(0.35, 0.28, 0.22)
-	var rug := Color(0.22, 0.2, 0.28)
 	for gx in ROOM_W:
 		for gy in ROOM_H:
-			var c := wood.darkened(0.05 * ((gx + gy) % 3))
-			if gx >= 14 and gy <= 5:
-				c = rug
-			_add_tile(floor, "tile_0001" if (gx + gy) % 2 == 0 else "tile_0002", gx, gy, c, -10)
+			var v := (gx * 7 + gy * 13) % 3
+			_put(floor, "int_floor_%d" % v, Vector2(gx * TILE + TILE / 2, gy * TILE + TILE / 2), -100)
+
+static func _build_rug(parent: Node2D) -> void:
+	_put(parent, "int_rug", Vector2(560, 600), -90)
+
+# -------------------------------------------------------------- walls -------
 
 static func _build_walls(parent: Node2D) -> void:
 	var walls := Node2D.new()
 	walls.name = "Walls"
 	parent.add_child(walls)
-	var wall_c := Color(0.18, 0.16, 0.22)
+	var right := ROOM_W * TILE
+	var bottom := ROOM_H * TILE
+	# Top wall band (behind everything), with a window and a door cut in.
 	for gx in ROOM_W:
-		_add_wall_collider(parent, _tile_pos(gx, 0))
-		_add_wall_collider(parent, _tile_pos(gx, ROOM_H - 1))
-		_add_tile(walls, "tile_0048", gx, 0, wall_c, -5)
-		_add_tile(walls, "tile_0048", gx, ROOM_H - 1, wall_c.darkened(0.1), -5)
+		var x := gx * TILE + TILE / 2
+		_put(walls, "int_wall", Vector2(x, 16), -60)
+		_add_collider(walls, Vector2(x, 24), Vector2(TILE, 56))
+	# Side + bottom borders (thin dark strips + colliders)
 	for gy in ROOM_H:
-		_add_wall_collider(parent, _tile_pos(0, gy))
-		_add_wall_collider(parent, _tile_pos(ROOM_W - 1, gy))
-		_add_tile(walls, "tile_0049", 0, gy, wall_c, -5)
-		_add_tile(walls, "tile_0049", ROOM_W - 1, gy, wall_c.darkened(0.1), -5)
+		var y := gy * TILE + TILE / 2
+		_put(walls, "int_wall_side", Vector2(20, y), -58, 1.0, Color(0.8, 0.8, 0.9))
+		_put(walls, "int_wall_side", Vector2(right - 20, y), -58, 1.0, Color(0.7, 0.7, 0.8))
+		_add_collider(walls, Vector2(6, y), Vector2(20, TILE))
+		_add_collider(walls, Vector2(right - 6, y), Vector2(20, TILE))
+	for gx in ROOM_W:
+		var x2 := gx * TILE + TILE / 2
+		_add_collider(walls, Vector2(x2, bottom - 6), Vector2(TILE, 20))
+	# Window (night city) over the desk, and an apartment door.
+	_put(walls, "int_window", Vector2(560, 40), -55)
+	_put(walls, "furn_door", Vector2(1360, 46), -55)
+	# Whiteboard of doom on the wall
+	_put(walls, "furn_whiteboard", Vector2(950, 60), -50)
 
-static func _add_wall_collider(parent: Node2D, pos: Vector2) -> void:
+static func _add_collider(parent: Node2D, pos: Vector2, sz: Vector2) -> void:
 	var wall := StaticBody2D.new()
-	wall.collision_layer = 32
+	wall.collision_layer = WALL_LAYER
 	wall.collision_mask = 0
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
-	rect.size = Vector2(TILE_PX, TILE_PX)
+	rect.size = sz
 	shape.shape = rect
 	shape.position = pos
 	wall.add_child(shape)
 	parent.add_child(wall)
 
-static func _build_lighting(parent: Node2D) -> void:
-	var glow := Node2D.new()
-	glow.name = "AmbientGlow"
-	parent.add_child(glow)
-	# Monitor glow pools
-	for pos in [Vector2(520, 380), Vector2(680, 360), Vector2(840, 380)]:
-		var light := PointLight2D.new()
-		light.texture = _make_radial_texture()
-		light.energy = 0.9
-		light.color = Color(0.4, 0.75, 1.0, 1.0)
-		light.texture_scale = 2.5
-		light.position = pos
-		light.shadow_enabled = false
-		glow.add_child(light)
-	# Warm desk lamp
-	var lamp := PointLight2D.new()
-	lamp.texture = _make_radial_texture()
-	lamp.energy = 0.6
-	lamp.color = Color(1.0, 0.7, 0.35, 1.0)
-	lamp.texture_scale = 3.0
-	lamp.position = Vector2(560, 520)
-	glow.add_child(lamp)
+# --------------------------------------------------------- battlestation ----
 
-static func _make_radial_texture() -> Texture2D:
+static func _build_battlestation(parent: Node2D) -> void:
+	var z := Node2D.new()
+	z.name = "Battlestation"
+	parent.add_child(z)
+	# Desk against the window wall
+	var desk_y := 340.0
+	_put(z, "furn_desk", Vector2(520, desk_y), _depth(desk_y, 48))
+	# Three comedy monitors on the desk
+	_add_monitor(z, Vector2(430, 300), Color(0.15, 0.85, 0.95), "TOKEN BALANCE\n>>> 70", Color(0.2, 0.95, 0.9))
+	_add_monitor(z, Vector2(540, 296), Color(0.95, 0.65, 0.2), "AI SUBSCRIPTIONS\nactive: 8", Color(1.0, 0.7, 0.3))
+	_add_monitor(z, Vector2(650, 300), Color(0.95, 0.35, 0.35), "SAVINGS FROM AI\n-€713 / mo", Color(1.0, 0.45, 0.45))
+	# Gaming chair, slightly askew
+	_put(z, "furn_chair", Vector2(560, 470), _depth(470, 44), 1.0, Color(0.9, 0.9, 1.0))
+
+static func _add_monitor(parent: Node2D, pos: Vector2, screen_col: Color, text: String, text_col: Color) -> void:
+	var mz := _depth(pos.y, 42)
+	_put(parent, "furn_monitor", pos, mz)
+	# Bright emissive screen
+	var screen := ColorRect.new()
+	screen.size = Vector2(80, 48)
+	screen.position = pos - Vector2(40, 30)
+	screen.color = screen_col.darkened(0.15)
+	screen.z_index = mz + 1
+	parent.add_child(screen)
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.position = pos - Vector2(36, 26)
+	lbl.add_theme_font_size_override("font_size", 11)
+	lbl.add_theme_color_override("font_color", text_col)
+	lbl.z_index = mz + 2
+	parent.add_child(lbl)
+	# Screen glow light
+	var light := PointLight2D.new()
+	light.texture = _radial()
+	light.energy = 0.7
+	light.color = screen_col
+	light.texture_scale = 1.6
+	light.position = pos - Vector2(0, 10)
+	parent.add_child(light)
+
+# --------------------------------------------------------- server corner ----
+
+static func _build_server_corner(parent: Node2D) -> void:
+	var z := Node2D.new()
+	z.name = "ServerCorner"
+	parent.add_child(z)
+	_put(z, "furn_server", Vector2(1470, 200), _depth(200, 84))
+	_put(z, "furn_server", Vector2(1380, 220), _depth(220, 84), 1.0, Color(0.9, 0.9, 0.95))
+	# Cooling glow
+	var light := PointLight2D.new()
+	light.texture = _radial()
+	light.energy = 0.5
+	light.color = Color(0.3, 0.9, 0.5)
+	light.texture_scale = 3.0
+	light.position = Vector2(1420, 240)
+	z.add_child(light)
+
+# ------------------------------------------------------------- kitchen ------
+
+static func _build_kitchen(parent: Node2D) -> void:
+	var z := Node2D.new()
+	z.name = "Kitchen"
+	parent.add_child(z)
+	_put(z, "furn_fridge", Vector2(120, 210), _depth(210, 66))
+	_put(z, "furn_coffee", Vector2(230, 230), _depth(230, 46))
+	# empty energy-drink cans on the floor
+	for i in 5:
+		var can := ColorRect.new()
+		can.size = Vector2(10, 16)
+		can.position = Vector2(180 + i * 22, 300 + (i % 2) * 14)
+		can.color = [Color(0.2, 0.85, 0.35), Color(0.9, 0.3, 0.3), Color(0.3, 0.6, 0.95)][i % 3]
+		can.z_index = _depth(can.position.y, 8)
+		z.add_child(can)
+
+# ------------------------------------------------------------- bedroom ------
+
+static func _build_bedroom(parent: Node2D) -> void:
+	var z := Node2D.new()
+	z.name = "Bedroom"
+	parent.add_child(z)
+	_put(z, "furn_bed", Vector2(1320, 840), _depth(840, 54))
+	_put(z, "furn_shelf", Vector2(1500, 640), _depth(640, 60))
+	_put(z, "furn_plant", Vector2(110, 800), _depth(800, 48))
+
+# ------------------------------------------------------------- clutter ------
+
+static func _build_clutter(parent: Node2D) -> void:
+	var z := Node2D.new()
+	z.name = "Clutter"
+	parent.add_child(z)
+	_put(z, "furn_boxes", Vector2(210, 850), _depth(850, 52))
+	# pizza boxes
+	for p in [Vector2(880, 780), Vector2(930, 800)]:
+		var box := ColorRect.new()
+		box.size = Vector2(46, 40)
+		box.position = p
+		box.color = Color(0.7, 0.5, 0.25)
+		box.z_index = _depth(p.y, 20)
+		z.add_child(box)
+
+# ------------------------------------------------------------ lighting ------
+
+static func _build_lighting(parent: Node2D) -> void:
+	var lamp := PointLight2D.new()
+	lamp.texture = _radial()
+	lamp.energy = 0.5
+	lamp.color = Color(1.0, 0.72, 0.4)
+	lamp.texture_scale = 4.0
+	lamp.position = Vector2(300, 250)
+	parent.add_child(lamp)
+
+static func _radial() -> Texture2D:
 	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
 	for x in 64:
 		for y in 64:
@@ -124,101 +231,32 @@ static func _make_radial_texture() -> Texture2D:
 			img.set_pixel(x, y, Color(1, 1, 1, a * a))
 	return ImageTexture.create_from_image(img)
 
-static func _build_furniture(parent: Node2D) -> void:
-	var furn := Node2D.new()
-	furn.name = "Furniture"
-	furn.z_index = 0
-	parent.add_child(furn)
-	# Desk row — monitors, keyboard clutter
-	for i in 3:
-		_add_sprite(furn, "tile_0088", Vector2(480 + i * 160, 340), Color(0.15, 0.18, 0.25), TILE_SCALE * 1.2, 2)
-		_add_monitor_glow(furn, Vector2(480 + i * 160, 300))
-	# Server rack corner
-	for row in 3:
-		_add_sprite(furn, "tile_0056", Vector2(1200, 200 + row * 70), Color(0.25, 0.28, 0.32), TILE_SCALE * 1.4, 1)
-	_add_sprite(furn, "tile_0120", Vector2(1200, 140), Color(0.3, 0.85, 0.5), TILE_SCALE, 3)
-	# Pizza boxes
-	_add_sprite(furn, "tile_0108", Vector2(900, 680), Color(0.85, 0.55, 0.2), TILE_SCALE, 1)
-	_add_sprite(furn, "tile_0108", Vector2(940, 690), Color(0.75, 0.45, 0.15), TILE_SCALE * 0.9, 1)
-	# Coffee mug / potion stand-in
-	_add_sprite(furn, "tile_0116", Vector2(420, 520), Color(0.9, 0.85, 0.7), TILE_SCALE, 2)
-	# Chair
-	_add_sprite(furn, "tile_0096", Vector2(620, 580), Color(0.4, 0.35, 0.5), TILE_SCALE, 1)
-	# GPU boxes (crate tiles)
-	_add_sprite(furn, "tile_0100", Vector2(1050, 750), Color(0.2, 0.6, 0.9), TILE_SCALE * 1.1, 1)
-	_add_sprite(furn, "tile_0100", Vector2(1120, 760), Color(0.9, 0.3, 0.2), TILE_SCALE, 1)
-	# Cable mess (fence bits)
-	_add_sprite(furn, "tile_0072", Vector2(750, 620), Color(0.3, 0.3, 0.35), TILE_SCALE * 0.8, 0)
-	_add_sprite(furn, "tile_0073", Vector2(800, 640), Color(0.25, 0.25, 0.3), TILE_SCALE * 0.8, 0)
+# -------------------------------------------------------------- signs -------
 
-static func _add_monitor_glow(parent: Node2D, pos: Vector2) -> void:
-	var m := ColorRect.new()
-	m.size = Vector2(48, 36)
-	m.position = pos - m.size * 0.5
-	m.color = Color(0.2, 0.85, 0.95, 0.85)
-	m.z_index = 3
-	parent.add_child(m)
+static func _build_signs(parent: Node2D) -> void:
+	var z := Node2D.new()
+	z.name = "Signs"
+	parent.add_child(z)
+	_sign(z, Vector2(1360, 120), "SERVER RACK\n(do NOT reboot)", Color(0.5, 1.0, 0.6))
+	_sign(z, Vector2(70, 150), "FRIDGE\n(energy drinks only)", Color(0.6, 0.9, 1.0))
+	_sign(z, Vector2(200, 200), "COFFEE: MISSION CRITICAL", Color(1.0, 0.78, 0.4))
+	_sign(z, Vector2(90, 760), "PLANT\nstatus: deprecated", Color(0.6, 0.8, 0.5))
+	_sign(z, Vector2(150, 900), "node_modules\n(trash)", Color(0.7, 0.6, 0.5))
+	_sign(z, Vector2(1250, 920), "BED\n'sleep? during a hackathon?'", Color(0.7, 0.75, 0.95))
+	_sign(z, Vector2(880, 120), "DNS\nProbably not the problem.", Color(0.55, 0.85, 1.0))
 
-static func _build_props(parent: Node2D) -> void:
-	var props := Node2D.new()
-	props.name = "Props"
-	parent.add_child(props)
-	# Sticky notes on wall
-	_add_sticky_note(props, Vector2(200, 180), "SHIP\nIT", Color(1.0, 0.95, 0.4))
-	_add_sticky_note(props, Vector2(280, 200), "TODO:\neverything", Color(0.9, 0.7, 0.9))
-	_add_sticky_note(props, Vector2(350, 170), "call mom\n(later)", Color(0.7, 0.95, 0.7))
-	_add_sticky_note(props, Vector2(420, 190), "TODO:\nBACKUPS", Color(1.0, 0.85, 0.5))
-	_add_sticky_note(props, Vector2(420, 250), "TODO:\nSERIOUSLY, BACKUPS", Color(1.0, 0.6, 0.6))
-	# Whiteboard
-	var board := ColorRect.new()
-	board.size = Vector2(180, 100)
-	board.position = Vector2(150, 250)
-	board.color = Color(0.92, 0.92, 0.88, 1.0)
-	board.z_index = -2
-	props.add_child(board)
-	var board_label := Label.new()
-	board_label.text = "Architecture:\nBrowser -> API -> K8s -> 17 microservices\nPurpose: SHOPPING LIST"
-	board_label.position = Vector2(160, 260)
-	board_label.add_theme_font_size_override("font_size", 11)
-	board_label.add_theme_color_override("font_color", Color(0.2, 0.15, 0.3))
-	board_label.z_index = -1
-	props.add_child(board_label)
-
-static func _add_sticky_note(parent: Node2D, pos: Vector2, text: String, color: Color) -> void:
-	var note := ColorRect.new()
-	note.size = Vector2(56, 56)
-	note.position = pos
-	note.color = color
-	note.z_index = 1
-	parent.add_child(note)
-	var lbl := Label.new()
-	lbl.text = text
-	lbl.position = pos + Vector2(4, 4)
-	lbl.add_theme_font_size_override("font_size", 10)
-	lbl.add_theme_color_override("font_color", Color(0.15, 0.1, 0.2))
-	lbl.z_index = 2
-	parent.add_child(lbl)
-
-static func _build_labels(parent: Node2D) -> void:
-	var labels := Node2D.new()
-	labels.name = "Signs"
-	parent.add_child(labels)
-	_add_sign(labels, Vector2(1180, 120), "SERVER RACK\n(please don't reboot)", Color(0.5, 1.0, 0.6))
-	_add_sign(labels, Vector2(480, 420), "triple monitor setup\nstill not enough context", Color(0.6, 0.8, 1.0))
-	_add_sign(labels, Vector2(200, 420), "PRODUCTION\nNO TESTING BEYOND THIS POINT", Color(1.0, 0.4, 0.35))
-	_add_sign(labels, Vector2(1050, 120), "TODO APP\n(powered by hope)", Color(0.4, 0.9, 0.7))
-	_add_sign(labels, Vector2(300, 680), "node_modules\n(trash bin)", Color(0.7, 0.6, 0.5))
-	_add_sign(labels, Vector2(400, 120), "DNS\nProbably not the problem.", Color(0.5, 0.85, 1.0))
-	_add_sign(labels, Vector2(1280, 680), "COFFEE MACHINE\nMISSION CRITICAL", Color(1.0, 0.75, 0.35))
-
-static func _add_sign(parent: Node2D, pos: Vector2, text: String, color: Color) -> void:
+static func _sign(parent: Node2D, pos: Vector2, text: String, color: Color) -> void:
 	var lbl := Label.new()
 	lbl.text = text
 	lbl.position = pos
 	lbl.add_theme_font_size_override("font_size", 12)
 	lbl.add_theme_color_override("font_color", color)
-	lbl.z_index = 5
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	lbl.add_theme_constant_override("outline_size", 4)
+	lbl.z_index = 400
 	parent.add_child(lbl)
+
+# ------------------------------------------------------------ gameplay ------
 
 static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 	var tokens := Node2D.new()
@@ -240,11 +278,11 @@ static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 	var token_scene := preload("res://scenes/world/token_pickup.tscn")
 	var token_types := ["common", "common", "cached", "common", "cached"]
 	var token_positions := [
-		Vector2(350, 550), Vector2(750, 480), Vector2(950, 420),
-		Vector2(1100, 550), Vector2(600, 750), Vector2(850, 680),
-		Vector2(450, 350), Vector2(1000, 350), Vector2(1300, 600),
-		Vector2(500, 850), Vector2(700, 900), Vector2(900, 820),
-		Vector2(1050, 450), Vector2(380, 700), Vector2(1280, 780),
+		Vector2(420, 640), Vector2(560, 700), Vector2(700, 760),
+		Vector2(840, 640), Vector2(980, 700), Vector2(1120, 620),
+		Vector2(500, 560), Vector2(760, 520), Vector2(1040, 500),
+		Vector2(640, 860), Vector2(900, 900), Vector2(1180, 800),
+		Vector2(380, 720), Vector2(1000, 860),
 	]
 	for i in token_positions.size():
 		var t = token_scene.instantiate()
@@ -253,7 +291,7 @@ static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 		tokens.add_child(t)
 
 	var enemy_scene := preload("res://scenes/combat/enemy.tscn")
-	for pos in [Vector2(1050, 520), Vector2(1180, 900), Vector2(480, 900)]:
+	for pos in [Vector2(1080, 560), Vector2(1180, 760), Vector2(420, 500)]:
 		var en = enemy_scene.instantiate()
 		en.enemy_type = "bug"
 		en.max_hp = 20
@@ -265,21 +303,20 @@ static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 	claude.npc_id = "roommate_ai"
 	var claude_quests: Array[String] = ["hello_localhost", "tiny_change", "ship_dream_app"]
 	claude.quest_ids = claude_quests
-	claude.position = Vector2(820, 480)
+	claude.position = Vector2(820, 560)
 	npcs.add_child(claude)
 
 	var interact_scene := preload("res://scenes/world/generic_interactable.tscn")
-	_add_interact(props, interact_scene, "client_email", Vector2(560, 460), "Check client email")
-	_add_interact(props, interact_scene, "dream_app_terminal", Vector2(720, 420), "Dream App Terminal")
-	_add_interact(props, interact_scene, "deploy_button", Vector2(900, 460), "Deploy To Production")
+	_add_interact(props, interact_scene, "client_email", Vector2(430, 360), "Check client email")
+	_add_interact(props, interact_scene, "dream_app_terminal", Vector2(650, 360), "Dream App Terminal")
+	_add_interact(props, interact_scene, "deploy_button", Vector2(760, 380), "Deploy To Production")
 
-	# Portal hidden until later — still present but labeled as locked
 	if GameManager.is_region_unlocked("dependency_district"):
 		var portal_scene := preload("res://scenes/world/region_portal.tscn")
 		var p = portal_scene.instantiate()
 		p.target_region = "dependency_district"
-		p.portal_label = "Dependency District (not ready yet)"
-		p.position = Vector2(ROOM_W * TILE_PX - 120, ROOM_H * TILE_PX * 0.5)
+		p.portal_label = "Dependency District"
+		p.position = Vector2(ROOM_W * TILE - 90, ROOM_H * TILE * 0.5)
 		portals.add_child(p)
 
 static func _add_interact(parent: Node2D, scene: PackedScene, id: String, pos: Vector2, text: String) -> void:
