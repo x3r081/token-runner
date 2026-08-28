@@ -31,6 +31,7 @@ var _base_scale := Vector2.ONE
 var _grow := 0.0
 var _special_cd := 0.0
 var _telegraph := 0.0
+var _boss_tele := 0.0
 
 func _ready() -> void:
 	add_to_group("enemy")
@@ -109,6 +110,44 @@ func _update_special(delta: float) -> void:
 			if _special_cd <= 0.0:
 				_blink()
 				_special_cd = randf_range(2.2, 3.6)
+	if is_boss:
+		_tick_boss(delta)
+
+## Bosses telegraph a big AoE shockwave, then slam. The Enterprise Architect
+## also convenes a governance council (summons adds). Knockback is temporary,
+## so a boss can never trap the player.
+func _tick_boss(delta: float) -> void:
+	if _boss_tele > 0.0:
+		_boss_tele -= delta
+		sprite.modulate = Color(1.5, 0.6, 0.6) if fmod(_boss_tele, 0.2) < 0.1 else Color.WHITE
+		if _boss_tele <= 0.0:
+			sprite.modulate = Color.WHITE
+			_boss_slam()
+		return
+	_special_cd -= delta
+	if _special_cd <= 0.0 and target and global_position.distance_to(target.global_position) < 320.0:
+		_boss_tele = 0.7
+		_special_cd = randf_range(4.0, 6.5)
+
+func _boss_slam() -> void:
+	if target and is_instance_valid(target):
+		var away: Vector2 = target.global_position - global_position
+		if away.length() < 260.0:
+			if target.has_method("apply_external_knockback"):
+				target.apply_external_knockback(away.normalized() * 520.0)
+			if target.has_method("take_damage"):
+				target.take_damage(int(damage * 0.5), enemy_type)
+	if enemy_type == "enterprise_architect":
+		_summon("scope_creep")
+	AudioManager.play_sfx("ability")
+
+func _summon(type: String) -> void:
+	var scene := preload("res://scenes/combat/enemy.tscn")
+	var e = scene.instantiate()
+	e.enemy_type = type
+	e.max_hp = 16
+	get_parent().add_child(e)
+	e.global_position = global_position + Vector2(randf_range(-44, 44), randf_range(-44, 44))
 
 func _tick_rate_limiter(delta: float) -> void:
 	if _telegraph > 0.0:

@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 15 complete — Production incident + "IT WAS DNS" running gag.
-Next: boss telegraphs/visuals, higher-fi player art, more branching quests with
-multiple endings, safe-audio pass, results-screen polish.
+Iterations 16–17 complete — audio-safety hardening + boss visuals/behaviour.
+Next: higher-fi player art, more branching quests with multiple endings,
+results-screen polish, additional NPC personalities.
 
 ## Iteration log
 
@@ -212,6 +212,29 @@ multiple endings, safe-audio pass, results-screen polish.
 - Regression test `tests/production_test.tscn` (5/5): investigate restores
   stability, the incident resolves, and blaming DNS eventually unlocks the
   achievement. Wired into CI.
+
+### Iteration 16 — Audio safety hardening
+- Added a **hard limiter** on the Master bus (ceiling −3 dB) so nothing can ever
+  blast the player regardless of stacked SFX or future streams. Audio remains
+  silent-by-default with conservative volumes and enveloped tones.
+- Regression test `tests/audio_test.tscn` (13/13): music off by default, won't
+  play until enabled, conservative volumes, limiter present, and no generated
+  sample approaches full-scale (peak deviation 20/127).
+
+### Iteration 17 — Boss visuals + behaviour
+- The "boss" enemies were only high-HP normals (`is_boss` was never set). Now the
+  region builder marks bosses (merge_conflict, cloud_bill, enterprise_architect,
+  legacy_monolith, infinite_context), so boss scaling actually applies (2× size,
+  4× HP, 2× damage, 5× drops).
+- Distinct boss art: **Enterprise Architect** (suit + power tie inside a
+  governance-square aura), **Legacy Monolith** (cracked brick with glowing COBOL
+  runes + moss), **Infinite Context** (nested rings around an unblinking eye).
+- **Telegraphed boss slam**: bosses flash a wind-up, then unleash an AoE
+  shockwave that knocks the player back (temporary — never a trap) and chips
+  damage. The **Enterprise Architect convenes a governance council** (summons
+  scope-creep adds).
+- Regression test `tests/boss_test.tscn` (6/6): boss scaling, slam knockback,
+  and architect-only summoning. Wired into CI.
 
 ## Verified test commands
 

@@ -337,6 +337,7 @@ static func _populate_region(region_id: String, props: Node2D, enemies: Node2D, 
 			var en = enemy_scene.instantiate()
 			en.enemy_type = e.type
 			en.max_hp = e.get("hp", 30)
+			en.is_boss = e.get("boss", false)
 			en.position = _random_pos(rng, spawn, 200)
 			enemies.add_child(en)
 	
@@ -390,21 +391,21 @@ static func _region_enemies(region_id: String) -> Array:
 		"dependency_district":
 			return [{"type": "dependency_demon", "count": 4}, {"type": "null_reference", "count": 3}]
 		"stackoverflow_ruins":
-			return [{"type": "bug", "count": 3}, {"type": "merge_conflict", "count": 1, "hp": 80}]
+			return [{"type": "bug", "count": 3}, {"type": "merge_conflict", "count": 1, "hp": 80, "boss": true}]
 		"api_bazaar":
 			return [{"type": "rate_limiter", "count": 3}, {"type": "bug", "count": 2}]
 		"cloud_district":
-			return [{"type": "cloud_bill", "count": 1, "hp": 100}, {"type": "memory_leak", "count": 2}]
+			return [{"type": "cloud_bill", "count": 1, "hp": 100, "boss": true}, {"type": "memory_leak", "count": 2}]
 		"open_source_wildlands":
 			return [{"type": "legacy_system", "count": 2}, {"type": "bug", "count": 3}]
 		"corporate_enterprise":
-			return [{"type": "enterprise_architect", "count": 1, "hp": 120}, {"type": "scope_creep", "count": 3}]
+			return [{"type": "enterprise_architect", "count": 1, "hp": 120, "boss": true}, {"type": "scope_creep", "count": 3}]
 		"gpu_mines":
 			return [{"type": "memory_leak", "count": 5}, {"type": "bug", "count": 2}]
 		"production":
-			return [{"type": "legacy_monolith", "count": 1, "hp": 200}, {"type": "hallucination", "count": 3}]
+			return [{"type": "legacy_monolith", "count": 1, "hp": 200, "boss": true}, {"type": "hallucination", "count": 3}]
 		"token_vault":
-			return [{"type": "rate_limiter", "count": 2}, {"type": "infinite_context", "count": 1, "hp": 150}]
+			return [{"type": "rate_limiter", "count": 2}, {"type": "infinite_context", "count": 1, "hp": 150, "boss": true}]
 		_: return [{"type": "bug", "count": 2}]
 
 static func _region_npcs(region_id: String) -> Array:

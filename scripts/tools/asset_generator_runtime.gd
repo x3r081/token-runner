@@ -195,12 +195,11 @@ func _generate_enemies() -> void:
 		elif ename == "hallucination":
 			_draw_hallucination(img, c)
 		elif ename == "legacy_monolith":
-			_fill_rect(img, 4, 4, 24, 24, c)
-			for i in range(6, 26, 4):
-				_fill_rect(img, i, 6, 2, 20, c.darkened(0.2))
+			_draw_legacy_monolith(img, c)
 		elif ename == "infinite_context":
-			for r in range(3, 14, 2):
-				_draw_circle_outline(img, 16, 16, r, c)
+			_draw_infinite_context(img, c)
+		elif ename == "enterprise_architect":
+			_draw_enterprise_architect(img, c)
 		else:
 			_fill_circle(img, 16, 16, 12, c)
 			_fill_circle(img, 12, 13, 3, Color.WHITE)
@@ -323,6 +322,74 @@ func _draw_hallucination(img: Image, c: Color) -> void:
 	# glitch bars
 	_fill_rect(img, 4, 9, 24, 1, Color(0.3, 1, 0.9, 0.7))
 	_fill_rect(img, 4, 20, 24, 1, Color(1, 0.4, 0.9, 0.7))
+
+## THE LEGACY MONOLITH: a towering brick slab, cracked, with glowing COBOL runes.
+func _draw_legacy_monolith(img: Image, c: Color) -> void:
+	var brick := Color(0.34, 0.3, 0.28)
+	_fill_rect(img, 3, 2, 26, 28, brick)
+	# offset brick rows
+	for row in range(2, 30, 5):
+		_fill_rect(img, 3, row, 26, 1, brick.darkened(0.35))
+		var off := 0 if (row / 5) % 2 == 0 else 4
+		for bx in range(3 + off, 29, 8):
+			_fill_rect(img, bx, row, 1, 5, brick.darkened(0.35))
+	# cracks
+	_draw_line_img(img, 10, 3, 14, 28, Color(0.1, 0.09, 0.08))
+	_draw_line_img(img, 22, 5, 18, 27, Color(0.1, 0.09, 0.08))
+	# glowing runes
+	_fill_rect(img, 13, 12, 6, 2, Color(0.4, 0.95, 0.5))
+	_fill_rect(img, 15, 10, 2, 8, Color(0.4, 0.95, 0.5))
+	# moss on top
+	_fill_rect(img, 3, 2, 26, 2, Color(0.3, 0.5, 0.3))
+
+## THE INFINITE CONTEXT: nested rings around an unblinking eye.
+func _draw_infinite_context(img: Image, c: Color) -> void:
+	for r in range(4, 16, 3):
+		_draw_circle_outline(img, 16, 16, r, c.lightened(0.1 * (r % 3)))
+	_fill_circle(img, 16, 16, 5, Color(0.95, 0.95, 1.0))
+	_fill_circle(img, 16, 16, 3, c)
+	_fill_circle(img, 16, 16, 1, Color.BLACK)
+	# swirl arms
+	for a in range(0, 360, 90):
+		var rad := deg_to_rad(a)
+		_draw_line_img(img, 16, 16, 16 + int(cos(rad) * 14), 16 + int(sin(rad) * 14), c.darkened(0.1))
+
+## THE ENTERPRISE ARCHITECT: a suit, a tie, and an aura of governance.
+func _draw_enterprise_architect(img: Image, c: Color) -> void:
+	# governance aura (concentric squares)
+	for s in [14, 11]:
+		_draw_rect_outline(img, 16 - s, 16 - s, s * 2, s * 2, c.darkened(0.1))
+	var suit := Color(0.16, 0.18, 0.28)
+	var skin := Color(0.86, 0.72, 0.6)
+	# head
+	_fill_circle(img, 16, 8, 5, skin)
+	_fill_rect(img, 12, 4, 8, 3, Color(0.2, 0.2, 0.24))  # hair
+	img.set_pixel(14, 8, Color(0.1, 0.1, 0.1))
+	img.set_pixel(18, 8, Color(0.1, 0.1, 0.1))
+	# suit torso
+	_fill_rect(img, 9, 13, 14, 16, suit)
+	_fill_rect(img, 14, 13, 4, 3, Color(0.95, 0.95, 0.95))  # collar
+	# red power tie
+	for ty in range(13, 27):
+		var w := 1 + (ty - 13) / 6
+		_fill_rect(img, 16 - w / 2, ty, maxi(1, w), 1, Color(0.8, 0.15, 0.2))
+	# arms
+	_fill_rect(img, 6, 14, 3, 11, suit)
+	_fill_rect(img, 23, 14, 3, 11, suit)
+
+func _draw_rect_outline(img: Image, x: int, y: int, w: int, h: int, col: Color) -> void:
+	for i in range(x, x + w):
+		if i >= 0 and i < img.get_width():
+			if y >= 0 and y < img.get_height():
+				img.set_pixel(i, y, col)
+			if y + h - 1 >= 0 and y + h - 1 < img.get_height():
+				img.set_pixel(i, y + h - 1, col)
+	for j in range(y, y + h):
+		if j >= 0 and j < img.get_height():
+			if x >= 0 and x < img.get_width():
+				img.set_pixel(x, j, col)
+			if x + w - 1 >= 0 and x + w - 1 < img.get_width():
+				img.set_pixel(x + w - 1, j, col)
 
 func _fill_ellipse(img: Image, cx: int, cy: int, rx: int, ry: int, c: Color, inset: int = 0) -> void:
 	for x in img.get_width():
