@@ -329,6 +329,8 @@ static func _build_signs(parent: Node2D) -> void:
 	_sign(z, Vector2(150, 900), "node_modules\n(trash)", Color(0.7, 0.6, 0.5))
 	_sign(z, Vector2(1250, 920), "BED\n'sleep? during a hackathon?'", Color(0.7, 0.75, 0.95))
 	_sign(z, Vector2(880, 120), "DNS\nProbably not the problem.", Color(0.55, 0.85, 1.0))
+	_sign(z, Vector2(1090, 585), "'FREE' TOKENS \u2192", Color(0.4, 0.95, 0.5))
+	_sign(z, Vector2(250, 525), "\u2190 deploy an AI agent\n(what could go wrong)", Color(0.7, 0.6, 0.95))
 
 static func _sign(parent: Node2D, pos: Vector2, text: String, color: Color) -> void:
 	var lbl := Label.new()
@@ -396,6 +398,13 @@ static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 	email.one_shot = false  # re-checkable inbox running gag
 	_add_interact(props, interact_scene, "dream_app_terminal", Vector2(650, 360), "Dream App Terminal")
 	_add_interact(props, interact_scene, "deploy_button", Vector2(760, 380), "Deploy To Production")
+	# Comedy storyline triggers (repeatable), color-coded and signposted.
+	var ad := _add_interact(props, interact_scene, "free_tokens_ad", Vector2(1160, 620), "Suspicious pop-up ad")
+	ad.one_shot = false
+	_tint(ad, Color(0.3, 0.9, 0.4))
+	var agent := _add_interact(props, interact_scene, "agent_terminal", Vector2(300, 560), "Autonomous Agent terminal")
+	agent.one_shot = false
+	_tint(agent, Color(0.6, 0.5, 0.95))
 
 	if GameManager.is_region_unlocked("dependency_district"):
 		var portal_scene := preload("res://scenes/world/region_portal.tscn")
@@ -412,3 +421,8 @@ static func _add_interact(parent: Node2D, scene: PackedScene, id: String, pos: V
 	node.position = pos
 	parent.add_child(node)
 	return node
+
+static func _tint(interactable: Node, color: Color) -> void:
+	var rect := interactable.get_node_or_null("ColorRect")
+	if rect:
+		rect.color = Color(color.r, color.g, color.b, 0.85)

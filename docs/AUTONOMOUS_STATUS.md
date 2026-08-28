@@ -66,9 +66,16 @@ identities, model-selection/agent systems.
   keyboard/controller focus (confirm with Enter).
 - **Interact range** widened (40 → 56) for better feel.
 - Added achievements: AGILE, IT WAS DNS, Boring Responsible Adult, Terms & Cond.
-- Regression test `tests/story_test.tscn` (11/11) drives the storyline to
-  completion and asserts rewards, achievement, script + quest completion, and
-  the chained next quest. Wired into CI.
+- Regression test `tests/story_test.tscn` drives the storylines to completion
+  and asserts rewards, achievements, script + quest completion, and the chained
+  next quest. Wired into CI.
+- Added two more flagship storylines via the same engine (now 19/19 tests):
+  - **Free Tier**: 10,000 "free" tokens gifted, then 9,970 reclaimed by updated
+    fine print ("still technically up to 10,000"). Achievement: Terms & Cond.
+  - **The Autonomous Agent**: delegate renaming a variable; the agent installs
+    12 deps, rewrites auth, opens a "minor cleanup" PR (+4,812/-9), spawns a
+    second agent, and holds a retro about you. Costs debt + will to live.
+  - Triggered by color-coded, signposted props in Localhost.
 
 ## Verified test commands
 
@@ -83,6 +90,19 @@ godot --headless --path . --quit-after 1
 
 ## Next iteration (planned)
 
-See `QUALITY_BACKLOG.md`. Next largest player-facing weakness: **Localhost
-visual composition** (dead space, stamped floor, weak hierarchy) and the
-**player/enemy art readability**.
+See `QUALITY_BACKLOG.md`. Candidate next largest player-facing weaknesses:
+1. **Enemy identities** — only `bug` (beetle) is redesigned; rate_limiter,
+   memory_leak, merge_conflict, scope_creep, rogue agent, and bosses still read
+   as colored blobs. Give each a silhouette + telegraph + death.
+2. **Combat depth** — add abilities beyond Prompt Blast / Cache / Dash
+   (Rollback, Rubber Duck, Stack Trace, Ctrl+Z) that interact with enemy
+   mechanics.
+3. **Systemic technical-debt consequences** — make accumulated debt spawn bugs,
+   raise costs, and trigger incidents (ties the comedy rewards to real stakes).
+4. **Ship-before-reset cycle** — strategic reset periods (quotas reset, prices
+   shift, expectations change).
+5. **Player art** — higher-fidelity character.
+
+Exact resume point: pick weakness #1 (enemy identities) — extend
+`asset_generator_runtime._generate_enemies()` with distinct per-type art like
+the beetle, then add per-type telegraphs/behaviours in `enemy_base.gd`.

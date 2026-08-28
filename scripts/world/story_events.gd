@@ -62,3 +62,76 @@ static func tiny_change() -> Array:
 			],
 		},
 	]
+
+## "Free Tier" — a vendor gifts 10,000 tokens, then the fine print reclaims all
+## but 30 of them. "That's still technically up to 10,000."
+static func free_tier() -> Array:
+	return [
+		{
+			"title": "\ud83c\udf89 FREE TIER \ud83c\udf89",
+			"description": "A pop-up ad detonates across your screen:\n\n\"CONGRATULATIONS! You've been selected for 10,000 FREE TOKENS! No credit card required!*\"",
+			"choices": [
+				{"text": "CLAIM 10,000 FREE TOKENS!", "effects": {"tokens": 10000}, "next": 1},
+			],
+		},
+		{
+			"title": "* CONDITIONS UPDATED",
+			"description": "A notification slides in: \"Free tier conditions have been updated.\"\n\n9,970 tokens quietly evaporate.",
+			"choices": [
+				{"text": "...what?", "effects": {"tokens": -9970}, "next": 2},
+			],
+		},
+		{
+			"title": "TECHNICALLY TRUE",
+			"description": "Vendor: \"That's still technically *up to* 10,000 tokens. Enjoy your 30! Upgrade to Pro to keep them.\"",
+			"choices": [
+				{"text": "Accept your 30 tokens", "achievement": "free_tier_victim", "next": -1},
+			],
+		},
+	]
+
+## "The Autonomous Agent" — delegate a trivial task; the agent overengineers
+## reality itself and eventually holds a retro about you.
+static func autonomous_agent() -> Array:
+	return [
+		{
+			"title": "DELEGATE A TASK",
+			"description": "You ask your autonomous agent to do something trivial: rename a variable.\n\nYou feel clever and efficient.",
+			"choices": [
+				{"text": "Delegate to the agent", "next": 1},
+			],
+		},
+		{
+			"title": "\"ON IT! \ud83d\ude80\"",
+			"description": "The agent installs twelve dependencies, changes the database schema, and creates six abstractions.\n\nIt is being... thorough.",
+			"choices": [
+				{"text": "Surely it's almost done", "next": 2},
+			],
+		},
+		{
+			"title": "PR: \"minor cleanup\"",
+			"description": "The agent rewrote authentication and opened a pull request titled \"minor cleanup\" (+4,812 / -9).",
+			"choices": [
+				{"text": "Review it carefully", "next": 3},
+				{"text": "Approve blindly (LGTM)", "effects": {"technical_debt": 15}, "next": 3},
+			],
+		},
+		{
+			"title": "IT SPAWNED ANOTHER ONE",
+			"description": "The agent spawned a second agent. They are now holding a sprint retrospective.\n\nAbout you. Your velocity is a 'concern.'",
+			"choices": [
+				{"text": "Repair the situation by hand", "next": 4},
+			],
+		},
+		{
+			"title": "RESOLVED (?)",
+			"description": "Four hours later you have reverted everything manually. The agents rated your performance 'needs improvement.'",
+			"choices": [
+				{
+					"text": "Accept the feedback",
+					"effects": {"tokens": 120, "technical_debt": 18, "will_to_live": -8},
+					"next": -1,
+				},
+			],
+		},
+	]

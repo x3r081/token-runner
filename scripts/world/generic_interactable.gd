@@ -18,6 +18,20 @@ func _on_interact(_player: Node) -> void:
 				_show_message("Inbox: 3,918 unread.\n\n'Hey, tiny thing — can you make the logo bigger? And also smaller?'")
 			else:
 				EventManager.start_scripted("tiny_change", preload("res://scripts/world/story_events.gd").tiny_change())
+		"free_tokens_ad":
+			if EventManager.has_active_event():
+				return
+			if EventManager.is_script_completed("free_tier"):
+				_show_message("The ad returns: 'Your FREE tokens expired. Claim 10,000 MORE?*'\n\n*conditions apply, obviously.")
+			else:
+				EventManager.start_scripted("free_tier", preload("res://scripts/world/story_events.gd").free_tier())
+		"agent_terminal":
+			if EventManager.has_active_event():
+				return
+			if EventManager.is_script_completed("autonomous_agent"):
+				_show_message("The agent left a sticky note: 'Refactored your note-taking. See PR #4471.'")
+			else:
+				EventManager.start_scripted("autonomous_agent", preload("res://scripts/world/story_events.gd").autonomous_agent())
 		"abandoned_package":
 			_show_message("Package recovered. 47 vulnerabilities included free.")
 		"backup_server":
