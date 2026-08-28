@@ -36,9 +36,9 @@ func _populate() -> void:
 	for c in vbox.get_children():
 		c.queue_free()
 	for branch in DreamAppManager.BRANCHES:
-		var tier := DreamAppManager.get_branch_tier(branch)
-		var next := DreamAppManager.get_next_upgrade(branch)
-		var h := HBoxContainer.new()
+		var tier: int = DreamAppManager.get_branch_tier(branch)
+		var next: Dictionary = DreamAppManager.get_next_upgrade(branch)
+		var h: HBoxContainer = HBoxContainer.new()
 		var info := Label.new()
 		var branch_name: String = DreamAppManager.upgrade_defs.get(branch, {}).get("display", branch)
 		if next.is_empty():
@@ -53,7 +53,7 @@ func _populate() -> void:
 		if not next.is_empty():
 			var btn := Button.new()
 			var cost: Dictionary = next.get("cost", {})
-			var cost_str := ""
+			var cost_str: String = ""
 			for k in cost:
 				cost_str += "%s:%d " % [k, cost[k]]
 			btn.text = "Buy (%s)" % cost_str.strip_edges()

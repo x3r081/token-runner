@@ -113,7 +113,10 @@ static func _populate_region(region_id: String, props: Node2D, enemies: Node2D, 
 	for npc_data in _region_npcs(region_id):
 		var n = npc_scene.instantiate()
 		n.npc_id = npc_data.id
-		n.quest_ids = npc_data.get("quests", [])
+		var qids: Array[String] = []
+		for q in npc_data.get("quests", []):
+			qids.append(str(q))
+		n.quest_ids = qids
 		n.position = npc_data.pos
 		npcs.add_child(n)
 	

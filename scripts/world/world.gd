@@ -1,7 +1,7 @@
 extends Node2D
 
-@onready var player: Player = $Player
-@onready var camera: GameCamera = $Player/Camera2D
+@onready var player: CharacterBody2D = $Player
+@onready var camera: Camera2D = $Player/Camera2D
 @onready var region_container: Node2D = $RegionContainer
 @onready var hud: CanvasLayer = $HUD
 @onready var ambient: CanvasModulate = $AmbientLight
@@ -13,14 +13,16 @@ func _ready() -> void:
 	QuestManager.on_region_entered(GameManager.current_region)
 	GameManager.region_changed.connect(_on_region_changed)
 	GameManager.player_died.connect(_on_player_died)
-	if player:
+	if player and player.has_signal("died"):
 		player.died.connect(_on_player_died)
-		player.can_move = false
+		if "can_move" in player:
+			player.can_move = false
 	_set_ambient("localhost")
 	if GameManager.show_opening_sequence:
 		_start_opening_sequence()
 	else:
-		player.can_move = true
+		if player and "can_move" in player:
+			player.can_move = true
 
 func _start_opening_sequence() -> void:
 	var intro := preload("res://scenes/ui/opening_sequence.tscn").instantiate()
@@ -29,7 +31,7 @@ func _start_opening_sequence() -> void:
 
 func _on_opening_finished() -> void:
 	GameManager.show_opening_sequence = false
-	if player:
+	if player and "can_move" in player:
 		player.can_move = true
 	DialogueManager.start_dialogue("roommate_ai", "greeting")
 	if SettingsManager.get_setting("music_enabled"):

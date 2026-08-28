@@ -21,6 +21,7 @@ var _line_index := 0
 var _char_index := 0
 var _typing := true
 var _done := false
+var _wait_timer := 0.0
 
 @onready var panel: PanelContainer = $Panel
 @onready var label: RichTextLabel = $Panel/Margin/VBox/TerminalText
@@ -30,49 +31,70 @@ func _ready() -> void:
 	layer = 100
 	panel.theme = _GameTheme.create()
 	label.text = ""
+	label.scroll_active = true
 	prompt.visible = false
 	AudioManager.stop_music()
+	_char_index = 1
+	label.text = _build_display()
 
 func _process(delta: float) -> void:
 	if _done:
 		return
-	if not _typing:
+	if _wait_timer > 0.0:
+		_wait_timer -= delta
+		label.text = _build_display()
 		return
-	_char_index += int(delta * 42.0)
-	var line: String = LINES[_line_index]
-	if _char_index >= line.length():
-		_char_index = line.length()
-		_typing = false
-		if _line_index < LINES.size() - 1:
-			get_tree().create_timer(0.35).timeout.connect(_next_line)
-		else:
-			prompt.visible = true
+	if _typing:
+		_char_index += maxi(1, int(delta * 48.0))
+		var line: String = LINES[_line_index]
+		if _char_index >= line.length():
+			_char_index = line.length()
+			_typing = false
+			if _line_index < LINES.size() - 1:
+				_wait_timer = 0.3
+			else:
+				prompt.visible = true
 	label.text = _build_display()
+	if not _typing and _wait_timer <= 0.0 and _line_index < LINES.size() - 1:
+		_next_line()
 
 func _build_display() -> String:
 	var shown := ""
 	for i in _line_index:
 		shown += LINES[i] + "\n"
 	var line: String = LINES[_line_index]
-	shown += line.substr(0, _char_index)
+	shown += line.substr(0, mini(_char_index, line.length()))
 	if _typing and int(Time.get_ticks_msec() / 400) % 2 == 0:
-		shown += "[color=#4de8c8]_[/color]"
-	return "[color=#4de8c8]" + shown + "[/color]"
+		shown += "[color=#4de8c8]_"
+	return "[color=#c8f0e8]" + shown + "[/color]"
 
 func _next_line() -> void:
 	_line_index += 1
-	_char_index = 0
+	_char_index = 1
 	_typing = true
+	_wait_timer = 0.0
 
-func _input(event: InputEvent) -> void:
-	if _done or _line_index < LINES.size() - 1:
+func _unhandled_input(event: InputEvent) -> void:
+	if _done:
 		return
-	if (event is InputEventKey or event is InputEventMouseButton) and event.pressed:
-		_finish()
+	if not (event is InputEventKey or event is InputEventMouseButton):
+		return
+	if not event.pressed or event.is_echo():
+		return
+	if _line_index < LINES.size() - 1 or _typing:
+		_line_index = LINES.size() - 1
+		_char_index = LINES[_line_index].length()
+		_typing = false
+		_wait_timer = 0.0
+		prompt.visible = true
+		label.text = _build_display()
+		return
+	_finish()
 
 func _finish() -> void:
 	if _done:
 		return
 	_done = true
+	prompt.visible = false
 	sequence_finished.emit()
 	queue_free()

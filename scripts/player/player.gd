@@ -66,8 +66,8 @@ func _setup_sprite_frames() -> void:
 		for idx in anims[anim_name]:
 			var atlas := AtlasTexture.new()
 			atlas.atlas = sheet
-			var col := idx % 6
-			var row := idx / 6
+			var col: int = int(idx) % 6
+			var row: int = int(idx) / 6
 			atlas.region = Rect2(col * FRAME_SIZE, row * FRAME_SIZE, FRAME_SIZE, FRAME_SIZE)
 			frames.add_frame(anim_name, atlas)
 		frames.set_animation_speed(anim_name, 8.0 if anim_name.begins_with("walk") else 2.0)
