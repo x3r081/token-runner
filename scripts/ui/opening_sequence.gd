@@ -22,6 +22,12 @@ var _char_index := 0
 var _typing := true
 var _done := false
 var _wait_timer := 0.0
+var _elapsed := 0.0
+var _prompt_time := 0.0
+
+## Hard caps so the intro can NEVER trap the player, even if input is missed.
+const MAX_TOTAL := 16.0     # absolute ceiling on the whole intro
+const PROMPT_AUTO := 6.0    # auto-continue after the prompt has been shown a while
 
 @onready var panel: PanelContainer = $Panel
 @onready var label: RichTextLabel = $Panel/Margin/VBox/TerminalText
@@ -40,6 +46,16 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if _done:
 		return
+	# Safety: the intro must always hand control back to the player.
+	_elapsed += delta
+	if _elapsed >= MAX_TOTAL:
+		_finish()
+		return
+	if prompt.visible:
+		_prompt_time += delta
+		if _prompt_time >= PROMPT_AUTO:
+			_finish()
+			return
 	if _wait_timer > 0.0:
 		_wait_timer -= delta
 		label.text = _build_display()

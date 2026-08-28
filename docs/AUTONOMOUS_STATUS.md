@@ -9,9 +9,8 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 21 complete — personalized ship-results roast.
-Next: interactive critical playtest to surface remaining high-severity issues;
-more quest variety; per-region NPC flavour.
+Iteration 22 — **P0 intro soft-lock fixed** (found via interactive playtest).
+Next: continued interactive playtests; more quest variety; per-region NPC flavour.
 
 ## Iteration log
 
@@ -277,6 +276,21 @@ more quest variety; per-region NPC flavour.
   the results stats.
 - Regression test `tests/results_test.tscn` (11/11) verifies the roast reflects
   the run's state (and flips when you have backups). Wired into CI.
+
+### Iteration 22 — P0 intro soft-lock (found by interactive playtest)
+- An interactive computer-use playtest revealed a **game-breaking soft-lock**:
+  if the boot-sequence "press any key" prompt's finishing input was missed, the
+  intro never emitted `sequence_finished`, so `world` never set `can_move = true`.
+  Result: abilities/model-cycle worked (they don't gate on `can_move`) but
+  **movement, dash, and interact were dead** — the game was unplayable.
+- Fix: the opening sequence now **auto-finishes** with hard caps (whole intro
+  ≤ 16s; auto-continue ≤ 6s after the prompt shows) so control is ALWAYS handed
+  back, plus a `world` **18s safety net** that force-restores control. Verified
+  end-to-end: with zero advance input the player regains control and moves.
+- Regression test `tests/opening_test.tscn` (2/2): the intro auto-finishes and
+  frees itself with no input. Wired into CI.
+- Lesson: scripted screenshot captures used movement keys that incidentally
+  finished the intro, hiding the bug — interactive playtesting caught it.
 
 ## Verified test commands
 

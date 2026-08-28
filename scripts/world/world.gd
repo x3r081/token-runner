@@ -30,6 +30,13 @@ func _start_opening_sequence() -> void:
 	var intro := preload("res://scenes/ui/opening_sequence.tscn").instantiate()
 	add_child(intro)
 	intro.sequence_finished.connect(_on_opening_finished)
+	# Safety net: no matter what, restore control shortly after the intro window.
+	get_tree().create_timer(18.0).timeout.connect(_ensure_player_control)
+
+func _ensure_player_control() -> void:
+	if player and "can_move" in player and not player.can_move \
+			and GameManager.state == GameManager.GameState.PLAYING:
+		_on_opening_finished()
 
 func _on_opening_finished() -> void:
 	GameManager.show_opening_sequence = false
