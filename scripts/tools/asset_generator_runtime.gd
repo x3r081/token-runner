@@ -182,6 +182,18 @@ func _generate_enemies() -> void:
 		var c: Color = enemies[ename]
 		if ename == "bug":
 			_draw_bug(img, c)
+		elif ename == "rate_limiter":
+			_draw_rate_limiter(img, c)
+		elif ename == "memory_leak":
+			_draw_memory_leak(img, c)
+		elif ename == "merge_conflict":
+			_draw_merge_conflict(img, c)
+		elif ename == "scope_creep":
+			_draw_scope_creep(img, c)
+		elif ename == "dependency_demon":
+			_draw_dependency_demon(img, c)
+		elif ename == "hallucination":
+			_draw_hallucination(img, c)
 		elif ename == "legacy_monolith":
 			_fill_rect(img, 4, 4, 24, 24, c)
 			for i in range(6, 26, 4):
@@ -230,6 +242,87 @@ func _draw_bug(img: Image, c: Color) -> void:
 	# glowing eyes
 	img.set_pixel(14, 7, Color(1.0, 0.85, 0.2))
 	img.set_pixel(18, 7, Color(1.0, 0.85, 0.2))
+
+## A rate limiter reads as a barrier/gate with a red "STOP" light and pulse bars.
+func _draw_rate_limiter(img: Image, c: Color) -> void:
+	var post := Color(0.2, 0.2, 0.24)
+	_fill_rect(img, 5, 6, 4, 22, post)
+	_fill_rect(img, 23, 6, 4, 22, post)
+	for i in 3:
+		var y := 9 + i * 6
+		_fill_rect(img, 9, y, 14, 4, c if i % 2 == 0 else Color(0.9, 0.2, 0.2))
+	# stop light
+	_fill_circle(img, 16, 4, 3, Color(0.95, 0.2, 0.2))
+	_fill_circle(img, 16, 4, 1, Color(1, 0.7, 0.6))
+
+## A memory leak: a melting blob dripping corruption downward.
+func _draw_memory_leak(img: Image, c: Color) -> void:
+	_fill_circle(img, 16, 12, 9, c)
+	_fill_circle(img, 13, 10, 2, Color.WHITE)
+	_fill_circle(img, 19, 10, 2, Color.WHITE)
+	_fill_circle(img, 13, 10, 1, Color.BLACK)
+	_fill_circle(img, 19, 10, 1, Color.BLACK)
+	# drips
+	for dx in [10, 16, 22]:
+		var h: int = 8 + (int(dx) % 5)
+		_fill_rect(img, int(dx) - 1, 18, 3, h, c.darkened(0.1))
+		_fill_circle(img, int(dx), 18 + h, 2, c.darkened(0.15))
+
+## A merge conflict: two incompatible halves and a jagged seam (<<< >>>).
+func _draw_merge_conflict(img: Image, _c: Color) -> void:
+	var left := Color(0.85, 0.3, 0.25)
+	var right := Color(0.3, 0.5, 0.85)
+	_fill_circle(img, 16, 16, 12, left)
+	for x in 32:
+		for y in 32:
+			if x > 16 + int(sin(y * 0.6) * 1.5) and Vector2(x - 16, y - 16).length() <= 12:
+				img.set_pixel(x, y, right)
+	# seam markers
+	for y in range(6, 27, 5):
+		img.set_pixel(15, y, Color(0.1, 0.1, 0.1))
+		img.set_pixel(17, y, Color(0.1, 0.1, 0.1))
+	_fill_circle(img, 11, 14, 1, Color.WHITE)
+	_fill_circle(img, 21, 14, 1, Color.WHITE)
+
+## Scope creep: a green amoeba with arrows expanding outward in all directions.
+func _draw_scope_creep(img: Image, c: Color) -> void:
+	_fill_circle(img, 16, 16, 8, c)
+	for a in [Vector2(0, -1), Vector2(0, 1), Vector2(-1, 0), Vector2(1, 0)]:
+		var tip: Vector2 = Vector2(16, 16) + a * 14
+		var base: Vector2 = Vector2(16, 16) + a * 8
+		_draw_line_img(img, int(base.x), int(base.y), int(tip.x), int(tip.y), c.lightened(0.2))
+		_fill_circle(img, int(tip.x), int(tip.y), 2, c.lightened(0.3))
+	_fill_circle(img, 13, 15, 1, Color.WHITE)
+	_fill_circle(img, 19, 15, 1, Color.WHITE)
+
+## Dependency demon: a tangled knot of dependencies with many radiating legs.
+func _draw_dependency_demon(img: Image, c: Color) -> void:
+	_fill_circle(img, 16, 16, 7, c)
+	for i in 8:
+		var ang := TAU * float(i) / 8.0
+		var d: Vector2 = Vector2(cos(ang), sin(ang))
+		var tip: Vector2 = Vector2(16, 16) + d * 14
+		_draw_line_img(img, 16, 16, int(tip.x), int(tip.y), c.darkened(0.2))
+		_fill_circle(img, int(tip.x), int(tip.y), 2, c.darkened(0.1))
+	_fill_circle(img, 13, 14, 2, Color(1, 0.9, 0.3))
+	_fill_circle(img, 19, 14, 2, Color(1, 0.9, 0.3))
+	_fill_circle(img, 13, 14, 1, Color.BLACK)
+	_fill_circle(img, 19, 14, 1, Color.BLACK)
+
+## Hallucination: a glitchy ghost with too many eyes.
+func _draw_hallucination(img: Image, c: Color) -> void:
+	_fill_circle(img, 16, 14, 10, c)
+	_fill_rect(img, 6, 14, 20, 12, c)
+	# wavy bottom
+	for x in range(6, 26, 4):
+		_fill_circle(img, x + 2, 26, 2, Color(0, 0, 0, 0))
+	# extra eyes
+	for e in [Vector2(12, 12), Vector2(20, 12), Vector2(16, 18)]:
+		_fill_circle(img, int(e.x), int(e.y), 2, Color.WHITE)
+		_fill_circle(img, int(e.x), int(e.y), 1, Color(0.1, 0, 0.1))
+	# glitch bars
+	_fill_rect(img, 4, 9, 24, 1, Color(0.3, 1, 0.9, 0.7))
+	_fill_rect(img, 4, 20, 24, 1, Color(1, 0.4, 0.9, 0.7))
 
 func _fill_ellipse(img: Image, cx: int, cy: int, rx: int, ry: int, c: Color, inset: int = 0) -> void:
 	for x in img.get_width():

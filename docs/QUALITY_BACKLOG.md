@@ -22,9 +22,12 @@ every iteration by fresh playtesting. Priorities:
   de-tiled with jitter/grime; knot repetition removed.)*
 - [ ] **Player art**: still crude; needs coherent character with readable
   silhouette + animation set. *(Hoodie coder is okay but low-res; revisit.)*
-- [~] **Enemy identity**: `bug` now reads as a beetle. Remaining enemy types
-  (rate_limiter, memory_leak, merge_conflict, scope_creep, rogue agent, bosses)
-  still need distinct silhouettes, telegraphs, behaviors, deaths.
+- [~] **Enemy identity**: distinct silhouettes done for bug (beetle),
+  rate_limiter (barrier), memory_leak (dripping blob), merge_conflict
+  (split red/blue), scope_creep (expanding arrows), dependency_demon (spider
+  knot), hallucination (multi-eyed ghost). Remaining: per-type **telegraphs /
+  behaviors / death effects**, and boss visuals (enterprise_architect,
+  legacy_monolith, infinite_context).
 - [ ] **Gameplay depth**: currently walk + collect + shoot. Needs decisions,
   branching quests, model selection, agent system, architecture tradeoffs.
 - [~] **Comedy as mechanics**: staged storyline engine shipped; **Just One Tiny
