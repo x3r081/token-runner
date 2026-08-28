@@ -14,6 +14,7 @@ func _ready() -> void:
 	QuestManager.on_region_entered(GameManager.current_region)
 	GameManager.region_changed.connect(_on_region_changed)
 	GameManager.player_died.connect(_on_player_died)
+	GameManager.debt_incident.connect(_on_debt_incident)
 	if player and player.has_signal("died"):
 		player.died.connect(_on_player_died)
 		if "can_move" in player:
@@ -82,6 +83,20 @@ func _on_region_changed(region_id: String) -> void:
 
 func on_region_changed(region_id: String) -> void:
 	_on_region_changed(region_id)
+
+## Technical debt "breaks a dependency": a fresh bug crawls out near the player.
+func _on_debt_incident(_kind: String) -> void:
+	if not _current_region_node or not player:
+		return
+	var enemies := _current_region_node.get_node_or_null("Enemies")
+	if not enemies:
+		return
+	var e = preload("res://scenes/combat/enemy.tscn").instantiate()
+	e.enemy_type = "bug"
+	e.max_hp = 16
+	enemies.add_child(e)
+	var ang := randf() * TAU
+	e.global_position = player.global_position + Vector2(cos(ang), sin(ang)) * randf_range(180.0, 260.0)
 
 func _on_player_died(_msg: String = "") -> void:
 	get_tree().paused = false

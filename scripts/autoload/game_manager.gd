@@ -7,6 +7,7 @@ signal region_changed(region_id: String)
 signal act_changed(act: int)
 signal game_won(results: Dictionary)
 signal player_died(message: String)
+signal debt_incident(kind: String)
 
 enum GameState { MENU, PLAYING, PAUSED, DIALOGUE, CUTSCENE, GAME_OVER, VICTORY, LOADING }
 
@@ -42,15 +43,37 @@ var session_stats: Dictionary = {
 
 var show_opening_sequence: bool = true
 
+## Technical debt consequences: above the safe threshold, debt periodically
+## drains stability and can "break a dependency" (spawns a bug in the world).
+## Below it, nothing happens — some debt is strategically fine.
+const DEBT_SAFE_THRESHOLD := 20.0
+const DEBT_TICK_INTERVAL := 5.0
+
 var _rng := RandomNumberGenerator.new()
+var _debt_accum := 0.0
 
 func _ready() -> void:
 	_rng.randomize()
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
 func _process(delta: float) -> void:
-	if state == GameState.PLAYING:
+	if state == GameState.PLAYING and not get_tree().paused:
 		play_time_seconds += delta
+		_debt_accum += delta
+		if _debt_accum >= DEBT_TICK_INTERVAL:
+			_debt_accum = 0.0
+			apply_debt_consequences()
+
+## Public so it can be exercised deterministically by tests.
+func apply_debt_consequences() -> void:
+	var debt := ResourceManager.get_value("technical_debt")
+	if debt <= DEBT_SAFE_THRESHOLD:
+		return
+	var over := debt - DEBT_SAFE_THRESHOLD
+	ResourceManager.modify("stability", -clampf(over * 0.05, 0.2, 4.0))
+	var break_chance := clampf(over / 300.0, 0.0, 0.5)
+	if _rng.randf() < break_chance:
+		debt_incident.emit("dependency_break")
 
 func start_new_game() -> void:
 	current_region = "localhost"

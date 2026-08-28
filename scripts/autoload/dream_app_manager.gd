@@ -53,17 +53,33 @@ func get_next_upgrade(branch: String) -> Dictionary:
 		return {}
 	return tiers[current]
 
+## Technical debt makes everything cost more — borrowing against the future
+## isn't free. +0.4% per debt point (e.g. 100 debt => +40% upgrade costs).
+const DEBT_COST_PER_POINT := 0.004
+
+func debt_cost_multiplier() -> float:
+	return 1.0 + ResourceManager.get_value("technical_debt") * DEBT_COST_PER_POINT
+
+func get_effective_cost(branch: String) -> Dictionary:
+	var next := get_next_upgrade(branch)
+	var base: Dictionary = next.get("cost", {})
+	var mult := debt_cost_multiplier()
+	var out := {}
+	for k in base:
+		out[k] = int(ceil(float(base[k]) * mult))
+	return out
+
 func can_purchase(branch: String) -> bool:
 	var next := get_next_upgrade(branch)
 	if next.is_empty():
 		return false
-	return ResourceManager.can_afford(next.get("cost", {}))
+	return ResourceManager.can_afford(get_effective_cost(branch))
 
 func purchase(branch: String) -> bool:
 	var next := get_next_upgrade(branch)
 	if next.is_empty():
 		return false
-	if not ResourceManager.spend(next.get("cost", {})):
+	if not ResourceManager.spend(get_effective_cost(branch)):
 		return false
 	purchased[branch] = get_branch_tier(branch) + 1
 	if next.has("debt"):

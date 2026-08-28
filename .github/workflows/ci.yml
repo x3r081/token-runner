@@ -37,6 +37,9 @@ jobs:
       - name: Run combat regression test
         run: godot --headless --path . --scene tests/combat_test.tscn
 
+      - name: Run technical-debt regression test
+        run: godot --headless --path . --scene tests/debt_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 

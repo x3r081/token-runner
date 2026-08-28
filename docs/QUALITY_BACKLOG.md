@@ -37,7 +37,8 @@ every iteration by fresh playtesting. Priorities:
 ## P2 — Depth & polish
 
 - [ ] Multi-stage/branching quests with consequences, failure states, callbacks.
-- [ ] Technical-debt systemic consequences (bugs spawn, costs rise, incidents).
+- [x] Technical-debt systemic consequences: costs rise, stability drains, bugs
+  spawn on dependency-break incidents (safe below threshold). *(It7)*
 - [ ] Ship-before-reset cycle system (quotas reset, prices shift, expectations).
 - [ ] NPC personalities with memory and evolving dialogue (Claude + archetypes).
 - [~] Combat abilities beyond Prompt Blast/Cache/Dash: added **Rubber Duck**

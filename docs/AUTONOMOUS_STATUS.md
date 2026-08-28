@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 6 complete — combat depth (enemy behaviours + new abilities).
-Next: systemic technical-debt consequences, ship-before-reset cycle, boss
-visuals/telegraphs, HUD ability readout.
+Iteration 7 complete — systemic technical-debt consequences.
+Next: ship-before-reset cycle, boss telegraphs/visuals, HUD ability readout,
+model-selection system.
 
 ## Iteration log
 
@@ -96,6 +96,20 @@ visuals/telegraphs, HUD ability readout.
   Rubber Duck stun, Stack Trace pierce (and non-pierce consumption), and that a
   rate-limiter pulse never traps the player. Wired into CI.
 
+### Iteration 7 — Technical-debt consequences
+- Debt now **matters mechanically** (above a safe threshold of 20; below it debt
+  is strategically fine):
+  - **Upgrade costs scale with debt** (`DreamAppManager.get_effective_cost`,
+    +0.4%/point — 100 debt ⇒ +40%).
+  - **Debt drains stability** on a periodic tick (`GameManager.apply_debt_consequences`).
+  - **Debt breaks dependencies**: a `debt_incident` spawns a fresh bug near the
+    player in the world (`world._on_debt_incident`).
+- This ties the comedy rewards (which dump large debt, e.g. +43 from Just One
+  Tiny Change) to real strategic stakes.
+- Regression test `tests/debt_test.tscn` (6/6): cost scaling, stability drain
+  above threshold, no effect below threshold, and dependency-break incidents at
+  high debt. Wired into CI.
+
 ## Verified test commands
 
 ```bash
@@ -105,6 +119,7 @@ godot --headless --path . --scene tests/smoke_test.tscn        # 8/8
 godot --headless --path . --scene tests/soft_lock_test.tscn    # 4/4
 godot --headless --path . --scene tests/story_test.tscn        # 19/19
 godot --headless --path . --scene tests/combat_test.tscn       # 10/10
+godot --headless --path . --scene tests/debt_test.tscn         # 6/6
 godot --headless --path . --quit-after 1
 ```
 
