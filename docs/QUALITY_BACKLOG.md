@@ -15,6 +15,9 @@ every iteration by fresh playtesting. Priorities:
 
 ## P1 — Major player-facing gaps
 
+- [x] **NPC art**: NPCs were invisible (textureless); now have distinct
+  per-archetype sprites (Claude/suit/maintainer/foreman) + shadows. *(It19)*
+
 - [x] **Localhost composition**: was ~half dead space. *(It2: zoned interior +
   camera bounds; content now spans full width. Follow-up: verify at 1440p,
   add foreground occlusion.)*

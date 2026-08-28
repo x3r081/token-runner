@@ -13,9 +13,20 @@ func generate_all() -> void:
 	_generate_tokens()
 	_generate_ui_elements()
 	_generate_icon()
+	_generate_npcs()
 	var interior = preload("res://scripts/tools/interior_generator.gd").new()
 	interior.generate()
 	print("Assets generated.")
+
+func _generate_npcs() -> void:
+	var kinds := {
+		"claude": {"hoodie": Color(0.16, 0.36, 0.36), "hoodie_hi": Color(0.24, 0.52, 0.5), "hoodie_sh": Color(0.1, 0.26, 0.26), "hair": Color(0.15, 0.13, 0.12), "skin": Color(0.88, 0.74, 0.62), "accent": Color(0.35, 0.95, 0.85), "headphones": true},
+		"suit": {"hoodie": Color(0.16, 0.18, 0.27), "hoodie_hi": Color(0.24, 0.26, 0.37), "hoodie_sh": Color(0.1, 0.11, 0.18), "hair": Color(0.2, 0.16, 0.12), "skin": Color(0.86, 0.72, 0.6), "accent": Color(0.82, 0.16, 0.2), "headphones": false},
+		"maintainer": {"hoodie": Color(0.3, 0.32, 0.34), "hoodie_hi": Color(0.4, 0.42, 0.44), "hoodie_sh": Color(0.2, 0.22, 0.24), "hair": Color(0.42, 0.42, 0.44), "skin": Color(0.82, 0.68, 0.56), "accent": Color(0.5, 0.75, 0.55), "headphones": false},
+		"foreman": {"hoodie": Color(0.85, 0.55, 0.15), "hoodie_hi": Color(0.95, 0.7, 0.25), "hoodie_sh": Color(0.6, 0.38, 0.1), "hair": Color(0.15, 0.12, 0.1), "skin": Color(0.8, 0.66, 0.54), "accent": Color(0.15, 0.15, 0.18), "headphones": false},
+	}
+	for k in kinds:
+		_save_image(_draw_vibe_coder("down", "idle", 0, kinds[k]), "npc_%s.png" % k)
 
 func _generate_player_spritesheet() -> void:
 	const FRAME := 64
@@ -57,7 +68,7 @@ func _blit_frame(sheet: Image, ox: int, oy: int, size: int, frame: Image) -> voi
 		for y in size:
 			sheet.set_pixel(ox + x, oy + y, frame.get_pixel(x, y))
 
-func _draw_vibe_coder(direction: String, pose: String, frame_idx: int) -> Image:
+func _draw_vibe_coder(direction: String, pose: String, frame_idx: int, palette: Dictionary = {}) -> Image:
 	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 	var outline := Color(0.05, 0.05, 0.09)
@@ -72,6 +83,16 @@ func _draw_vibe_coder(direction: String, pose: String, frame_idx: int) -> Image:
 	var shoe := Color(0.93, 0.93, 0.97)
 	var cup := Color(0.10, 0.10, 0.14)
 	var glow := Color(0.35, 0.95, 0.85)
+	var show_phones := true
+	if not palette.is_empty():
+		hoodie = palette.get("hoodie", hoodie)
+		hoodie_hi = palette.get("hoodie_hi", hoodie_hi)
+		hoodie_sh = palette.get("hoodie_sh", hoodie_sh)
+		hair = palette.get("hair", hair)
+		skin = palette.get("skin", skin)
+		skin_sh = skin.darkened(0.15)
+		glow = palette.get("accent", glow)
+		show_phones = palette.get("headphones", true)
 
 	var walk := pose == "walk"
 	var bob := (1 if (walk and frame_idx % 2 == 0) else 0)
@@ -139,11 +160,12 @@ func _draw_vibe_coder(direction: String, pose: String, frame_idx: int) -> Image:
 			_fill_rect(img, cx - 4, hy - 1, 2, 2, Color(0.08, 0.06, 0.05))
 			_fill_rect(img, cx + 2, hy - 1, 2, 2, Color(0.08, 0.06, 0.05))
 		# headphones over ears + neon accents
-		_fill_rect(img, cx - 10, hy - 6, 20, 2, cup)
-		_fill_circle(img, cx - 8, hy + 1, 3, cup)
-		_fill_circle(img, cx + 8, hy + 1, 3, cup)
-		img.set_pixel(cx - 8, hy + 1, glow)
-		img.set_pixel(cx + 8, hy + 1, glow)
+		if show_phones:
+			_fill_rect(img, cx - 10, hy - 6, 20, 2, cup)
+			_fill_circle(img, cx - 8, hy + 1, 3, cup)
+			_fill_circle(img, cx + 8, hy + 1, 3, cup)
+			img.set_pixel(cx - 8, hy + 1, glow)
+			img.set_pixel(cx + 8, hy + 1, glow)
 
 	# --- pose props ---
 	if pose == "phone":

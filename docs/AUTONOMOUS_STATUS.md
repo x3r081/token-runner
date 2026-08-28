@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 18 complete — higher-fidelity player character art.
-Next: NPC distinct sprites, more branching quests with multiple endings,
-results-screen polish.
+Iteration 19 complete — distinct NPC sprites (Claude + archetypes).
+Next: more branching quests with multiple endings, results-screen polish,
+per-region NPC flavour.
 
 ## Iteration log
 
@@ -244,6 +244,15 @@ results-screen polish.
   for small pixel characters — so the player pops against any background.
 - Verified in-game at scale (2.2×): clear, distinct, polished character replacing
   the previous dark blob.
+
+### Iteration 19 — NPC sprites
+- NPCs were **textureless** (invisible bodies with only a label). Parametrized
+  the character drawer with a palette and generated distinct NPC sprites:
+  **Claude** (teal hoodie + headphones), **suit** (corporate: navy + red tie),
+  **maintainer** (grey, greying hair), **foreman** (hi-vis orange).
+- `npc.gd` assigns a sprite per archetype (roommate/cloud/svp/reseller/foreman/…)
+  plus a soft shadow, matching the player's scale. Claude now renders as a clear,
+  distinct character in-game.
 
 ## Verified test commands
 
