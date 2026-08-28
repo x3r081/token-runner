@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 11 complete — model-selection system (Prompt Blast trade-offs).
-Next: deployable-agent gameplay, Dream App architecture tradeoffs, NPC
-memory/personality, boss telegraphs, higher-fi player art, running-gag callbacks.
+Iteration 12 complete — deployable-agent gameplay system.
+Next: Dream App architecture tradeoffs, NPC memory/personality, boss telegraphs,
+higher-fi player art, running-gag callbacks, more branching quests/endings.
 
 ## Iteration log
 
@@ -155,6 +155,23 @@ memory/personality, boss telegraphs, higher-fi player art, running-gag callbacks
   HUD shows `⚙ Model: <name> ([T], N tk/blast)` and a change toast.
 - Regression test `tests/model_test.tscn` (7/7): defaults, cycling wrap,
   distinct trade-offs, and cost scaling (Local 3 → Frontier 11). Wired into CI.
+
+### Iteration 12 — Deployable agents
+- New `AgentManager` autoload: deploy autonomous coding agents that resolve at
+  the next cycle **RESET**. Archetypes trade cost vs power vs reliability:
+  - **Junior** (15 tk): cheap, chaotic — overengineers and hallucinates often.
+  - **Senior** (40 tk): steady.
+  - **Frontier** (90 tk): powerful, and occasionally spawns ANOTHER agent.
+- On resolve, each agent may **gather tokens**, **overengineer** (technical
+  debt), **hallucinate** (wasted work + debt), or **spawn another agent** — real
+  strategic comedy tied to the debt system.
+- Deployed from the Localhost **agent terminal** (after the cautionary
+  "Autonomous Agent" storyline it becomes a repeatable deploy console; the event
+  popup now supports repeatable menus and a `deploy_agent` choice). HUD toasts on
+  deploy and resolve.
+- Regression test `tests/agent_test.tscn` (12/12): deploy cost, unaffordable
+  guard, resolution yields tokens, junior traits (hallucinate/overengineer/debt),
+  and automatic resolution at cycle reset. Wired into CI.
 
 ## Verified test commands
 

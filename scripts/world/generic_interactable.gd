@@ -29,7 +29,8 @@ func _on_interact(_player: Node) -> void:
 			if EventManager.has_active_event():
 				return
 			if EventManager.is_script_completed("autonomous_agent"):
-				_show_message("The agent left a sticky note: 'Refactored your note-taking. See PR #4471.'")
+				# After the cautionary tale, the terminal becomes a deploy console.
+				EventManager.start_scripted("menu_agent", preload("res://scripts/world/story_events.gd").agent_menu(), true)
 			else:
 				EventManager.start_scripted("autonomous_agent", preload("res://scripts/world/story_events.gd").autonomous_agent())
 		"abandoned_package":

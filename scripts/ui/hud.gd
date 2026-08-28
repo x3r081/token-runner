@@ -73,6 +73,8 @@ func _setup_cycle_readout() -> void:
 	_model_label.add_theme_constant_override("outline_size", 4)
 	add_child(_model_label)
 	ModelManager.model_changed.connect(_on_model_changed)
+	AgentManager.agent_deployed.connect(_on_agent_deployed)
+	AgentManager.agent_resolved.connect(_on_agent_resolved)
 
 func _on_cycle_warning(seconds_left: int) -> void:
 	_show_notification("\u26a0 TOKEN RESET IN %ds\nShip something before it's gone!" % seconds_left, Color(1.0, 0.55, 0.3))
@@ -82,6 +84,12 @@ func _on_reset_triggered(cycle: int) -> void:
 
 func _on_model_changed(_id: String, display_name: String) -> void:
 	_show_notification("Model \u2192 %s" % display_name, ModelManager.color())
+
+func _on_agent_deployed(display_name: String) -> void:
+	_show_notification("\ud83e\udd16 %s deployed\nResolves at next RESET." % display_name, Color(0.6, 0.85, 1.0))
+
+func _on_agent_resolved(display_name: String, summary: String) -> void:
+	_show_notification("\ud83e\udd16 %s: %s" % [display_name, summary], Color(0.8, 0.9, 1.0))
 
 func _setup_ability_bar() -> void:
 	var bar := HBoxContainer.new()

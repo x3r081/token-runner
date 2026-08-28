@@ -14,6 +14,7 @@ var _rng := RandomNumberGenerator.new()
 var completed_scripts: Array[String] = []
 var _script_id: String = ""
 var _script_stages: Array = []
+var _script_repeatable: bool = false
 
 func _ready() -> void:
 	_rng.randomize()
@@ -63,13 +64,15 @@ func _try_trigger() -> void:
 	event_triggered.emit(ev.id, ev.get("description", ""))
 
 ## Begin a scripted storyline. Stages are provided by StoryEvents.*.
-func start_scripted(script_id: String, stages: Array) -> void:
-	if script_id in completed_scripts:
+## Repeatable scripts (e.g. menus) can be reopened and never mark as completed.
+func start_scripted(script_id: String, stages: Array, repeatable: bool = false) -> void:
+	if not repeatable and script_id in completed_scripts:
 		return
 	if stages.is_empty() or not active_event.is_empty():
 		return
 	_script_id = script_id
 	_script_stages = stages
+	_script_repeatable = repeatable
 	active_event = _stage_to_event(0)
 	event_triggered.emit(_script_id, active_event.get("description", ""))
 
@@ -101,6 +104,8 @@ func resolve(choice_index: int) -> void:
 			ResourceManager.modify(res, float(choice.effects[res]))
 	if choice.has("achievement"):
 		AchievementManager.unlock(choice.achievement)
+	if choice.has("deploy_agent"):
+		AgentManager.deploy(choice.deploy_agent)
 
 	if active_event.get("scripted", false):
 		_resolve_scripted(choice)
@@ -123,10 +128,11 @@ func _resolve_scripted(choice: Dictionary) -> void:
 				QuestManager.start_quest(qid)
 			QuestManager.complete_quest(qid)
 	var finished_id := _script_id
-	if finished_id != "" and finished_id not in completed_scripts:
+	if not _script_repeatable and finished_id != "" and finished_id not in completed_scripts:
 		completed_scripts.append(finished_id)
 	_script_id = ""
 	_script_stages = []
+	_script_repeatable = false
 	active_event.clear()
 	event_resolved.emit(finished_id, 0)
 

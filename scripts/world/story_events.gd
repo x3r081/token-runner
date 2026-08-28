@@ -90,6 +90,20 @@ static func free_tier() -> Array:
 		},
 	]
 
+## Repeatable deploy menu for autonomous agents. Choices carry deploy_agent.
+static func agent_menu() -> Array:
+	return [
+		{
+			"title": "DEPLOY AN AGENT",
+			"description": "Delegate work to an autonomous coding agent. It resolves at the next RESET.\n\nJunior (15 tk): cheap, chaotic. Senior (40 tk): steady. Frontier (90 tk): powerful, occasionally sentient.",
+			"choices": [
+				{"text": "Deploy Junior Agent (15 tk)", "deploy_agent": "junior", "next": -1},
+				{"text": "Deploy Senior Agent (40 tk)", "deploy_agent": "senior", "next": -1},
+				{"text": "Deploy Frontier Agent (90 tk)", "deploy_agent": "frontier", "next": -1},
+			],
+		},
+	]
+
 ## "The Autonomous Agent" — delegate a trivial task; the agent overengineers
 ## reality itself and eventually holds a retro about you.
 static func autonomous_agent() -> Array:
