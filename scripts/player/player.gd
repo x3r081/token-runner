@@ -289,6 +289,19 @@ func _fire_projectile(type: String, damage: int, pierce: bool = false) -> void:
 func apply_external_knockback(impulse: Vector2) -> void:
 	_ext_impulse = impulse
 
+## Cooldown readiness for the HUD ability bar.
+func ability_ready(id: String) -> bool:
+	match id:
+		"prompt_blast", "cache":
+			return ability_cooldown.time_left <= 0.0
+		"rubber_duck":
+			return _duck_cd <= 0.0
+		"stack_trace":
+			return _trace_cd <= 0.0
+		"dash":
+			return _dash_cd <= 0.0
+	return true
+
 func take_damage(amount: int, _source: String = "") -> void:
 	if is_invincible:
 		return

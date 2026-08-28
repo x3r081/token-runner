@@ -43,8 +43,9 @@ every iteration by fresh playtesting. Priorities:
   reckoning, vendor price shifts, reset warning + HUD readout. *(It8)*
 - [ ] NPC personalities with memory and evolving dialogue (Claude + archetypes).
 - [~] Combat abilities beyond Prompt Blast/Cache/Dash: added **Rubber Duck**
-  (AoE stun) and **Stack Trace** (piercing). Still open: Rollback, Ctrl+Z,
-  Agent Swarm, and a HUD ability readout showing all 5 slots.
+  (AoE stun) and **Stack Trace** (piercing); **HUD ability bar** now shows all
+  5 slots with keys/costs and dims when on cooldown/unaffordable. Still open:
+  Rollback, Ctrl+Z, Agent Swarm.
 - [~] Enemy behaviours: signature per-type behaviours + telegraphs shipped
   (split, grow, 429 pulse, blink). Open: boss telegraphs, death effects.
 - [ ] Environmental interactables with readable comedy (monitors, fridge, plant,

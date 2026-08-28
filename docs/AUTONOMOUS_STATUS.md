@@ -9,9 +9,10 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 8 complete — Ship-Before-Reset cycle system.
-Next: HUD ability readout (show all 5 ability slots), boss telegraphs/visuals,
-model-selection system, more branching quests.
+Iteration 9 complete — HUD ability bar (all 5 abilities visible with
+keys/costs/cooldown dimming).
+Next: boss telegraphs/visuals, model-selection system, more branching quests,
+other regions' visual quality, NPC memory/personality.
 
 ## Iteration log
 

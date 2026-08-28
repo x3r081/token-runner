@@ -14,6 +14,17 @@ const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 var _notif_tween: Tween
 var _theme: Theme
 var _cycle_label: Label
+var _player: Node
+var _ability_slots: Array = []
+
+## key, display name, resource cost label, cost resource + amount for affordability.
+const ABILITY_DEFS := [
+	{"key": "1", "name": "Prompt Blast", "cost": "5 tk", "res": "tokens", "amt": 5, "id": "prompt_blast"},
+	{"key": "2", "name": "Cache", "cost": "3 cp", "res": "compute", "amt": 3, "id": "cache"},
+	{"key": "3", "name": "Rubber Duck", "cost": "5 ctx", "res": "context", "amt": 5, "id": "rubber_duck"},
+	{"key": "4", "name": "Stack Trace", "cost": "10 tk", "res": "tokens", "amt": 10, "id": "stack_trace"},
+	{"key": "Q", "name": "Dash / Push", "cost": "free", "res": "", "amt": 0, "id": "dash"},
+]
 
 func _ready() -> void:
 	_theme = _GameTheme.create()
@@ -28,10 +39,11 @@ func _ready() -> void:
 	QuestManager.quest_completed.connect(_on_quest_completed)
 	GameManager.region_changed.connect(_on_region_changed)
 	AchievementManager.achievement_unlocked.connect(_on_achievement)
-	var player := get_tree().get_first_node_in_group("player")
-	if player:
-		player.health_changed.connect(_on_health_changed)
+	_player = get_tree().get_first_node_in_group("player")
+	if _player:
+		_player.health_changed.connect(_on_health_changed)
 	_setup_cycle_readout()
+	_setup_ability_bar()
 	_update_all()
 	_on_region_changed(GameManager.current_region)
 
@@ -55,8 +67,58 @@ func _on_cycle_warning(seconds_left: int) -> void:
 func _on_reset_triggered(cycle: int) -> void:
 	_show_notification("\u267b RESET \u2014 Cycle %d\nQuotas refilled. Prices shifted." % cycle, Color(0.5, 0.85, 1.0))
 
+func _setup_ability_bar() -> void:
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 8)
+	bar.anchor_left = 0.5
+	bar.anchor_right = 0.5
+	bar.anchor_top = 1.0
+	bar.anchor_bottom = 1.0
+	bar.offset_left = -300
+	bar.offset_top = -74
+	bar.offset_right = 300
+	bar.offset_bottom = -8
+	add_child(bar)
+	for def in ABILITY_DEFS:
+		var slot := PanelContainer.new()
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.06, 0.07, 0.11, 0.92)
+		sb.set_border_width_all(1)
+		sb.border_color = Color(0.3, 0.9, 0.82, 0.6)
+		sb.set_corner_radius_all(6)
+		sb.set_content_margin_all(6)
+		slot.add_theme_stylebox_override("panel", sb)
+		slot.custom_minimum_size = Vector2(104, 58)
+		var v := VBoxContainer.new()
+		v.add_theme_constant_override("separation", 0)
+		slot.add_child(v)
+		var key := Label.new()
+		key.text = "[%s]  %s" % [def.key, def.cost]
+		key.add_theme_font_size_override("font_size", 12)
+		key.add_theme_color_override("font_color", Color(0.35, 0.95, 0.85))
+		v.add_child(key)
+		var nm := Label.new()
+		nm.text = def.name
+		nm.add_theme_font_size_override("font_size", 14)
+		nm.add_theme_color_override("font_color", Color(0.92, 0.94, 0.98))
+		v.add_child(nm)
+		bar.add_child(slot)
+		_ability_slots.append(slot)
+
+func _update_ability_bar() -> void:
+	if not is_instance_valid(_player):
+		_player = get_tree().get_first_node_in_group("player")
+		if not is_instance_valid(_player):
+			return
+	for i in _ability_slots.size():
+		var def: Dictionary = ABILITY_DEFS[i]
+		var ready_now: bool = _player.ability_ready(def.id)
+		var affordable: bool = def.res == "" or ResourceManager.get_value(def.res) >= float(def.amt)
+		_ability_slots[i].modulate = Color(1, 1, 1, 1.0) if (ready_now and affordable) else Color(1, 1, 1, 0.38)
+
 func _process(_delta: float) -> void:
 	_update_quest_tracker()
+	_update_ability_bar()
 	if _cycle_label:
 		var secs := CycleManager.seconds_left()
 		var warn := secs <= int(CycleManager.WARN_AT)
