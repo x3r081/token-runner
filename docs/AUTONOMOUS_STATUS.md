@@ -9,7 +9,8 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 1 — release-blocking P0 fixes and safety systems.
+Iteration 2 complete — Localhost visual redesign. Next: enemy identities +
+gameplay/comedy systems depth.
 
 ## Iteration log
 
@@ -28,6 +29,24 @@ Iteration 1 — release-blocking P0 fixes and safety systems.
   body, (b) walking escapes the ring, (c) Force Push pushes enemies away. Wired
   into CI after the smoke test.
 - Verified: soft-lock test 4/4, smoke test 8/8.
+
+### Iteration 2 — Localhost visual redesign
+- Root cause of "programmer-art field" was using **outdoor grass tiles** for the
+  apartment floor. Added `scripts/tools/interior_generator.gd` producing a real
+  interior art set: warm wood plank floors, rug, industrial walls, night-city
+  window, and hand-drawn furniture (desk, monitors, server rack, bed, fridge,
+  coffee, deprecated plant, node_modules boxes, bookshelf, chair, door,
+  whiteboard).
+- Rewrote `localhost_builder.gd` into a **designed, zoned apartment**: two
+  battlestations (left resource monitors + right GPU-rig), server corner,
+  energy-drink kitchen, unslept-in bed, couch, node_modules heap, cable
+  spaghetti, wall posters.
+- **Readable comedy monitors**: TOKEN BALANCE 70, AI SUBSCRIPTIONS 8, SAVINGS
+  FROM AI -€713/mo, GPU TEMP 94°C, `npm audit` 847 vulns / 0 fixed.
+- **Bug enemy** redrawn as a readable beetle (carapace, legs, antennae, eyes).
+- **Camera bounds** clamp to the room (no off-map dead space). Warmer ambient.
+- Floor de-tiled: removed repeating knot feature, added per-tile jitter + grime.
+- Verified: smoke 8/8; visual confirmed via screenshots (before → v3).
 
 ## Verified test commands
 

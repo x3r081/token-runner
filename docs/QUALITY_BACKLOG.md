@@ -15,16 +15,16 @@ every iteration by fresh playtesting. Priorities:
 
 ## P1 — Major player-facing gaps
 
-- [ ] **Localhost composition**: ~half the viewport is dead/black space; camera
-  framing and world bounds not intentional. Fix camera zoom/bounds; design a
-  full, framed interior at 1920x1080 and 2560x1440.
-- [ ] **Stamped floor**: repeated 2-tile checker reads as procedurally stamped.
-  Replace with a designed interior (zones: desk battlestation, server corner,
-  kitchen/energy-drink area, sleeping area, node_modules "trash").
+- [x] **Localhost composition**: was ~half dead space. *(It2: zoned interior +
+  camera bounds; content now spans full width. Follow-up: verify at 1440p,
+  add foreground occlusion.)*
+- [x] **Stamped floor**: was grass-tile field. *(It2: wood plank interior floor,
+  de-tiled with jitter/grime; knot repetition removed.)*
 - [ ] **Player art**: still crude; needs coherent character with readable
-  silhouette + animation set.
-- [ ] **Enemy identity**: red blobs don't communicate what they are. Each enemy
-  type needs a distinct silhouette, telegraph, behavior, death.
+  silhouette + animation set. *(Hoodie coder is okay but low-res; revisit.)*
+- [~] **Enemy identity**: `bug` now reads as a beetle. Remaining enemy types
+  (rate_limiter, memory_leak, merge_conflict, scope_creep, rogue agent, bosses)
+  still need distinct silhouettes, telegraphs, behaviors, deaths.
 - [ ] **Gameplay depth**: currently walk + collect + shoot. Needs decisions,
   branching quests, model selection, agent system, architecture tradeoffs.
 - [ ] **Comedy as mechanics**: jokes are mostly static labels. Build event- and

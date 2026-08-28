@@ -53,10 +53,10 @@ func _floor_tiles() -> void:
 				var joint := (x + row * 29) % 64
 				if joint == 0:
 					c = c.darkened(0.28)
+				# faint lengthwise grain streaks (linear, so tiling reads as planks)
+				if (x * 5 + y) % 37 == 0:
+					c = c.darkened(0.06)
 				img.set_pixel(x, y, c)
-		# occasional knot
-		if v != 1:
-			_knot(img, 18 + v * 12, 40, base.darkened(0.25))
 		_save(img, "int_floor_%d.png" % v)
 
 func _knot(img: Image, cx: int, cy: int, c: Color) -> void:

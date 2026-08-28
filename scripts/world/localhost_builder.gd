@@ -20,6 +20,7 @@ static func build(parent: Node2D) -> Dictionary:
 	_build_rug(parent)
 	_build_walls(parent)
 	_build_battlestation(parent)
+	_build_gpu_rig(parent)
 	_build_server_corner(parent)
 	_build_kitchen(parent)
 	_build_bedroom(parent)
@@ -60,10 +61,18 @@ static func _build_floor(parent: Node2D) -> void:
 	var floor := Node2D.new()
 	floor.name = "Floor"
 	parent.add_child(floor)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 90210
 	for gx in ROOM_W:
 		for gy in ROOM_H:
 			var v := (gx * 7 + gy * 13) % 3
-			_put(floor, "int_floor_%d" % v, Vector2(gx * TILE + TILE / 2, gy * TILE + TILE / 2), -100)
+			# Per-tile brightness jitter + occasional grime breaks the grid so
+			# tiling never reads as a stamped pattern.
+			var j := rng.randf_range(-0.06, 0.05)
+			var mod := Color(1.0 + j, 1.0 + j, 1.0 + j * 0.8)
+			if rng.randf() < 0.06:
+				mod = mod.darkened(0.18)  # coffee stain / grime
+			_put(floor, "int_floor_%d" % v, Vector2(gx * TILE + TILE / 2, gy * TILE + TILE / 2), -100, 1.0, mod)
 
 static func _build_rug(parent: Node2D) -> void:
 	_put(parent, "int_rug", Vector2(560, 600), -90)
@@ -151,6 +160,22 @@ static func _add_monitor(parent: Node2D, pos: Vector2, screen_col: Color, text: 
 	light.position = pos - Vector2(0, 10)
 	parent.add_child(light)
 
+# ------------------------------------------------------------ gpu rig -------
+
+static func _build_gpu_rig(parent: Node2D) -> void:
+	# A second workstation on the right balances the composition and fills the
+	# room: a jury-rigged GPU mining/inference rig made of stacked crates.
+	var z := Node2D.new()
+	z.name = "GpuRig"
+	parent.add_child(z)
+	var desk_y := 360.0
+	_put(z, "furn_desk", Vector2(1120, desk_y), _depth(desk_y, 48), 0.9)
+	_add_monitor(z, Vector2(1060, 318), Color(0.95, 0.35, 0.25), "GPU TEMP\n94\u00b0C  \ud83d\udd25", Color(1.0, 0.5, 0.35))
+	_add_monitor(z, Vector2(1170, 320), Color(0.4, 0.9, 0.5), "npm audit\n847 vulns\n0 fixed", Color(0.5, 1.0, 0.6))
+	# stacked GPU crates
+	_put(z, "furn_boxes", Vector2(1200, 470), _depth(470, 52), 0.8, Color(0.7, 0.85, 1.0))
+	_put(z, "furn_chair", Vector2(1110, 470), _depth(470, 44), 1.0, Color(0.85, 0.85, 1.0))
+
 # --------------------------------------------------------- server corner ----
 
 static func _build_server_corner(parent: Node2D) -> void:
@@ -202,14 +227,74 @@ static func _build_clutter(parent: Node2D) -> void:
 	z.name = "Clutter"
 	parent.add_child(z)
 	_put(z, "furn_boxes", Vector2(210, 850), _depth(850, 52))
+	_put(z, "furn_boxes", Vector2(300, 900), _depth(900, 52), 0.7)
 	# pizza boxes
-	for p in [Vector2(880, 780), Vector2(930, 800)]:
+	for p in [Vector2(880, 800), Vector2(930, 820), Vector2(700, 880)]:
 		var box := ColorRect.new()
 		box.size = Vector2(46, 40)
 		box.position = p
 		box.color = Color(0.7, 0.5, 0.25)
 		box.z_index = _depth(p.y, 20)
 		z.add_child(box)
+	# A sad couch nobody sleeps on (drawn from rects)
+	_couch(z, Vector2(760, 760))
+	# Cable spaghetti from the battlestation to the server corner
+	_cable(z, [Vector2(520, 400), Vector2(700, 430), Vector2(950, 380), Vector2(1300, 300)], Color(0.1, 0.1, 0.12))
+	_cable(z, [Vector2(1120, 430), Vector2(1250, 380), Vector2(1400, 320)], Color(0.12, 0.11, 0.13))
+	_cable(z, [Vector2(300, 300), Vector2(360, 420), Vector2(430, 470)], Color(0.09, 0.09, 0.11))
+	# Wall posters (side walls) for depth + jokes
+	_poster(z, Vector2(30, 420), Color(0.2, 0.3, 0.5), "IT\nWORKS\nLOCALLY")
+	_poster(z, Vector2(30, 620), Color(0.4, 0.2, 0.3), "MOVE\nFAST")
+	_poster(z, Vector2(ROOM_W * TILE - 62, 500), Color(0.25, 0.4, 0.35), "SHIP\nOR\nDIE")
+
+static func _couch(parent: Node2D, pos: Vector2) -> void:
+	var z := _depth(pos.y, 34)
+	var base := Color(0.22, 0.2, 0.3)
+	var body := ColorRect.new()
+	body.size = Vector2(150, 60)
+	body.position = pos - Vector2(75, 20)
+	body.color = base
+	body.z_index = z
+	parent.add_child(body)
+	for i in 3:
+		var cushion := ColorRect.new()
+		cushion.size = Vector2(44, 30)
+		cushion.position = pos - Vector2(72 - i * 48, 14)
+		cushion.color = base.lightened(0.08)
+		cushion.z_index = z + 1
+		parent.add_child(cushion)
+	# a discarded blanket
+	var bl := ColorRect.new()
+	bl.size = Vector2(50, 24)
+	bl.position = pos - Vector2(10, 6)
+	bl.color = Color(0.5, 0.3, 0.35)
+	bl.z_index = z + 2
+	parent.add_child(bl)
+
+static func _cable(parent: Node2D, points: Array, color: Color) -> void:
+	var line := Line2D.new()
+	line.width = 4.0
+	line.default_color = color
+	line.z_index = -80
+	line.joint_mode = Line2D.LINE_JOINT_ROUND
+	for p in points:
+		line.add_point(p)
+	parent.add_child(line)
+
+static func _poster(parent: Node2D, pos: Vector2, color: Color, text: String) -> void:
+	var frame := ColorRect.new()
+	frame.size = Vector2(44, 60)
+	frame.position = pos
+	frame.color = color
+	frame.z_index = -52
+	parent.add_child(frame)
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.position = pos + Vector2(5, 6)
+	lbl.add_theme_font_size_override("font_size", 10)
+	lbl.add_theme_color_override("font_color", Color(0.95, 0.95, 1.0))
+	lbl.z_index = -51
+	parent.add_child(lbl)
 
 # ------------------------------------------------------------ lighting ------
 

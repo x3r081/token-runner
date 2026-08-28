@@ -64,7 +64,7 @@ func _apply_camera_bounds(size: Vector2) -> void:
 func _set_ambient(region_id: String) -> void:
 	match region_id:
 		"localhost":
-			ambient.color = Color(0.55, 0.48, 0.62, 1.0)
+			ambient.color = Color(0.72, 0.64, 0.66, 1.0)
 		"production":
 			ambient.color = Color(0.9, 0.5, 0.5, 1.0)
 		"token_vault":
