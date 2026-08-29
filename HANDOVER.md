@@ -140,9 +140,10 @@ Each of these cost a debugging cycle. They will bite you too.
 9. **`timeout` is not installed** on this macOS box. Use background tasks with
    an `until` poll loop instead.
 
-10. **`scripts/tools/generate_assets.gd`** is a legacy EditorScript that writes
-    much older art into the same output dir. Running it would silently clobber
-    the entire art pipeline. Do not run it; consider deleting it.
+10. **Only `run_generate.gd` generates art.** A legacy `generate_assets.gd`
+    EditorScript used to write much older art into the same output dir and would
+    silently clobber the pipeline; it was deleted in `97f44ff`. If it ever comes
+    back, it is a landmine, not a tool.
 
 ---
 
@@ -215,13 +216,18 @@ The pattern that has repeatedly paid off:
 
 ## 7. Known open items
 
-- **Balance flag (deliberately unfixed):** `install_node` needs 3 `dependency_demon` and `fix_without_touching` needs 5 `null_reference`, but Dependency District spawns fewer. Not a softlock — enemies restock on region re-entry, and `soft_lock_test` + `region_winnable_test` pass. Raising spawns was rejected in an earlier playtest as a difficulty spike. This is a balance decision for a human, not a build repair.
-- Some achievements are defined but nothing unlocks them.
-- `DialogueManager.select_choice()` ignores `choice.achievement`, unlike `EventManager.resolve()` which honours it.
-- Non-Localhost regions still read sparse in wide shots (round 3 targets this).
-- `main` has none of this work; the branch merges cleanly as a fast-forward.
+All findings carried in earlier rounds were closed in `97f44ff` (quest kill
+counts vs spawns, `_meets()` failing open, dialogue choices dropping
+`achievement`, the legacy generator). Nothing known is outstanding.
 
----
+Two things to be aware of rather than fix:
+
+- **`tests/region_winnable_test.gd` asserts the first combat region has <= 4
+  enemies.** That is not an arbitrary number — it codifies a playtest that
+  rejected a difficulty spike there. If you need more enemies for a quest,
+  change the quest, not the spawn table. (I tried it the other way; the guard
+  caught me.)
+- `main` still has none of this work; the branch fast-forwards cleanly.
 
 ## 8. Ground rules
 
