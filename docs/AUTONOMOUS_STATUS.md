@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 25 — end-to-end completability guard (the game is winnable).
-Next: continued interactive playtests (mid/late game, combat feel); more quest
-variety; per-region NPC flavour.
+Iteration 26 — **P0 screen-space overlay bug fixed** (pause/death/victory were
+off-screen) + Dream App cost display fix. Found via interactive playtest.
+Next: continued playtesting; more quest variety; per-region NPC flavour.
 
 ## Iteration log
 
@@ -322,6 +322,22 @@ variety; per-region NPC flavour.
   branches meets every ship requirement (features 18, stability 18, ai/infra
   tiers), `can_ship` is true, deploying reaches VICTORY with results + the Ship
   It achievement. Guards against an unwinnable game. Wired into CI.
+
+### Iteration 26 — P0 off-screen overlays + Dream App cost display
+- Interactive playtest flagged "pause (Esc) does nothing." Instrumentation showed
+  Esc reached the handler and `_open_pause()` ran — but the pause menu (a Control)
+  was added as a child of the **world Node2D**, so it rendered in **world space at
+  (0,0)** and was off-screen wherever the camera was. The **death and victory
+  screens had the same bug** — so you couldn't see that you died or won.
+- Fix: route all full-screen overlays (pause, death, victory) through the **HUD
+  CanvasLayer** (`world.show_overlay`). Pause also moved to `_input` (Esc doubles
+  as `ui_cancel`, which focused Controls can swallow before `_unhandled_input`);
+  the pause menu owns Esc-to-resume. Verified the pause menu renders centered.
+- **Dream App panel** now shows the **effective** cost (debt + vendor price index)
+  that's actually charged, nicely formatted (e.g. `Buy · 50 tk, 5 API`), and the
+  ship status shows the AI/Infra tier requirements.
+- Regression test `tests/ui_overlay_test.tscn` (4/4): pause + show_overlay land
+  under a CanvasLayer, not the world Node2D. Wired into CI.
 
 ## Verified test commands
 

@@ -5,8 +5,7 @@ func _on_interact(_player: Node) -> void:
 		"deploy_button":
 			if GameManager.can_ship():
 				GameManager.trigger_victory()
-				var victory := preload("res://scenes/ui/victory_screen.tscn").instantiate()
-				get_tree().current_scene.add_child(victory)
+				_show_overlay(preload("res://scenes/ui/victory_screen.tscn").instantiate())
 			else:
 				_show_message("Dream App not ready. Check upgrade requirements (B key).")
 		"dream_app_terminal":
@@ -47,6 +46,13 @@ func _on_interact(_player: Node) -> void:
 			_show_message("Package recovered. 47 vulnerabilities included free.")
 		"backup_server":
 			_show_message("Agent escorted to backup server. Database restored. Probably.")
+
+func _show_overlay(node: Node) -> void:
+	var scene := get_tree().current_scene
+	if scene and scene.has_method("show_overlay"):
+		scene.show_overlay(node)
+	elif scene:
+		scene.add_child(node)
 
 func _show_message(text: String) -> void:
 	var dlg := AcceptDialog.new()

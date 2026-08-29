@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://uioverlaytest01"]
+
+[ext_resource type="Script" path="res://tests/ui_overlay_test.gd" id="1"]
+
+[node name="UIOverlayTest" type="Node"]
+script = ExtResource("1")

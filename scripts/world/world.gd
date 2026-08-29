@@ -116,14 +116,26 @@ func _on_player_died(_msg: String = "") -> void:
 	get_tree().paused = false
 	var death_scene := preload("res://scenes/ui/death_screen.tscn")
 	var death = death_scene.instantiate()
-	add_child(death)
+	hud.add_child(death)  # screen-space overlay (see _open_pause)
+
+## Shows a full-screen overlay (victory/etc.) in the HUD's screen space.
+func show_overlay(node: Node) -> void:
+	hud.add_child(node)
+
+## Pause is handled in _input (not _unhandled_input) because Escape also maps to
+## ui_cancel, which a focused Control can swallow before it reaches
+## _unhandled_input — that's why the menu-toggle keys worked but Esc didn't.
+func _input(event: InputEvent) -> void:
+	if not event.is_action_pressed("pause") or event.is_echo():
+		return
+	# Don't hijack Escape while a modal popup, dialogue, or panel is up.
+	if EventManager.has_active_event() or DialogueManager.is_active or UIManager.has_blocking_ui():
+		return
+	if GameManager.state == GameManager.GameState.PLAYING:
+		_open_pause()
+		get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("pause"):
-		if GameManager.state == GameManager.GameState.PLAYING:
-			_open_pause()
-		elif GameManager.state == GameManager.GameState.PAUSED:
-			_close_pause()
 	if event.is_action_pressed("quest_log"):
 		_toggle_quest_log()
 	if event.is_action_pressed("dream_app"):
@@ -134,11 +146,14 @@ func _unhandled_input(event: InputEvent) -> void:
 func _open_pause() -> void:
 	GameManager.pause_game(true)
 	var pause := preload("res://scenes/ui/pause_menu.tscn").instantiate()
-	add_child(pause)
+	# Overlays MUST live under the HUD CanvasLayer (screen space). Adding a
+	# Control under the world Node2D renders it in world space at (0,0), so it
+	# ends up off-screen wherever the camera is.
+	hud.add_child(pause)
 
 func _close_pause() -> void:
 	GameManager.pause_game(false)
-	for c in get_children():
+	for c in hud.get_children():
 		if c.name == "PauseMenu":
 			c.queue_free()
 

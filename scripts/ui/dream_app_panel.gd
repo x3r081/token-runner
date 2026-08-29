@@ -52,11 +52,13 @@ func _populate() -> void:
 		h.add_child(info)
 		if not next.is_empty():
 			var btn := Button.new()
-			var cost: Dictionary = next.get("cost", {})
-			var cost_str: String = ""
+			# Show the EFFECTIVE cost (debt + vendor price index), i.e. what is
+			# actually charged — not the raw base cost.
+			var cost: Dictionary = DreamAppManager.get_effective_cost(branch)
+			var parts: Array = []
 			for k in cost:
-				cost_str += "%s:%d " % [k, cost[k]]
-			btn.text = "Buy (%s)" % cost_str.strip_edges()
+				parts.append("%d %s" % [int(cost[k]), _res_abbr(k)])
+			btn.text = "Buy \u00b7 %s" % ", ".join(parts)
 			btn.disabled = not DreamAppManager.can_purchase(branch)
 			var b: String = branch
 			btn.pressed.connect(func(): _purchase(b))
@@ -64,6 +66,15 @@ func _populate() -> void:
 		vbox.add_child(h)
 	var totals := DreamAppManager.get_totals()
 	$Panel/Margin/VBox/Totals.text = "Features: %d | Stability: %d | Security: %d | Debt incoming: check HUD" % [totals.features, totals.stability, totals.security]
+
+func _res_abbr(res: String) -> String:
+	match res:
+		"tokens": return "tk"
+		"compute": return "cp"
+		"api_credits": return "API"
+		"reputation": return "rep"
+		"context": return "ctx"
+		_: return res
 
 func _purchase(branch: String) -> void:
 	if DreamAppManager.purchase(branch):
@@ -74,16 +85,22 @@ func _purchase(branch: String) -> void:
 func _update_ship_status() -> void:
 	var req := DreamAppManager.get_ship_requirements()
 	var ready := GameManager.can_ship()
-	$Panel/Margin/VBox/ShipStatus.text = "Ship Ready: %s\nFeatures %d/%d | Stability %d/%d | Upgrades %d/%d" % [
+	$Panel/Margin/VBox/ShipStatus.text = "Ship Ready: %s\nFeatures %d/%d | Stability %d/%d | Upgrades %d/%d | AI %d/%d | Infra %d/%d" % [
 		"YES — hit Deploy in Localhost!" if ready else "Not yet",
 		req.features.current, req.features.required,
 		req.stability.current, req.stability.required,
 		req.total_upgrades.current, req.total_upgrades.required,
+		req.ai_tier.current, req.ai_tier.required,
+		req.infra_tier.current, req.infra_tier.required,
 	]
 
 func _on_ship() -> void:
 	if GameManager.can_ship():
 		GameManager.trigger_victory()
 		var v := preload("res://scenes/ui/victory_screen.tscn").instantiate()
-		get_tree().current_scene.add_child(v)
+		var scene := get_tree().current_scene
+		if scene and scene.has_method("show_overlay"):
+			scene.show_overlay(v)
+		elif scene:
+			scene.add_child(v)
 		queue_free()

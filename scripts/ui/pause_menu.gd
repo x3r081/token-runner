@@ -13,6 +13,13 @@ func _ready() -> void:
 	$Panel/VBox/Settings.pressed.connect(_on_settings)
 	$Panel/VBox/Menu.pressed.connect(_on_menu)
 
+func _input(event: InputEvent) -> void:
+	# The menu processes while paused (process_mode = ALWAYS), so it owns the
+	# Escape-to-resume toggle.
+	if event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
+		_on_resume()
+		get_viewport().set_input_as_handled()
+
 func _on_resume() -> void:
 	GameManager.pause_game(false)
 	queue_free()
