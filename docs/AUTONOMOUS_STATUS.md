@@ -9,8 +9,20 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 41 — onboarding (controls + goal card). Next: more quest variety;
-hand-crafted per-region furniture; combat depth.
+Iteration 42 — combat impact (knockback + death pop). Next: more quest variety;
+hand-crafted per-region furniture; deeper combat options.
+
+### Iteration 42 — Combat impact/juice
+- Playtest called combat "flat projectile spam." Gave every hit weight:
+  - **Hit knockback**: projectiles shove the enemy along the shot (320 prompt-blast
+    / 430 stack-trace; bosses flinch at 0.25x).
+  - **Death pop**: enemies flash white, punch up in scale, and emit a burst of
+    reddish debris before fading (was: instant silent vanish).
+- Caught and fixed a tween bug (queue_free fired immediately → instant vanish) and
+  guarded the idle-animation `_process` from fighting the death tween. First video
+  review flagged both features as absent (the tween bug); after the fix, review
+  confirmed "much more impactful and satisfying," no glitches.
+- `combat_test` asserts hit-knockback (11 checks). Full suite: **26 suites green**.
 
 ### Iteration 41 — Onboarding: controls + goal card
 - A fresh full playtest's #1 complaint was "no clear goal / didn't know what to do
