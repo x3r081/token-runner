@@ -9,8 +9,20 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 42 — combat impact (knockback + death pop). Next: more quest variety;
+Iteration 43 — full-session review + no-trap menu exits. Next: more quest variety;
 hand-crafted per-region furniture; deeper combat options.
+
+### Iteration 43 — Session review + menu no-trap exits
+- Recorded an end-to-end session and had it critically reviewed. Confirmed the game
+  reads as competitive: visuals 7/10 ("intentional, inhabited, cohesive indie pixel
+  art, effective lighting"), humor "a strong point / spot-on," HUD "clean and
+  readable." No real game bug found.
+- The review's "freeze" was the driver getting stuck in the multi-stage Architecture
+  menu — which surfaced a genuine UX gap: the repeatable terminal menus forced a
+  decision with no way out. Added **"Decide later (close)"** to each architecture
+  decision and **"Not now (close)"** to the agent deploy menu, so the player can
+  always back out (menus are reopenable). `architecture_test` asserts every stage
+  has a non-committing exit that closes cleanly. Full suite: **26 suites green**.
 
 ### Iteration 42 — Combat impact/juice
 - Playtest called combat "flat projectile spam." Gave every hit weight:
