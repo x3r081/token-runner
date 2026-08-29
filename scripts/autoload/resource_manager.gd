@@ -7,7 +7,7 @@ signal tokens_gained(amount: int, source: String)
 signal funny_price_adjustment(lost: int)
 
 const RESOURCE_DEFAULTS := {
-	"tokens": 50,
+	"tokens": 65,
 	"compute": 20,
 	"context": 30,
 	"api_credits": 10,
