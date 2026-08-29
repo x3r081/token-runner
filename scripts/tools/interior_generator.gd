@@ -188,30 +188,56 @@ func _knot(img: Image, cx: int, cy: int, c: Color) -> void:
 				img.set_pixel(x, y, c)
 
 func _rug() -> void:
-	# A worn dark-teal rug that anchors the battlestation zone.
+	# A proper woven rug (banded borders + central medallion + end fringe) that
+	# anchors the battlestation zone. Deliberately NOT a checkerboard.
 	var w := 320
 	var h := 224
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var field := Color(0.16, 0.19, 0.26)
-	var border := Color(0.24, 0.3, 0.4)
-	var accent := Color(0.3, 0.55, 0.6)
+	var field := Color(0.15, 0.18, 0.25)        # deep indigo weave
+	var field2 := Color(0.17, 0.21, 0.29)
+	var band_dark := Color(0.11, 0.13, 0.19)
+	var band_teal := Color(0.28, 0.52, 0.58)
+	var band_rust := Color(0.62, 0.32, 0.26)    # warm accent thread
+	var fringe_col := Color(0.72, 0.68, 0.58)
+	var cx := w / 2
+	var cy := h / 2
 	for y in h:
 		for x in w:
 			var edge: int = min(min(x, w - 1 - x), min(y, h - 1 - y))
+			# End fringe: short vertical tassels beyond the woven body (top/bottom).
+			if y < 6 or y >= h - 6:
+				if (x % 6) < 3 and x > 10 and x < w - 10:
+					img.set_pixel(x, y, fringe_col.darkened(0.1 + 0.2 * ((x / 6) % 2)))
+				continue
 			if edge < 4:
 				continue
-			var c := field
-			if edge < 14:
-				c = border
-			elif edge < 18:
-				c = accent.darkened(0.2)
+			var c: Color
+			if edge < 9:
+				c = band_dark                       # outer guard band
+			elif edge < 13:
+				c = band_teal                       # bright teal frame
+			elif edge < 17:
+				c = band_dark
+			elif edge < 22:
+				# repeating rust "hook" motif in the inner border
+				c = band_rust if ((x + y) / 6) % 2 == 0 else band_rust.darkened(0.25)
 			else:
-				# subtle diamond weave
-				if ((x / 16) + (y / 16)) % 2 == 0:
-					c = field.lightened(0.05)
-				var n := (_hash(x, y) % 8) / 300.0
-				c = Color(c.r + n, c.g + n, c.b + n, 1.0)
+				# Field: soft diagonal weave (very low contrast) + subtle grain.
+				var weave: float = 0.03 * sin((x + y) * 0.20)
+				c = field2 if ((x - y) & 12) == 0 else field
+				var n := (_hash(x, y) % 6) / 340.0
+				c = Color(c.r + n + weave, c.g + n + weave, c.b + n + weave, 1.0)
+				# Central diamond medallion (concentric rings).
+				var dman: int = int(absf(x - cx) * 0.7) + int(absf(y - cy))
+				if dman < 66 and dman >= 60:
+					c = band_teal.darkened(0.1)
+				elif dman < 60 and dman >= 54:
+					c = band_rust.darkened(0.15)
+				elif dman < 20 and dman >= 14:
+					c = band_teal.darkened(0.2)
+				elif dman < 8:
+					c = band_rust.darkened(0.1)
 			img.set_pixel(x, y, c)
 	_save(img, "int_rug.png")
 
