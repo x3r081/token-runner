@@ -9,8 +9,22 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 38 — procedural liveliness (enemy/NPC/player animation). Next: more quest
-variety with branching/failure; raise other regions toward Localhost's density.
+Iteration 39 — denser region visuals. Next: more quest variety with branching/
+failure states; continue raising regions toward Localhost's furniture density.
+
+### Iteration 39 — De-stamped, denser region visuals (all 9 regions)
+- Regions read as a bare tinted floor with props in the corners. For every region:
+  - **Floor de-stamping** to match Localhost: grime/scorch + lighter wear tiles,
+    plus ~46 scattered debris decals (specks, hairline cracks, faint themed
+    glow-chips) so tiling never reads as a stamped grid.
+  - **Depth + ambient clutter**: a wall-base shadow band, faint cable/pipe runs,
+    and 14 small pieces of the region's OWN pixel-art structure vocabulary
+    (crates/towers/consoles/orbs) scaled down and scattered around the perimeter
+    (central spawn lane kept clear; all non-colliding) — reads as intentional
+    set-dressing, not programmer-art squares.
+  - Verified via capture (Dependency District: grimier floor + scattered packages).
+- Also fixed `animation_test` flakiness (disable EventManager; compare hop depth).
+  Full suite: **26 suites green**.
 
 ### Iteration 38 — Procedural idle/move animation (the "animation" requirement)
 - Enemies and NPCs were static sprites — dormant enemies and NPCs looked painted

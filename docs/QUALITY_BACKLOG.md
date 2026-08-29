@@ -84,9 +84,10 @@ every iteration by fresh playtesting. Priorities:
 - [x] Achievements tied to running gags: **IT WAS DNS** (production incident) and
   **Boring Responsible Adult** (backups) both implemented + tested. *(It14–15)*
 - [ ] Post-game content.
-- [~] Additional regions polished: all 9 now themed compositions (It10), each now
-  with theme-specific interactable comedy props (It36). Could still be raised
-  toward Localhost's hand-crafted furniture density.
+- [~] Additional regions polished: all 9 now themed compositions (It10), each with
+  theme-specific interactable comedy props (It36) and de-stamped floors + ambient
+  clutter/depth (It39). Could still add hand-crafted per-region furniture like
+  Localhost's battlestation/kitchen/bedroom set-pieces.
 
 ## Iteration protocol
 
