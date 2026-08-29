@@ -9,8 +9,24 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 40 — new branching quest with a failure state. Next: more quest variety
-(escort/defense/stealth categories); hand-crafted per-region furniture set-pieces.
+Iteration 41 — onboarding (controls + goal card). Next: more quest variety;
+hand-crafted per-region furniture; combat depth.
+
+### Iteration 41 — Onboarding: controls + goal card
+- A fresh full playtest's #1 complaint was "no clear goal / didn't know what to do
+  or how to interact" — the boot sequence is comedy, not a tutorial. (Its other
+  claims — props/Claude/model-toast "broken" — were verified FALSE this session:
+  `flavor_try.png`, `npc_reactive.png`, and `_on_model_changed`'s toast all work;
+  the agent simply failed to navigate to props.)
+- Added a **one-time onboarding card** shown when control is first granted in
+  Localhost: states the GOAL (ship the Dream App before the reset) and the loop
+  (tokens -> Dream App [B] -> ship requirements -> Deploy), lists all controls, and
+  points to the first step (talk to Claude, grab tokens). Dismisses on E/click.
+- Verified live (card renders with goal + controls) + `ui_overlay_test` (9 checks:
+  shown once, states goal, lists controls, no duplicate). Full suite: **26 green**.
+- Also verified the victory "get roasted" climax live — "YOU SHIPPED IT / Beautiful
+  Disaster" with a fully personalized roast from the run's choices. Looks
+  competitive; no change needed.
 
 ### Iteration 40 — "The All-Hands Demo" (branching quest + failure state)
 - New quest category (high-stakes live performance), triggered on first entering

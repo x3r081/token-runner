@@ -77,7 +77,9 @@ every iteration by fresh playtesting. Priorities:
   Localhost — fridge, coffee, plant, bed, server, whiteboard, terminal, router,
   monitors, laptop sticker — each with a styled [E] FlavorPopup. Regression test
   + CI. Verified live via video review.)*
-- [ ] HUD to polished indie quality.
+- [~] HUD to polished indie quality: functional readouts (resources, cycle timer,
+  model, ability bar, quest tracker) + a one-time onboarding card teaching controls
+  and the goal/loop (It41). Could still refine top-bar styling/grouping.
 - [x] Conservative, validated, normalized audio: silent-by-default, conservative
   volumes, **Master hard limiter**, verified no near-full-scale samples. *(It16)*
 
