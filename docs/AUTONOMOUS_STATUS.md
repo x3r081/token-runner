@@ -9,9 +9,28 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 30 — input-robustness (visible HUD pause button + ASCII travel labels).
-Next: live boss-fight playtesting; combat balance across the run; more quest
-variety.
+Iteration 31 — live boss-fight verification + combat error-spam fixes. Next:
+combat balance across the run; more quest variety; per-region NPC flavour.
+
+### Iteration 31 — Live boss verification + physics/particle bug fixes + slam weight
+- **Live boss combat verified** (Enterprise Architect, corporate_enterprise) via a
+  faithful throwaway 1v1 capture + video review: boss telegraphs RED, lunges/slams
+  with knockback, and summons green scope-creep adds; player kites fluidly and
+  **never soft-locks**. This closes the last major gameplay element that had only
+  unit-test coverage.
+- **Fixed real in-game error spam found in the capture logs** (fired on *every*
+  enemy death caused by a hit):
+  - `take_damage` now defers `_die()` behind a `_dying` guard, so token/add spawns
+    and Area2D shape toggles no longer execute while the physics server is flushing
+    queries (kills `Can't change this state while flushing queries`).
+  - `_hit_spark` parents its burst to the region and self-frees via `finished`,
+    eliminating `Lambda capture ... was freed` from a SceneTree-timer lambda that
+    captured a particle freed with the enemy.
+  - Verified clean: combat scenario logs now show zero physics-flush / freed-lambda
+    errors.
+- **Boss slam now has weight**: camera shake + reddish dust-ring burst on impact
+  (video-confirmed at the slam frames; shake is short and non-nauseating).
+- Full suite green: **21 suites / 233 tests**.
 
 ## Iteration log
 
