@@ -94,6 +94,9 @@ jobs:
       - name: Run opening-safety (no spawn-camp) regression test
         run: godot --headless --path . --scene tests/opening_safety_test.tscn
 
+      - name: Run environmental flavor-prop regression test
+        run: godot --headless --path . --scene tests/flavor_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 

@@ -415,6 +415,25 @@ static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 	svc.one_shot = false
 	_tint(svc, Color(0.95, 0.3, 0.25))
 
+	# Environmental comedy props: readable flavor on the furniture, rewarding
+	# exploration. Subtle markers; the floating [E] prompt does the pointing.
+	var flavor := {
+		"prop_fridge": [Vector2(150, 275), "Fridge"],
+		"prop_coffee": [Vector2(245, 288), "Coffee machine"],
+		"prop_plant": [Vector2(135, 852), "Deprecated plant"],
+		"prop_bed": [Vector2(1300, 772), "Bed"],
+		"prop_server": [Vector2(1452, 272), "Server rack"],
+		"prop_whiteboard": [Vector2(950, 138), "Whiteboard"],
+		"prop_terminal": [Vector2(1120, 416), "Terminal"],
+		"prop_router": [Vector2(1352, 300), "Router"],
+		"prop_monitors": [Vector2(600, 300), "Battlestation monitors"],
+		"prop_sticker": [Vector2(470, 430), "Sticker-covered laptop"],
+	}
+	for id in flavor:
+		var pr := _add_interact(props, interact_scene, id, flavor[id][0], flavor[id][1])
+		pr.one_shot = false
+		_dim(pr)
+
 	if GameManager.is_region_unlocked("dependency_district"):
 		var portal_scene := preload("res://scenes/world/region_portal.tscn")
 		var p = portal_scene.instantiate()
@@ -430,6 +449,17 @@ static func _add_interact(parent: Node2D, scene: PackedScene, id: String, pos: V
 	node.position = pos
 	parent.add_child(node)
 	return node
+
+## Subtle marker for flavor props: a small dim glyph that blends with the
+## furniture (the floating [E] prompt is the real affordance on approach).
+static func _dim(interactable: Node) -> void:
+	var rect := interactable.get_node_or_null("ColorRect")
+	if rect:
+		rect.color = Color(0.42, 0.82, 0.88, 0.30)
+		rect.offset_left = -7.0
+		rect.offset_top = -7.0
+		rect.offset_right = 7.0
+		rect.offset_bottom = 7.0
 
 static func _tint(interactable: Node, color: Color) -> void:
 	var rect := interactable.get_node_or_null("ColorRect")

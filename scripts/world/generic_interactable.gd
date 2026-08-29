@@ -46,6 +46,25 @@ func _on_interact(_player: Node) -> void:
 			_show_message("Package recovered. 47 vulnerabilities included free.")
 		"backup_server":
 			_show_message("Agent escorted to backup server. Database restored. Probably.")
+		_:
+			if FLAVOR.has(interact_id):
+				var f: Array = FLAVOR[interact_id]
+				_flavor(f[0], f[1])
+
+## Environmental comedy props. [E] on them for a laugh; pure flavor, no stakes
+## (except the ones that gently cost Will To Live, because relatability).
+const FLAVOR := {
+	"prop_fridge": ["Fridge", "Contents: 14 energy drinks, one (1) sad baby carrot, and a yogurt that expired during the last framework migration.\n\nNutrition: technically."],
+	"prop_plant": ["Potted Plant", "Status: DEPRECATED.\nLast watered: v0.3.0.\nStill more alive than the roadmap."],
+	"prop_bed": ["Bed", "It whispers: 'Sleep...'\nYou: 'Not during a hackathon.'\nThe bed has heard this lie before."],
+	"prop_coffee": ["Coffee Machine", "MISSION CRITICAL.\nUptime: 100%. Ships to prod flawlessly.\nUnlike literally everything else you have built."],
+	"prop_router": ["Router", "Four lights. One is blinking wrong.\nDNS: it's not DNS.\n...it's always DNS.\nEither way: somehow your fault."],
+	"prop_terminal": ["Terminal", "$ npm audit\n\n847 vulnerabilities (312 high, 61 critical)\n0 addressed.\n\nConfidence: restored."],
+	"prop_whiteboard": ["Whiteboard", "'MVP ARCHITECTURE'\nApproximately 38 arrows. Two boxes labeled '???'. One labeled 'here be dragons'.\n\nA red arrow loops back to itself. Nobody remembers why."],
+	"prop_monitors": ["Battlestation", "Monitor 1: TOKEN BALANCE: dangerously low.\nMonitor 2: AI SUBSCRIPTIONS: 8 active.\nMonitor 3: MONTHLY SAVINGS FROM AI: -€713.\n\nThe math is not mathing."],
+	"prop_sticker": ["Laptop Lid", "Stickers: a raccoon, three defunct startups, and one that just says 'I USE ARCH BTW'.\n\nThe laptop runs, in fact, on spite."],
+	"prop_server": ["Server Rack", "A tower of consumer GPUs held together by zip ties and denial.\nGPU 3 is at 94\u00b0C and 'fine'.\nIt is not fine. It is space-heater-in-July fine."],
+}
 
 func _show_overlay(node: Node) -> void:
 	var scene := get_tree().current_scene
@@ -53,6 +72,12 @@ func _show_overlay(node: Node) -> void:
 		scene.show_overlay(node)
 	elif scene:
 		scene.add_child(node)
+
+func _flavor(title: String, text: String) -> void:
+	var popup = preload("res://scenes/ui/flavor_popup.tscn").instantiate()
+	popup.title_text = title
+	popup.body_text = text
+	_show_overlay(popup)
 
 func _show_message(text: String) -> void:
 	var dlg := AcceptDialog.new()
