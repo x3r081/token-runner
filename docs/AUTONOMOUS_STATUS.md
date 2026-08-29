@@ -9,8 +9,19 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 49 — clean confirmation playtest (combat now fair) + early-economy tune.
-Next: hand-crafted per-region furniture; more quest categories; keep playtesting.
+Iteration 50 — thematic ambient particles per region (atmosphere). Next: more
+per-region set-pieces / quest variety; keep playtesting toward 8-9/10.
+
+### Iteration 50 — Per-region ambient particles
+- Pushing visual polish past 7/10: added a subtle ambient particle layer to every
+  region for mood/depth. Rising orange **embers** in the hot regions (Production
+  "server room on fire", GPU Mines), gold **sparkles** in the Token Vault, and
+  gentle glow-tinted drifting **motes** elsewhere. Behind gameplay; never obscures
+  the player/enemies/tokens.
+- Self-critique caught a first pass (embers read pale/falling); tuned to emit low
+  with a strong upward rise + saturated orange. Re-reviewed: embers "clearly rise,
+  are distinctly orange, atmospheric-not-distracting, no glitches — effectively
+  sell the feeling of heat and danger." Full suite: **27 suites green**.
 
 ### Iteration 49 — Confirmation playtest: combat fair, no high-severity issues
 - Live confirmation playtest after the aim-assist fix: **combat is now fair and
