@@ -379,8 +379,12 @@ static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 		t.position = token_positions[i]
 		tokens.add_child(t)
 
+	# Keep the opening gentle: bugs live on the FAR-RIGHT (toward the exit), away
+	# from the spawn (720,640), Claude (820,560) and the token-collection path, so
+	# a new player can explore/collect/talk before combat is encountered by heading
+	# for the door. (Respawns return to the spawn point, never into this cluster.)
 	var enemy_scene := preload("res://scenes/combat/enemy.tscn")
-	for pos in [Vector2(1080, 560), Vector2(1180, 760), Vector2(420, 500)]:
+	for pos in [Vector2(1360, 540), Vector2(1440, 760)]:
 		var en = enemy_scene.instantiate()
 		en.enemy_type = "bug"
 		en.max_hp = 20

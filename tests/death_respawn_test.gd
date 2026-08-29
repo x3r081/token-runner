@@ -63,6 +63,11 @@ func _run() -> void:
 	_check("player_can_move_after_respawn", is_instance_valid(player) and player.can_move)
 	_check("player_hp_restored", is_instance_valid(player) and player.hp == player.MAX_HP)
 	_check("player_has_iframes_after_respawn", is_instance_valid(player) and player.is_invincible)
+	# Respawn must return the player to the region's safe spawn, not the death
+	# location (which may be inside the enemy pile).
+	_check("respawn_at_region_spawn (%s)" % str(GameManager.region_spawn),
+		is_instance_valid(player) and player.global_position == GameManager.region_spawn
+		and GameManager.region_spawn != Vector2.ZERO)
 
 func _check(label: String, condition: bool) -> void:
 	if condition:

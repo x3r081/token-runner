@@ -91,6 +91,9 @@ jobs:
       - name: Run death/respawn regression test
         run: godot --headless --path . --scene tests/death_respawn_test.tscn
 
+      - name: Run opening-safety (no spawn-camp) regression test
+        run: godot --headless --path . --scene tests/opening_safety_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 

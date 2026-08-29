@@ -16,11 +16,12 @@ func _on_respawn() -> void:
 	GameManager.respawn_player()
 	var player := get_tree().get_first_node_in_group("player")
 	if player:
-		# Respawn on the spot but with i-frames, so the player never re-dies into
-		# the same enemies that killed them.
-		player.respawn(player.global_position)
+		# Respawn at the region's safe spawn point (never back in the enemy pile
+		# that killed us) with i-frames so the player can regroup.
+		var safe: Vector2 = GameManager.region_spawn if GameManager.region_spawn != Vector2.ZERO else player.global_position
+		player.respawn(safe)
 		if player.has_method("grant_spawn_grace"):
-			player.grant_spawn_grace(2.5)
+			player.grant_spawn_grace(3.0)
 	queue_free()
 
 func _on_menu() -> void:

@@ -60,6 +60,7 @@ func _load_region(region_id: String) -> void:
 	_current_region_node.name = region_id
 	region_container.add_child(_current_region_node)
 	var data := RegionBuilder.build(_current_region_node, region_id)
+	GameManager.region_spawn = data.spawn
 	if player:
 		player.global_position = data.spawn
 		camera.enabled = true

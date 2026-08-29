@@ -35,6 +35,10 @@ var death_count: int = 0
 ## it). Later regions unlock progressively via quest rewards.
 var regions_unlocked: Array[String] = ["localhost", "dependency_district"]
 var player_position: Vector2 = Vector2.ZERO
+## The current region's safe spawn point (set by the world on region load). Used
+## for respawns so the player never re-materializes inside the enemy pile that
+## just killed them.
+var region_spawn: Vector2 = Vector2.ZERO
 var session_stats: Dictionary = {
 	"quests_completed": 0,
 	"tokens_collected": 0,
