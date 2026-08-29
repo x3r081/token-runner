@@ -10,6 +10,7 @@ var _current_region_node: Node2D
 
 func _ready() -> void:
 	GameManager.state = GameManager.GameState.PLAYING
+	_setup_glow()
 	_load_region(GameManager.current_region)
 	QuestManager.on_region_entered(GameManager.current_region)
 	GameManager.region_changed.connect(_on_region_changed)
@@ -91,6 +92,28 @@ func _apply_camera_bounds(size: Vector2) -> void:
 	camera.limit_top = 0
 	camera.limit_right = int(size.x)
 	camera.limit_bottom = int(size.y)
+
+## Subtle bloom so the bright, emissive things (tokens, monitors, neon signs,
+## projectiles, point lights) glow and the scene reads less flat/blocky. Tuned
+## conservatively (high threshold, low intensity) so it never washes out.
+func _setup_glow() -> void:
+	var env := Environment.new()
+	env.background_mode = Environment.BG_CANVAS
+	env.glow_enabled = true
+	env.glow_intensity = 0.75
+	env.glow_strength = 1.0
+	env.glow_bloom = 0.15
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
+	env.glow_hdr_threshold = 0.9
+	env.glow_hdr_scale = 2.0
+	env.set_glow_level(1, 0.6)
+	env.set_glow_level(2, 1.0)
+	env.set_glow_level(3, 0.7)
+	env.set_glow_level(4, 0.4)
+	var we := WorldEnvironment.new()
+	we.name = "GlowEnvironment"
+	we.environment = env
+	add_child(we)
 
 func _set_ambient(region_id: String) -> void:
 	match region_id:
