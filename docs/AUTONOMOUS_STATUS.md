@@ -9,8 +9,18 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 50 — thematic ambient particles per region (atmosphere). Next: more
-per-region set-pieces / quest variety; keep playtesting toward 8-9/10.
+Iteration 51 — +6 absurd random events (surprise density). Next: more quest
+variety / per-region set-pieces; keep playtesting toward 8-9/10.
+
+### Iteration 51 — More surprises (random events 8 -> 14)
+- Per the brief's "MORE SURPRISES / rare absurd events," expanded the mid-run
+  random-event pool: the eternal standup, the rubber duck that resigned, a
+  recruiter DM ("equity: vibes"), IT'S DNS AGAIN, the intern who pushed to main,
+  the coffee machine that unionized. Each with 3 on-theme choices + real
+  consequences (they route through the same styled event popup).
+- New `events_test` validates every event is well-formed (required fields; effect
+  keys are real resources) and that all 42 choices resolve cleanly, so a malformed
+  event can never break the popup mid-run. Full suite: **28 suites green**.
 
 ### Iteration 50 — Per-region ambient particles
 - Pushing visual polish past 7/10: added a subtle ambient particle layer to every
