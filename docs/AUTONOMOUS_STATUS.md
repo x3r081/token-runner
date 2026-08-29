@@ -9,8 +9,20 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 48 — combat AIM-ASSIST (root cause of "unwinnable combat"). Next:
-confirm combat live; hand-crafted per-region furniture; more quest categories.
+Iteration 49 — clean confirmation playtest (combat now fair) + early-economy tune.
+Next: hand-crafted per-region furniture; more quest categories; keep playtesting.
+
+### Iteration 49 — Confirmation playtest: combat fair, no high-severity issues
+- Live confirmation playtest after the aim-assist fix: **combat is now fair and
+  winnable** ("went from impossible to winnable and accessible" — killed enemies,
+  survived at full HP, aim-assist visibly hits). **No high-severity issues** (no
+  crashes/soft-locks/stuck/unplayable). Core loop fully functional end-to-end;
+  pause/resume works. Rated a competitive 7/10.
+- This gives us **repeated critical playtests (It47 + It49) finding no
+  high-severity player-facing issue**, with combat now accessible.
+- Addressed the tester's one nit (early token economy slightly tight): starting
+  tokens 50 -> 65 (tension preserved; tokens are both ammo and upgrade currency).
+  Full suite: **27 suites green**.
 
 ### Iteration 48 — Aim-assist (the real fix for punishing combat)
 - A confirmation playtest of the It47 count reduction still failed combat ("couldn't
