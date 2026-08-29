@@ -106,6 +106,8 @@ func _test_stack_trace_pierce() -> void:
 	proj._on_area_entered(b.get_node("Hitbox"))
 	_check("pierce_hits_first", a.hp < a.max_hp)
 	_check("pierce_hits_second", b.hp < b.max_hp)
+	# Impact: hits shove the enemy along the shot direction (rightward here).
+	_check("hit_applies_knockback", a._knockback.x > 50.0)
 	_check("pierce_projectile_survives", is_instance_valid(proj) and not proj.is_queued_for_deletion())
 	# Non-piercing projectile is consumed on first hit.
 	var proj2: Node = ProjectileScene.instantiate()

@@ -77,8 +77,8 @@ func stun(duration: float) -> void:
 ## waddle. Runs every frame (independent of the physics early-returns) so even
 ## dormant/telegraphing enemies never look like frozen stickers.
 func _process(delta: float) -> void:
-	if not is_instance_valid(sprite):
-		return
+	if not is_instance_valid(sprite) or _dying:
+		return  # while dying, the death-pop tween owns the sprite's scale/modulate
 	_anim_t += delta
 	if _stun_time > 0.0:
 		# Stunned: a dizzy wobble.
@@ -386,9 +386,41 @@ func _die() -> void:
 	GameManager.record_stat("enemies_defeated")
 	AudioManager.play_sfx("enemy_death")
 	_spawn_tokens()
+	_death_burst()
+	# Satisfying pop: flash white, punch up in scale, then fade out. The scale +
+	# fade run together; queue_free waits for the fade to finish (was firing early).
+	sprite.modulate = Color(2.4, 2.4, 2.4)
 	var tween := create_tween()
-	tween.tween_property(sprite, "modulate:a", 0.0, 0.3)
+	tween.tween_property(sprite, "scale", sprite.scale * 1.45, 0.22).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(sprite, "modulate", Color(1, 1, 1, 0.0), 0.3)
 	tween.tween_callback(queue_free)
+
+## A burst of enemy-tinted debris on death, parented to the region so it outlives
+## the enemy.
+func _death_burst() -> void:
+	var parent := get_parent()
+	if not parent:
+		return
+	var col := Color(0.9, 0.4, 0.4)
+	if sprite and sprite.texture:
+		col = sprite.modulate  # roughly the enemy's tint
+	var p := CPUParticles2D.new()
+	p.emitting = true
+	p.one_shot = true
+	p.amount = 16
+	p.lifetime = 0.45
+	p.explosiveness = 1.0
+	p.spread = 180.0
+	p.initial_velocity_min = 90.0
+	p.initial_velocity_max = 220.0
+	p.scale_amount_min = 2.5
+	p.scale_amount_max = 4.5
+	p.gravity = Vector2(0, 240)
+	p.color = Color(0.95, 0.5, 0.45)
+	p.z_index = 540
+	parent.add_child(p)
+	p.global_position = global_position
+	p.finished.connect(p.queue_free)
 
 func _split() -> void:
 	var scene := preload("res://scenes/combat/enemy.tscn")

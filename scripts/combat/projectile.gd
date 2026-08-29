@@ -73,5 +73,11 @@ func _on_area_entered(area: Area2D) -> void:
 			return
 		_hit.append(parent)
 		parent.take_damage(damage)
+		# Impact: shove the enemy along the shot so hits feel like they land.
+		if parent.has_method("apply_knockback"):
+			var kb := 430.0 if proj_type == "stack_trace" else 320.0
+			if parent.get("is_boss"):
+				kb *= 0.25  # bosses only flinch
+			parent.apply_knockback(direction * kb)
 		if not pierce:
 			queue_free()
