@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 26 — **P0 screen-space overlay bug fixed** (pause/death/victory were
-off-screen) + Dream App cost display fix. Found via interactive playtest.
-Next: continued playtesting; more quest variety; per-region NPC flavour.
+Iteration 27 — verified + polished the victory/death screens (the "get roasted"
+payoff). Next: continued playtesting (region traversal, combat feel); more quest
+variety; per-region NPC flavour.
 
 ## Iteration log
 
@@ -338,6 +338,16 @@ Next: continued playtesting; more quest variety; per-region NPC flavour.
   ship status shows the AI/Infra tier requirements.
 - Regression test `tests/ui_overlay_test.tscn` (4/4): pause + show_overlay land
   under a CanvasLayer, not the world Node2D. Wired into CI.
+
+### Iteration 27 — Victory/death screen verification + polish
+- Confirmed the overlay fix by rendering both climax screens: the **victory
+  screen now displays** on-screen with the **personalized roast** ("47
+  microservices. For this. Chef's kiss.", "Your cloud bill has achieved sentience
+  and unionized", "it really was DNS", "Architecture Ridiculousness: MAXIMUM") —
+  exactly the brief's "get roasted by the results screen." The death screen also
+  renders.
+- Polished both panels: neon-teal (victory) / red (death) bordered panels,
+  colored titles, readable stats, styled buttons — a finished payoff.
 
 ## Verified test commands
 

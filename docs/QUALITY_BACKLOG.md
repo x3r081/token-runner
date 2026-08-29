@@ -48,6 +48,9 @@ every iteration by fresh playtesting. Priorities:
 
 ## P2 — Depth & polish
 
+- [x] Results/victory screen ("get roasted"): personalized roast from the run's
+  choices, styled panel. Death screen styled too. *(It21, It26–27)*
+
 - [~] Multi-stage/branching quests with consequences, failure states, callbacks:
   flagship storylines + a fully branching **Debugging Investigation** (multiple
   endings, failure path, model-dependent AI) shipped. More variety welcome.
