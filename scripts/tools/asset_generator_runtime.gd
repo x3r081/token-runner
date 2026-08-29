@@ -327,10 +327,13 @@ func _draw_vibe_coder(direction: String, pose: String, frame_idx: int, palette: 
 
 	# ---- lighting finish ----
 	# Key rim: the top-left silhouette edge in the character's accent (bible rule).
-	_edge_light(img, glow.lerp(WHITE_HOT, 0.30), 0.52, true, true)
+	# Round 5: pushed most of the way to white and eased off in strength. At the
+	# old settings a 3px sleeve was almost entirely rim, so the arms read as
+	# glowing cyan slabs instead of lit cloth — a rim is light, not paint.
+	_edge_light(img, glow.lerp(WHITE_HOT, 0.55), 0.44, true, true)
 	# Bounce rim: bottom-right, warm and dim, as if the floor were lit. Two-point
 	# lighting is most of what separates "a sprite" from "a character".
-	_edge_light(img, Color(1.0, 0.70, 0.40), 0.24, false, false)
+	_edge_light(img, Color(1.0, 0.70, 0.40), 0.20, false, false)
 	_outline_silhouette(img, OUTLINE_COLOR)
 	if pose == "hurt":
 		# Tint toward red but protect the highlights, so the pose still reads.
@@ -636,7 +639,7 @@ func _vc_face(img: Image, cx: int, hy: int, pose: String, side: bool,
 		_px(img, cx + 9, hy + 2, skin_sh)
 		_px(img, cx + 8, hy + 3, skin.darkened(0.08))
 		_px(img, cx + 7, hy + 5, skin_sh.darkened(0.15))
-	var sclera := Color(0.90, 0.91, 0.96)
+	var sclera := Color(0.95, 0.96, 1.0)
 	var closed := pose == "blink" or pose == "hurt" or pose == "celebrate"
 	var wide := pose == "panic" or pose == "dash" or pose == "cast_release"
 	var count := 1 if side else 2
@@ -652,8 +655,11 @@ func _vc_face(img: Image, cx: int, hy: int, pose: String, side: bool,
 				_fill_rect(img, ex, hy, 3, 1, eye)
 		else:
 			_fill_rect(img, ex, hy, 3, 2, sclera)
-			# the pupil drifts to the inner corner: he is looking at the problem
-			_fill_rect(img, ex + (1 if i == 0 else 0), hy, 2, 2, eye)
+			# the pupil drifts to the inner corner: he is looking at the problem.
+			# One pixel wide, not two — at two it swallowed the sclera and the
+			# eye read as a dark block, which is a face with no gaze in it.
+			_fill_rect(img, ex + (2 if i == 0 else 0), hy, 1, 2, eye)
+			_px(img, ex + 1, hy + 1, eye.lerp(sclera, 0.45))
 			if wide:
 				_fill_rect(img, ex, hy - 1, 3, 1, sclera)
 			_px(img, ex + (0 if i == 0 else 2), hy, WHITE_HOT)
@@ -1503,8 +1509,20 @@ func _tile_detail(img: Image, ox: int, oy: int, accent: Color, base: Color, roll
 ## Enemy threat colours. Deliberately hot and saturated: an enemy is the one
 ## thing on screen that MUST NOT be missed, and the regions it walks through are
 ## near-black. Each sprite is finished with the readability chain below —
-## value lift, hot rim, hard outline, threat halo, contact shadow — so it reads
-## as DANGER before the player has consciously identified what it is.
+## value expansion, midtone lift, hot rim, hard outline, threat halo, contact
+## shadow — so it reads as DANGER before the player has consciously identified
+## what it is.
+##
+## Round 5, from the QA frames: the round-4 enemies were legible in isolation and
+## mush at game zoom. Three causes, all fixed here. (1) Every region's
+## CanvasModulate multiplies the whole canvas toward the floor's value, so a
+## sprite with a narrow internal value range collapses into one flat blob —
+## hence `_value_expand`, which widens the range in BOTH directions before
+## anything else runs. (2) Hue contrast does not survive a coloured ambient (a
+## red beetle in the red-lit GPU Mines is a red smudge on a red floor) but a
+## near-white pixel does, so every type now carries a white-hot "tell" and a
+## near-white rim. (3) One-pixel appendages came back from the outline+halo
+## passes as dithered noise, so limbs are two pixels minimum (`_thick_line`).
 func _generate_enemies() -> void:
 	var enemies := {
 		"bug": Color(1.0, 0.26, 0.34),
@@ -1521,324 +1539,863 @@ func _generate_enemies() -> void:
 		"legacy_monolith": Color(0.72, 0.64, 0.48),
 		"infinite_context": Color(0.62, 0.30, 1.0),
 	}
+	# The five types region_builder can spawn with boss=true. They get a second,
+	# richer texture under an ADDITIVE filename; the base file is untouched, so
+	# nothing breaks if no consumer ever asks for it.
+	var boss_kinds: Array[String] = ["merge_conflict", "cloud_bill",
+		"enterprise_architect", "legacy_monolith", "infinite_context"]
 	for ename in enemies:
+		var c: Color = enemies[ename]
 		var img := Image.create(32, 32, false, Image.FORMAT_RGBA8)
 		img.fill(Color(0, 0, 0, 0))
-		var c: Color = enemies[ename]
-		if ename == "bug":
-			_draw_bug(img, c)
-		elif ename == "rate_limiter":
-			_draw_rate_limiter(img, c)
-		elif ename == "memory_leak":
-			_draw_memory_leak(img, c)
-		elif ename == "merge_conflict":
-			_draw_merge_conflict(img, c)
-		elif ename == "scope_creep":
-			_draw_scope_creep(img, c)
-		elif ename == "dependency_demon":
-			_draw_dependency_demon(img, c)
-		elif ename == "hallucination":
-			_draw_hallucination(img, c)
-		elif ename == "legacy_monolith":
-			_draw_legacy_monolith(img, c)
-		elif ename == "infinite_context":
-			_draw_infinite_context(img, c)
-		elif ename == "enterprise_architect":
-			_draw_enterprise_architect(img, c)
-		elif ename == "null_reference":
-			_draw_null_reference(img, c)
-		elif ename == "legacy_system":
-			_draw_legacy_system(img, c)
-		elif ename == "cloud_bill":
-			_draw_cloud_bill(img, c)
-		else:
-			_draw_glow_blob(img, c)
-		# The readability chain. Order matters: lift the interior BEFORE the
-		# outline goes down (so the outline stays the darkest thing on the
-		# sprite), sink the underside so the creature has weight, and stamp the
-		# ground shadow last, into whatever is still empty, so it never eats
-		# the halo.
-		var threat: Color = _vivid_color(c)
-		_readability_pass(img, 0.30, 0.34, 0.22)
-		_underside_ao(img, 3, 0.36)
-		_rim_light_pass(img, threat.lightened(0.35), 0.55)
-		_outline_silhouette(img, OUTLINE_ENEMY)
-		_threat_halo(img, threat)
-		_contact_shadow(img)
+		_draw_enemy(img, str(ename), c)
+		_finish_enemy(img, c, false)
 		_save_image(img, "enemy_%s.png" % ename)
+		if boss_kinds.has(str(ename)):
+			var bimg := Image.create(32, 32, false, Image.FORMAT_RGBA8)
+			bimg.fill(Color(0, 0, 0, 0))
+			_draw_boss(bimg, str(ename), c)
+			_finish_enemy(bimg, c, true)
+			_save_image(bimg, "enemy_%s_boss.png" % ename)
 
-## A software "bug" that actually reads as a beetle: 4-tone shell lit from the
-## top-left, jointed legs, a cracked elytron, and eyes that bloom amber.
+## One dispatch, so the boss pass can re-draw the same body without duplicating
+## the table.
+func _draw_enemy(img: Image, ename: String, c: Color) -> void:
+	match ename:
+		"bug":
+			_draw_bug(img, c)
+		"rate_limiter":
+			_draw_rate_limiter(img, c)
+		"memory_leak":
+			_draw_memory_leak(img, c)
+		"merge_conflict":
+			_draw_merge_conflict(img, c)
+		"scope_creep":
+			_draw_scope_creep(img, c)
+		"dependency_demon":
+			_draw_dependency_demon(img, c)
+		"hallucination":
+			_draw_hallucination(img, c)
+		"legacy_monolith":
+			_draw_legacy_monolith(img, c)
+		"infinite_context":
+			_draw_infinite_context(img, c)
+		"enterprise_architect":
+			_draw_enterprise_architect(img, c)
+		"null_reference":
+			_draw_null_reference(img, c)
+		"legacy_system":
+			_draw_legacy_system(img, c)
+		"cloud_bill":
+			_draw_cloud_bill(img, c)
+		_:
+			_draw_glow_blob(img, c)
+
+## The readability chain. Order matters: widen the value range and lift the
+## muddy midtones BEFORE the outline goes down (so the outline stays the darkest
+## thing on the sprite), sink the underside so the creature has weight, and
+## stamp the ground shadow last, into whatever is still empty, so it never eats
+## the halo.
+func _finish_enemy(img: Image, c: Color, boss: bool) -> void:
+	var threat: Color = _vivid_color(c)
+	_value_expand(img, 0.34, 0.48 if boss else 0.42)
+	_readability_pass(img, 0.32, 0.36, 0.30 if boss else 0.26)
+	_underside_ao(img, 4, 0.48 if boss else 0.44)
+	_rim_light_pass(img, threat.lerp(WHITE_HOT, 0.55), 0.66 if boss else 0.62)
+	_outline_silhouette(img, OUTLINE_ENEMY)
+	_threat_halo(img, threat)
+	if boss:
+		_boss_aureole(img, threat)
+	_contact_shadow(img)
+
+## A broken ring of light BEHIND a boss, stamped only where nothing solid lives,
+## so it can never disturb the outline or the silhouette. Bosses are backlit;
+## normal enemies are not. At the 4x a boss renders at, that difference is
+## visible from across the arena, which is the whole point of it.
+##
+## The threshold is 0.7, not 0.05: this runs after _threat_halo, whose two rings
+## occupy exactly the band the aureole wants (alpha 0.55 and 0.19). Skipping
+## anything already painted would have left the aureole as a few stray pixels.
+## 0.7 clears both halo rings while still protecting the opaque body (>= 0.94
+## even on the translucent types) and the OUTLINE_ENEMY edge (0.97).
+func _boss_aureole(img: Image, accent: Color) -> void:
+	var glow := accent.lerp(WHITE_HOT, 0.45)
+	for x in 32:
+		for y in 32:
+			if img.get_pixel(x, y).a > 0.7:
+				continue
+			var d := Vector2(x - 16, y - 16).length()
+			if d < 12.0:
+				continue
+			var ang := atan2(float(y - 16), float(x - 16))
+			var spike: bool = cos(ang * 8.0) > 0.5
+			var lim: float = 15.4 if spike else 13.6
+			if d > lim:
+				continue
+			_px(img, x, y, Color(glow.r, glow.g, glow.b, 0.62 if spike else 0.34))
+
+## What makes each boss its own creature rather than the same one at 200%. Every
+## extra is drawn INSIDE the 32px canvas the base sprite already uses, so the
+## boss texture is a drop-in swap: same size, same scale, same collider.
+func _boss_extras(img: Image, kind: String, c: Color) -> void:
+	var hot := Color(1.0, 0.90, 0.56)
+	match kind:
+		"merge_conflict":
+			# a third faction. Somebody force-pushed.
+			for x in 32:
+				for y in 32:
+					if img.get_pixel(x, y).a <= 0.5:
+						continue
+					if y > 22 and absi(x - 16) < (y - 22) * 3:
+						_px(img, x, y, Color(0.22, 0.62, 0.26) if (x + y) % 2 == 0 else Color(0.10, 0.36, 0.16))
+			for y2 in 32:
+				var seam := 16 + int(sin(float(y2) * 0.6) * 1.6)
+				_over_px(img, seam - 1, y2, Color(1.0, 0.62, 0.20) if y2 % 3 == 0 else Color(0.03, 0.03, 0.06))
+			_glow_lamp(img, 16, 4, hot, 1)
+			_glow_lamp(img, 15, 28, hot, 1)
+		"cloud_bill":
+			# a thundercloud. The invoice is now weather.
+			var storm := Color(0.17, 0.21, 0.36)
+			for x2 in 32:
+				for y3 in 18:
+					var p := img.get_pixel(x2, y3)
+					if p.a > 0.5:
+						_px(img, x2, y3, Color(p.r + (storm.r - p.r) * 0.62,
+							p.g + (storm.g - p.g) * 0.62,
+							p.b + (storm.b - p.b) * 0.55, p.a))
+			for ex: int in [11, 18]:
+				_fill_rect(img, ex, 9, 5, 3, Color(0.90, 0.93, 1.0))
+				_fill_rect(img, ex + 1, 10, 2, 2, Color(0.04, 0.05, 0.10))
+			for bi in 2:
+				var bx: int = 5 if bi == 0 else 27
+				var sgn: int = -1 if bi == 0 else 1
+				_thick_line(img, bx, 16, bx + sgn * 2, 21, Color(1.0, 0.94, 0.62))
+				_draw_line_img(img, bx, 16, bx + sgn * 2, 21, WHITE_HOT)
+				_thick_line(img, bx + sgn * 2, 21, bx - sgn, 27, Color(1.0, 0.94, 0.62))
+				_draw_line_img(img, bx + sgn * 2, 21, bx - sgn, 27, WHITE_HOT)
+		"enterprise_architect":
+			# a crown. He did not ask for it. He will not be giving it back.
+			var gold := Color(1.0, 0.82, 0.28)
+			_fill_rect(img, 10, 2, 13, 3, gold.darkened(0.32))
+			_fill_rect(img, 10, 4, 13, 1, gold.darkened(0.55))
+			for px0: int in [10, 13, 16, 19, 22]:
+				_fill_rect(img, px0, 0, 2, 3, gold)
+				_px(img, px0, 0, WHITE_HOT)
+			_fill_rect(img, 10, 2, 13, 1, gold.lightened(0.30))
+			_glow_core(img, 16, 3, Color(1.0, 0.35, 0.40))
+		"legacy_monolith":
+			var rune := Color(0.46, 1.0, 0.56)
+			for ex2: int in [10, 22]:
+				_fill_rect(img, ex2 - 4, 4, 9, 7, Color(0.02, 0.03, 0.02))
+				_fill_rect(img, ex2 - 4, 4, 9, 1, Color(0.20, 0.19, 0.16))
+				_fill_rect(img, ex2 - 2, 7, 5, 2, rune.darkened(0.10))
+				_glow_lamp(img, ex2, 8, rune, 1)
+		"infinite_context":
+			for a in 4:
+				var rad := deg_to_rad(45.0 + float(a) * 90.0)
+				var sx := 16 + int(cos(rad) * 13.0)
+				var sy := 16 + int(sin(rad) * 13.0)
+				_fill_circle(img, sx, sy, 3, Color(0.04, 0.03, 0.10))
+				_fill_circle(img, sx, sy, 2, Color(0.94, 0.96, 1.0))
+				_px(img, sx, sy, c.darkened(0.4))
+				_px(img, sx, sy + 1, c.darkened(0.4))
+				_px(img, sx - 1, sy - 1, WHITE_HOT)
+
+## ---------- boss bodies ----------
+##
+## Round 6, from the QA frames: the boss variants read as digital noise. The
+## cause was structural, not cosmetic. A boss was drawn as "the base enemy, plus
+## decorations" — and the decorations were per-pixel: hue swaps applied across
+## the whole body, checkerboard dithers, alternating concentric rings. At the 2x
+## a boss renders at, under a coloured ambient and HDR bloom, per-pixel variety
+## aliases into static: no silhouette, no focal point, no readable shape.
+##
+## The three rules these bodies are built on, in order of importance:
+##
+## 1. SILHOUETTE FIRST. One dominant mass with a defined outline. Everything
+##    else is drawn INSIDE it. Nothing dangles off it as a one-pixel appendage.
+## 2. ONE FOCAL FEATURE. A single place the eye lands — a lens, a rune, an
+##    invoice, a glint. Measured as: the brightest pixels must form ONE large
+##    cluster, not fifteen scattered specks.
+## 3. BOUNDED CHAOS. Noise may decorate the shape; it may never BE the shape.
+##    Every corrupting effect here is confined to a named region (a lower rim,
+##    a seam, one flank), never applied per-pixel across the body.
+##
+## The palette discipline that makes it work is `_sculpt`: whatever silhouette a
+## body starts with, `_sculpt` repaints every opaque pixel with a FOUR-TONE ramp
+## on ONE hue. That trades per-pixel variety for large flat value regions, which
+## is the whole difference between a creature and confetti. Details are drawn
+## AFTER the sculpt, so they survive it.
+func _draw_boss(img: Image, kind: String, c: Color) -> void:
+	match kind:
+		"infinite_context":
+			_draw_boss_infinite_context(img, c)
+		"merge_conflict":
+			_draw_boss_merge_conflict(img, c)
+		"cloud_bill":
+			_draw_boss_cloud_bill(img, c)
+		"enterprise_architect":
+			_draw_boss_enterprise_architect(img, c)
+		"legacy_monolith":
+			_draw_boss_legacy_monolith(img, c)
+		_:
+			# Any boss kind without a bespoke body still gets the old path.
+			_draw_enemy(img, kind, c)
+			_boss_extras(img, kind, c)
+
+## Four stops on ONE hue, dark to light. Deliberately only four: a fifth stop
+## buys nothing at 32px and costs the flat regions that make the shape read.
+func _boss_ramp(c: Color) -> Array[Color]:
+	var h := _vivid_color(c, 1.10)
+	var out: Array[Color] = [
+		h.darkened(0.66),
+		h.darkened(0.42),
+		h.darkened(0.10),
+		h.lightened(0.38),
+	]
+	return out
+
+## How lit a pixel is, for a form centred at (cx, cy) with radii (rx, ry). Light
+## from the top-left, plus a mild edge-darkening term so the mass turns away at
+## its rim. Returns roughly 0..1.
+func _boss_lit(x: int, y: int, cx: float, cy: float, rx: float, ry: float) -> float:
+	var nx := (float(x) - cx) / rx
+	var ny := (float(y) - cy) / ry
+	var d: float = minf(sqrt(nx * nx + ny * ny), 1.0)
+	return 0.50 - (nx + ny) * 0.26 - d * 0.12
+
+## Ramp stop for a lit value. The thresholds are NOT evenly spaced: the darkest
+## stop is reserved for the far rim only (lit <= 0.12). Even bands put the whole
+## lower half of a sprite in the darkest tone, and `_underside_ao` then darkens
+## it again, which is how a body turns into a black hole with a face on top.
+func _ramp_index(lit: float) -> int:
+	if lit > 0.66:
+		return 3
+	if lit > 0.42:
+		return 2
+	if lit > 0.12:
+		return 1
+	return 0
+
+## The anti-noise pass. Repaint every opaque pixel with the ramp. Call it right
+## after the silhouette is filled and before any detail is drawn.
+func _sculpt(img: Image, cx: float, cy: float, rx: float, ry: float, ramp: Array[Color]) -> void:
+	for x in img.get_width():
+		for y in img.get_height():
+			if img.get_pixel(x, y).a <= 0.5:
+				continue
+			_px(img, x, y, ramp[_ramp_index(_boss_lit(x, y, cx, cy, rx, ry))])
+
+## THE INFINITE CONTEXT (boss): one enormous unblinking lens in an ovoid shell,
+## with three memory nodes grown out of its crown. The lens IS the sprite — it
+## owns the middle third of the frame, which is why the eye lands on it before
+## the player has consciously identified anything else. The "it remembers
+## everything" gag lives in a context spill along the lower rim: bounded to five
+## short runs, in the body's own two tones, so it decorates the mass instead of
+## dissolving it.
+func _draw_boss_infinite_context(img: Image, c: Color) -> void:
+	var ink := Color(0.030, 0.028, 0.055)
+	var ramp := _boss_ramp(c)
+	_fill_ellipse(img, 16, 17, 13, 12, ramp[1])
+	_fill_ellipse(img, 16, 10, 11, 7, ramp[1])
+	for nx: int in [8, 16, 24]:
+		_fill_circle(img, nx, 4, 2, ramp[1])
+		_fill_rect(img, nx - 1, 4, 3, 4, ramp[1])
+	_sculpt(img, 16.0, 17.0, 13.0, 12.0, ramp)
+	_fill_ellipse(img, 16, 16, 9, 7, ink)
+	_fill_ellipse(img, 16, 16, 8, 6, Color(0.86, 0.88, 0.96))
+	_fill_ellipse(img, 15, 15, 6, 4, Color(0.97, 0.98, 1.0))
+	_fill_circle(img, 16, 16, 5, ramp[2])
+	_fill_circle(img, 16, 16, 4, _vivid_color(c, 1.3))
+	_fill_circle(img, 16, 16, 2, ink)
+	_px(img, 16, 16, Color(0.02, 0.02, 0.04))
+	_px(img, 14, 14, WHITE_HOT)
+	_px(img, 15, 14, Color(0.90, 0.94, 1.0))
+	_px(img, 14, 15, Color(0.90, 0.94, 1.0))
+	_px(img, 18, 18, Color(0.74, 0.80, 0.98))
+	_over_line(img, 10, 25, 17, 25, ink)
+	_over_line(img, 19, 25, 24, 25, ramp[3])
+	_over_line(img, 9, 27, 13, 27, ink)
+	_over_line(img, 15, 27, 24, 27, ramp[3])
+	_over_line(img, 12, 29, 18, 29, ink)
+	for nx2: int in [8, 16, 24]:
+		_glow_lamp(img, nx2, 4, ramp[3], 1)
+
+## THE MERGE CONFLICT (boss): one sphere, two factions, two branch nubs on
+## stalks. Warm on the left, cool on the right — two hues, four stops each, and
+## a near-black spine down the middle with a molten core bounded to y 9..23. The
+## third faction (somebody force-pushed) is ONE solid wedge in the lower left
+## with a lit leading edge, not the per-pixel green rash it used to be.
+func _draw_boss_merge_conflict(img: Image, _c: Color) -> void:
+	var ink := Color(0.030, 0.028, 0.055)
+	var warm: Array[Color] = [
+		Color(0.36, 0.09, 0.04), Color(0.66, 0.20, 0.07),
+		Color(0.95, 0.42, 0.14), Color(1.0, 0.72, 0.40)]
+	var cool: Array[Color] = [
+		Color(0.05, 0.09, 0.26), Color(0.11, 0.20, 0.50),
+		Color(0.24, 0.42, 0.86), Color(0.56, 0.76, 1.0)]
+	_fill_circle(img, 16, 17, 13, warm[1])
+	_thick_line(img, 10, 8, 6, 3, warm[1])
+	_fill_circle(img, 6, 3, 2, warm[1])
+	_thick_line(img, 22, 8, 26, 3, cool[1])
+	_fill_circle(img, 26, 3, 2, cool[1])
+	for x in 32:
+		for y in 32:
+			if img.get_pixel(x, y).a <= 0.5:
+				continue
+			var idx := _ramp_index(_boss_lit(x, y, 16.0, 17.0, 13.0, 13.0))
+			_px(img, x, y, warm[idx] if x < 16 else cool[idx])
+	for x2 in 32:
+		for y2 in 32:
+			if img.get_pixel(x2, y2).a <= 0.5 or y2 < 20:
+				continue
+			if float(y2 - 19) * 1.9 < float(x2 - 3):
+				continue
+			_px(img, x2, y2, Color(0.17, 0.50, 0.23) if (x2 + y2) % 7 > 2 else Color(0.10, 0.33, 0.15))
+	for y3 in range(20, 31):
+		var ex := 3 + int(float(y3 - 19) * 1.9)
+		_over_px(img, ex, y3, Color(0.42, 0.94, 0.50))
+		_over_px(img, ex - 1, y3, Color(0.30, 0.72, 0.36))
+	for y4 in 32:
+		var sm := 16 + int(sin(float(y4) * 0.55) * 1.5)
+		_over_px(img, sm - 1, y4, ink)
+		_over_px(img, sm, y4, ink)
+		_over_px(img, sm + 1, y4, ink)
+		if y4 >= 9 and y4 <= 23:
+			_over_px(img, sm, y4, Color(1.0, 0.74, 0.28))
+		if y4 >= 12 and y4 <= 20:
+			_over_px(img, sm, y4, Color(1.0, 0.88, 0.52))
+	for ei in 2:
+		var ex2: int = 10 if ei == 0 else 22
+		var pup: Color = Color(0.26, 0.04, 0.03) if ei == 0 else Color(0.03, 0.05, 0.26)
+		_fill_ellipse(img, ex2, 15, 4, 4, ink)
+		_fill_ellipse(img, ex2, 15, 3, 3, Color(0.96, 0.97, 1.0))
+		_fill_circle(img, ex2, 16, 1, pup)
+		_px(img, ex2 - 1, 13, WHITE_HOT)
+	_fill_circle(img, 6, 3, 1, Color(1.0, 0.66, 0.26))
+	_fill_circle(img, 26, 3, 1, Color(0.46, 0.72, 1.0))
+
+## THE CLOUD BILL (boss): a thunderhead. Four puffs fused over one solid anvil,
+## sculpted in a single slate ramp — the only second hue on the sprite is the
+## money, and the money is the focal feature: an invoice glowing out of the
+## belly, fully enclosed by the body. The bolt is struck down the FLANK, inside
+## the silhouette, because a bolt hanging off the underside reads as a tail.
+func _draw_boss_cloud_bill(img: Image, c: Color) -> void:
+	var ink := Color(0.030, 0.028, 0.055)
+	var slate: Array[Color] = [
+		Color(0.09, 0.11, 0.21), Color(0.17, 0.22, 0.38),
+		Color(0.30, 0.38, 0.60), Color(0.64, 0.72, 0.92)]
+	_fill_circle(img, 9, 10, 6, slate[1])
+	_fill_circle(img, 16, 7, 7, slate[1])
+	_fill_circle(img, 23, 10, 6, slate[1])
+	_fill_circle(img, 16, 14, 9, slate[1])
+	_fill_round_rect(img, 4, 12, 25, 14, slate[1])
+	_sculpt(img, 16.0, 14.0, 14.0, 13.0, slate)
+	for ex: int in [9, 19]:
+		_fill_round_rect(img, ex, 6, 5, 4, Color(0.93, 0.95, 1.0))
+		_fill_rect(img, ex + 1, 7, 2, 2, ink)
+		_fill_rect(img, ex, 5, 5, 1, slate[0])
+	_fill_rect(img, 14, 11, 5, 1, slate[0])
+	var money := _vivid_color(c, 1.25)
+	_fill_round_rect(img, 10, 13, 13, 12, Color(0.03, 0.09, 0.05))
+	_fill_rect(img, 12, 15, 9, 2, money)
+	_fill_rect(img, 11, 16, 2, 3, money)
+	_fill_rect(img, 12, 18, 9, 2, money)
+	_fill_rect(img, 20, 19, 2, 3, money)
+	_fill_rect(img, 12, 21, 9, 2, money)
+	_fill_rect(img, 16, 13, 2, 11, money.lightened(0.35))
+	_glow_lamp(img, 16, 18, money.lightened(0.18), 1)
+	var bolt := Color(1.0, 0.90, 0.44)
+	var bx0: Array[int] = [26, 23, 26]
+	var by0: Array[int] = [13, 18, 20]
+	var bx1: Array[int] = [23, 26, 23]
+	var by1: Array[int] = [18, 20, 25]
+	for bi in 3:
+		_over_px(img, bx0[bi], by0[bi], bolt)
+		_draw_line_img(img, bx0[bi], by0[bi], bx1[bi], by1[bi], bolt)
+		_draw_line_img(img, bx0[bi] - 1, by0[bi], bx1[bi] - 1, by1[bi], bolt.darkened(0.34))
+	_px(img, 25, 14, WHITE_HOT)
+	# Rain, hanging off the anvil. All three drops START at y 26 — the body's
+	# last solid row is 25, so a drop that begins at 27 is a DETACHED 2x2 block:
+	# _outline_silhouette boxes it, _threat_halo rings it twice, and at the 2x a
+	# boss renders at it reads as a floating speck under the cloud, which is the
+	# exact defect this pass exists to remove. The middle drop still hangs
+	# lower — it is one row TALLER, not one row further down.
+	var rxs: Array[int] = [8, 13, 19]
+	var rhs: Array[int] = [2, 3, 2]
+	for ri in 3:
+		_fill_rect(img, rxs[ri], 26, 2, rhs[ri], slate[3])
+		_fill_rect(img, rxs[ri], 26, 2, 1, Color(0.86, 0.92, 1.0))
+
+## THE ENTERPRISE ARCHITECT (boss): one trapezoid of shoulders, a head set into
+## it, and a crown he awarded himself. The focal feature is the glasses glint —
+## a continuous hot band across both lenses rather than a scatter of sparkles,
+## so the brightest thing on the sprite is one shape and it is on his face.
+func _draw_boss_enterprise_architect(img: Image, _c: Color) -> void:
+	var ink := Color(0.030, 0.028, 0.055)
+	var suit: Array[Color] = [
+		Color(0.07, 0.08, 0.15), Color(0.13, 0.16, 0.28),
+		Color(0.22, 0.27, 0.44), Color(0.46, 0.54, 0.76)]
+	for y in range(13, 31):
+		var half: int = mini(6 + int(float(y - 13) * 0.62), 13)
+		_fill_rect(img, 16 - half, y, half * 2 + 1, 1, suit[1])
+	_sculpt(img, 16.0, 20.0, 14.0, 14.0, suit)
+	var skin := Color(0.86, 0.71, 0.58)
+	_shade_sphere(img, 16, 8, 6, skin)
+	_fill_rect(img, 10, 1, 13, 4, Color(0.13, 0.13, 0.18))
+	_fill_rect(img, 10, 1, 13, 1, Color(0.34, 0.34, 0.42))
+	var gold := Color(1.0, 0.82, 0.28)
+	_fill_rect(img, 9, 1, 15, 2, gold.darkened(0.34))
+	_fill_rect(img, 9, 1, 15, 1, gold.lightened(0.24))
+	for px0: int in [9, 15, 21]:
+		_fill_rect(img, px0, 0, 3, 2, gold)
+		_px(img, px0 + 1, 0, WHITE_HOT)
+	_fill_rect(img, 10, 6, 13, 1, Color(0.10, 0.10, 0.14))
+	_fill_rect(img, 10, 7, 6, 4, Color(0.80, 0.88, 0.98))
+	_fill_rect(img, 17, 7, 6, 4, Color(0.62, 0.70, 0.86))
+	_fill_rect(img, 16, 8, 1, 1, Color(0.22, 0.26, 0.34))
+	_fill_rect(img, 12, 8, 2, 2, ink)
+	_fill_rect(img, 19, 8, 2, 2, ink)
+	_fill_rect(img, 10, 10, 6, 1, Color(0.30, 0.36, 0.48))
+	_fill_rect(img, 17, 10, 6, 1, Color(0.24, 0.29, 0.40))
+	_fill_rect(img, 10, 7, 6, 1, WHITE_HOT)
+	_fill_rect(img, 17, 7, 6, 1, Color(0.90, 0.94, 1.0))
+	_fill_rect(img, 14, 12, 5, 1, skin.darkened(0.46))
+	_fill_rect(img, 13, 13, 7, 2, Color(0.95, 0.96, 0.99))
+	_fill_rect(img, 13, 13, 7, 1, WHITE_HOT)
+	for ty in range(14, 28):
+		var w: int = 1 + (ty - 14) / 5
+		var tie: Color = Color(0.50, 0.07, 0.11) if ty % 5 == 0 else Color(0.74, 0.12, 0.17)
+		_fill_rect(img, 16 - w / 2, ty, maxi(1, w), 1, tie)
+	_fill_circle(img, 7, 20, 1, Color(0.44, 0.62, 0.92))
+	_fill_circle(img, 25, 20, 1, Color(0.32, 0.46, 0.74))
+
+## THE LEGACY MONOLITH (boss): a standing slab, tapered, with a capstone and a
+## plinth — NOT the full-frame brick wall it used to be, which had no silhouette
+## at all because it touched every edge of the canvas. One stone ramp, courses
+## drawn as dark mortar only (the old per-brick value jitter was the confetti),
+## and one rune slot lit from inside as the focal feature.
+func _draw_boss_legacy_monolith(img: Image, _c: Color) -> void:
+	var stone: Array[Color] = [
+		Color(0.16, 0.14, 0.12), Color(0.29, 0.26, 0.22),
+		Color(0.47, 0.42, 0.36), Color(0.74, 0.68, 0.60)]
+	for y in range(2, 29):
+		var half := 6 + int(float(y - 2) * 0.19)
+		_fill_rect(img, 16 - half, y, half * 2 + 1, 1, stone[1])
+	_fill_rect(img, 4, 29, 25, 3, stone[1])
+	_fill_rect(img, 11, 0, 11, 3, stone[1])
+	_sculpt(img, 16.0, 16.0, 13.0, 15.0, stone)
+	for row in range(6, 29, 6):
+		_over_line(img, 2, row, 29, row, stone[0])
+		var off: int = 0 if (row / 6) % 2 == 0 else 5
+		for bx in range(3 + off, 29, 10):
+			for dy in range(1, 6):
+				_over_px(img, bx, row + dy, stone[0])
+	_over_line(img, 11, 18, 13, 28, stone[0])
+	_over_line(img, 21, 20, 19, 28, stone[0])
+	var rune := Color(0.36, 1.0, 0.48)
+	_fill_rect(img, 10, 10, 13, 7, stone[0])
+	_fill_rect(img, 11, 11, 11, 5, Color(0.03, 0.06, 0.03))
+	_fill_rect(img, 13, 12, 7, 1, rune.darkened(0.15))
+	_fill_rect(img, 13, 14, 7, 1, rune.darkened(0.15))
+	_fill_rect(img, 16, 12, 1, 4, rune)
+	_glow_lamp(img, 16, 13, rune, 1)
+	_fill_rect(img, 9, 9, 15, 1, stone[3])
+
+## A software "bug" that actually reads as a beetle: three masses (head,
+## pronotum, abdomen) separated by hard near-black seams, six two-pixel jointed
+## legs, a cracked elytron, and eyes that bloom amber.
 func _draw_bug(img: Image, _c: Color) -> void:
-	var shell := Color(0.74, 0.17, 0.22)
-	var shell_hi := Color(0.95, 0.38, 0.35)
-	var shell_sh := Color(0.46, 0.09, 0.14)
-	var carapace := Color(0.20, 0.10, 0.13)
-	var leg := Color(0.10, 0.06, 0.08)
-	# legs first (body overlaps their roots), with knee joints
-	for sy in [12, 17, 22]:
-		_draw_line_img(img, 12, sy, 5, sy - 4, leg)
-		_draw_line_img(img, 5, sy - 4, 3, sy - 2, leg)
-		_draw_line_img(img, 20, sy, 27, sy - 4, leg)
-		_draw_line_img(img, 27, sy - 4, 29, sy - 2, leg)
+	var shell := Color(0.82, 0.20, 0.20)
+	var shell_hi := Color(1.0, 0.40, 0.24)
+	var shell_sp := Color(1.0, 0.76, 0.52)
+	var shell_sh := Color(0.40, 0.06, 0.10)
+	var carapace := Color(0.10, 0.04, 0.06)
+	var leg := Color(0.19, 0.07, 0.09)
+	var leg_hi := Color(0.46, 0.15, 0.14)
+	var amber := Color(1.0, 0.74, 0.16)
+	# six jointed legs, two pixels thick so they survive the outline and the halo
+	for sy: int in [14, 19, 24]:
+		_thick_line(img, 12, sy, 6, sy - 4, leg)
+		_thick_line(img, 6, sy - 4, 4, sy - 1, leg)
+		_thick_line(img, 20, sy, 26, sy - 4, leg)
+		_thick_line(img, 26, sy - 4, 28, sy - 1, leg)
+		_draw_line_img(img, 12, sy, 6, sy - 4, leg_hi)
+		_draw_line_img(img, 20, sy, 26, sy - 4, leg_hi)
 	# abdomen: offset-layered ellipses build the top-left ramp
-	_fill_ellipse(img, 16, 18, 9, 11, shell_sh)
-	_fill_ellipse(img, 15, 17, 8, 10, shell)
-	_fill_ellipse(img, 13, 15, 5, 6, shell_hi)
-	_dither_rect(img, 10, 20, 8, 4, shell, shell_sh, true)
-	# elytra split + segment ridges following the shell curve
-	for y in range(8, 29):
-		_px(img, 16, y, carapace)
-	for ry in [13, 17, 21, 25]:
-		for x in range(8, 25):
-			if Vector2(x - 16, ry - 18).length() < 9.5 and img.get_pixel(x, ry).a > 0.0:
+	_fill_ellipse(img, 16, 20, 10, 11, shell_sh)
+	_fill_ellipse(img, 15, 19, 9, 10, shell)
+	_fill_ellipse(img, 13, 16, 4, 5, shell_hi)
+	_dither_rect(img, 9, 24, 11, 4, shell, shell_sh, true)
+	# a specular streak on the lit shoulder of the shell
+	_over_line(img, 10, 15, 13, 13, shell_sp)
+	_over_px(img, 11, 14, WHITE_HOT)
+	# the elytra split: 2px of near-black, the hardest internal edge on the sprite
+	_fill_rect(img, 15, 12, 2, 18, carapace)
+	for ry: int in [17, 21, 25]:
+		for x in range(7, 26):
+			if Vector2(x - 16, ry - 20).length() < 10.2 and img.get_pixel(x, ry).a > 0.0:
 				_px(img, x, ry, shell_sh)
-	# a crack in the shell — it has seen some sprints
-	_draw_line_img(img, 20, 14, 23, 18, carapace)
-	# head, mandibles, antennae
-	_fill_circle(img, 16, 7, 5, carapace)
-	_fill_circle(img, 14, 6, 2, Color(0.26, 0.17, 0.20))
-	_draw_line_img(img, 13, 3, 11, 1, leg)
-	_draw_line_img(img, 19, 3, 21, 1, leg)
-	_draw_line_img(img, 14, 3, 10, 0, leg)
-	_draw_line_img(img, 18, 3, 22, 0, leg)
-	_px(img, 10, 0, Color(1.0, 0.85, 0.2))
-	_px(img, 22, 0, Color(1.0, 0.85, 0.2))
-	# glowing eyes: white-hot cores in amber halos
-	_glow_core(img, 13, 7, Color(1.0, 0.72, 0.15))
-	_glow_core(img, 19, 7, Color(1.0, 0.72, 0.15))
+	_over_line(img, 20, 16, 22, 20, carapace)  # a crack — it has seen some sprints
+	# pronotum (thorax plate) — its own mass, one value step up
+	_fill_ellipse(img, 16, 11, 8, 5, shell_sh)
+	_fill_ellipse(img, 16, 10, 7, 4, shell.lightened(0.14))
+	_fill_ellipse(img, 13, 9, 3, 2, shell_hi)
+	_fill_rect(img, 8, 13, 17, 1, carapace)   # hard shadow under the plate
+	# head, set into the pronotum
+	_fill_circle(img, 16, 6, 4, carapace)
+	_fill_circle(img, 15, 5, 3, Color(0.30, 0.15, 0.16))
+	_thick_line(img, 14, 9, 12, 11, carapace)   # mandibles, open
+	_thick_line(img, 18, 9, 20, 11, carapace)
+	_thick_line(img, 13, 3, 9, 0, leg)          # antennae
+	_thick_line(img, 19, 3, 23, 0, leg)
+	_px(img, 9, 0, amber)
+	_px(img, 23, 0, amber)   # the antenna ends at 23, not 24 — tips stay mirrored
+	# the tell: two amber lamps with white-hot cores
+	_glow_lamp(img, 13, 5, amber, 1)
+	_glow_lamp(img, 19, 5, amber, 1)
 
-## A rate limiter: a hazard-striped gate with a STOP light mid-tantrum.
+## A rate limiter: a hazard-striped gate with a STOP light mid-tantrum. The
+## stripes are near-white against near-black on purpose — a gate that reads as
+## "wall" is a gate that works.
 func _draw_rate_limiter(img: Image, c: Color) -> void:
-	var post := Color(0.20, 0.21, 0.26)
-	var post_hi := Color(0.33, 0.35, 0.42)
-	var post_sh := Color(0.11, 0.12, 0.16)
-	for px in [5, 23]:
-		_fill_rect(img, px, 5, 4, 23, post)
-		_fill_rect(img, px, 5, 1, 23, post_hi)
-		_fill_rect(img, px + 3, 5, 1, 23, post_sh)
-		_fill_rect(img, px - 1, 27, 6, 2, post_sh)
-	# barrier arms: diagonal amber/dark stripes, beveled top and bottom
+	var post := Color(0.19, 0.20, 0.25)
+	var post_hi := Color(0.46, 0.49, 0.58)
+	var post_sh := Color(0.07, 0.08, 0.11)
+	var hot := Color(1.0, 0.82, 0.26)
+	for px: int in [4, 24]:
+		_fill_rect(img, px, 6, 5, 23, post)
+		_fill_rect(img, px, 6, 1, 23, post_hi)
+		_fill_rect(img, px + 4, 6, 1, 23, post_sh)
+		_fill_rect(img, px - 1, 28, 7, 3, post_sh)
+		_fill_rect(img, px - 1, 28, 7, 1, post.lightened(0.10))
 	for i in 3:
-		var by := 9 + i * 6
-		for x in range(9, 23):
-			for y in range(by, by + 4):
-				var stripe := int(floor(float(x - y) / 3.0)) % 2 == 0
-				var col := c if stripe else Color(0.13, 0.13, 0.16)
+		var by := 10 + i * 6
+		for x in range(9, 24):
+			for y in range(by, by + 5):
+				var stripe: bool = int(floor(float(x - y) / 3.0)) % 2 == 0
+				var col: Color = hot if stripe else Color(0.07, 0.07, 0.10)
 				if y == by:
-					col = col.lightened(0.2)
-				elif y == by + 3:
-					col = col.darkened(0.3)
+					col = col.lightened(0.34)
+				elif y == by + 4:
+					col = col.darkened(0.45)
 				_px(img, x, y, col)
-	# status LEDs down one post — currently all yelling
-	for i in 3:
-		_px(img, 24, 8 + i * 7, Color(1.0, 0.35, 0.3))
-	# the STOP light
-	_fill_circle(img, 16, 4, 3, Color(0.55, 0.10, 0.12))
-	_fill_circle(img, 16, 4, 2, Color(0.95, 0.2, 0.2))
-	_glow_core(img, 15, 3, Color(1.0, 0.45, 0.4))
+		_fill_rect(img, 9, by, 15, 1, Color(0.05, 0.05, 0.08))
+	# status LEDs down the shadow post — currently all yelling
+	for i2 in 3:
+		_glow_lamp(img, 26, 11 + i2 * 7, Color(1.0, 0.30, 0.26), 1)
+	# the STOP beacon
+	_fill_circle(img, 16, 4, 4, Color(0.30, 0.05, 0.07))
+	_fill_circle(img, 16, 4, 3, Color(0.90, 0.16, 0.18))
+	_glow_lamp(img, 15, 3, Color(1.0, 0.34, 0.30), 2)
+	# The beacon disc bottoms out at y=8 and the first barrier arm starts at
+	# y=10, so a one-row bracket left row 9 empty and the head came out as a
+	# separate island with its own outline and its own halo. Two rows joins it.
+	_fill_rect(img, 12, 8, 9, 2, Color(0.06, 0.06, 0.09))
 
-## A memory leak: a gel blob, top-left lit, dripping with quiet guilt.
+## A memory leak: a gel dome, top-left lit, with a hard base line and drips it
+## has no intention of freeing.
 func _draw_memory_leak(img: Image, c: Color) -> void:
-	var hi := c.lightened(0.30)
-	var sh := c.darkened(0.35)
-	_fill_circle(img, 16, 12, 9, sh)
-	_fill_circle(img, 15, 11, 8, c)
-	_fill_circle(img, 13, 9, 4, hi)
-	_dither_rect(img, 10, 14, 12, 4, c, sh, true)
-	# drips with a lit streak and gravity ambitions
+	var hi := c.lightened(0.34)
+	var sp := c.lightened(0.66)
+	var sh := c.darkened(0.42)
+	var sh2 := c.darkened(0.62)
+	_fill_ellipse(img, 16, 13, 11, 10, sh2)
+	_fill_ellipse(img, 16, 12, 10, 9, sh)
+	_fill_ellipse(img, 15, 11, 9, 8, c)
+	_fill_ellipse(img, 12, 8, 5, 4, hi)
+	_fill_ellipse(img, 11, 7, 2, 2, sp)
+	_px(img, 11, 7, WHITE_HOT)
+	_dither_rect(img, 8, 16, 16, 4, c, sh, true)
+	_fill_rect(img, 7, 20, 18, 1, sh2)   # a hard base line: it has a bottom
+	# suspended allocations nobody freed
+	var blobs: Array[Vector3i] = [Vector3i(20, 14, 2), Vector3i(10, 15, 1), Vector3i(17, 8, 1)]
+	for b in blobs:
+		_fill_circle(img, b.x, b.y, b.z, sh)
+		_over_px(img, b.x - 1, b.y - 1, hi)
+	# drips, three pixels wide with a lit edge and a hot bead
 	var drip_x: Array[int] = [10, 16, 22]
 	var drip_h: Array[int] = [7, 10, 5]
 	for i in 3:
-		_fill_rect(img, drip_x[i] - 1, 18, 3, drip_h[i], c.darkened(0.12))
-		_fill_rect(img, drip_x[i] - 1, 18, 1, drip_h[i], c.lightened(0.10))
-		_fill_circle(img, drip_x[i], 18 + drip_h[i], 2, sh)
-		_px(img, drip_x[i], 18 + drip_h[i], hi)  # hot bead at the tip
+		_fill_rect(img, drip_x[i] - 1, 20, 3, drip_h[i], c.darkened(0.16))
+		_fill_rect(img, drip_x[i] - 1, 20, 1, drip_h[i], hi)
+		_fill_rect(img, drip_x[i] + 1, 20, 1, drip_h[i], sh2)
+		_fill_circle(img, drip_x[i], 20 + drip_h[i], 2, sh)
+		_fill_circle(img, drip_x[i], 20 + drip_h[i], 1, c)
+		_px(img, drip_x[i] - 1, 20 + drip_h[i] - 1, sp)
 	# eyes: it knows what it did
-	_fill_circle(img, 13, 10, 2, Color.WHITE)
-	_fill_circle(img, 19, 10, 2, Color.WHITE)
-	_fill_circle(img, 13, 11, 1, Color(0.05, 0.08, 0.15))
-	_fill_circle(img, 19, 11, 1, Color(0.05, 0.08, 0.15))
-	_px(img, 12, 9, WHITE_HOT)
-	_px(img, 18, 9, WHITE_HOT)
+	for ex: int in [12, 20]:
+		_fill_circle(img, ex, 11, 3, Color(0.03, 0.04, 0.09))
+		_fill_circle(img, ex, 11, 2, Color(0.94, 0.96, 1.0))
+		_fill_circle(img, ex, 12, 1, Color(0.04, 0.06, 0.13))
+		_px(img, ex - 1, 10, WHITE_HOT)
+	_fill_rect(img, 10, 7, 4, 1, sh2)
+	_fill_rect(img, 18, 7, 4, 1, sh2)
+	_fill_rect(img, 14, 16, 5, 1, Color(0.04, 0.05, 0.11))  # a small guilty mouth
 
-## A merge conflict: two shaded halves that refuse to rebase, with white-hot
-## friction sparks along the seam.
+## A merge conflict: two halves that refuse to rebase, split by hue AND by
+## value, with white-hot friction sparks down the seam and a chevron each way.
 func _draw_merge_conflict(img: Image, _c: Color) -> void:
-	var left := Color(0.85, 0.30, 0.25)
-	var right := Color(0.30, 0.50, 0.85)
-	_fill_circle(img, 16, 16, 12, left.darkened(0.3))
-	_fill_circle(img, 15, 15, 11, left)
-	_fill_circle(img, 12, 12, 4, left.lightened(0.25))
+	var lb := Color(0.88, 0.30, 0.16)
+	var lhi := Color(1.0, 0.62, 0.34)
+	var lsh := Color(0.40, 0.09, 0.07)
+	var rb := Color(0.15, 0.28, 0.62)
+	var rhi := Color(0.38, 0.58, 0.96)
+	var rsh := Color(0.04, 0.08, 0.24)
+	var dark := Color(0.04, 0.04, 0.07)
 	for x in 32:
 		for y in 32:
-			var seam := 16 + int(sin(y * 0.6) * 1.5)
-			if x > seam and Vector2(x - 16, y - 16).length() <= 12.0:
-				var col := right
-				if x > seam + 6 or y > 22:
-					col = right.darkened(0.3)
-				elif y < 10:
-					col = right.lightened(0.15)
-				_px(img, x, y, col)
-	# chevrons down the seam
-	for y in range(6, 27, 5):
-		_px(img, 15, y, Color(0.08, 0.08, 0.1))
-		_px(img, 17, y, Color(0.08, 0.08, 0.1))
-	_glow_core(img, 16, 10, Color(1.0, 0.75, 0.3))
-	_glow_core(img, 16, 20, Color(1.0, 0.75, 0.3))
+			if Vector2(x - 16, y - 16).length() > 12.4:
+				continue
+			var seam := 16 + int(sin(float(y) * 0.6) * 1.6)
+			var lit := -(float(x - 15) / 12.0 + float(y - 15) / 12.0) * 0.707
+			var col := lb
+			if x <= seam:
+				if lit > 0.40:
+					col = lhi
+				elif lit < -0.28:
+					col = lsh
+				elif lit < -0.05:
+					col = lsh if ((x + y) % 2 == 0) else lb
+			else:
+				col = rb
+				if lit > 0.40:
+					col = rhi
+				elif lit < -0.28:
+					col = rsh
+				elif lit < -0.05:
+					col = rsh if ((x + y) % 2 == 0) else rb
+			_px(img, x, y, col)
+	_over_px(img, 9, 9, Color(1.0, 0.86, 0.66))
+	_over_px(img, 10, 8, WHITE_HOT)
+	# the seam: 2px of near-black, jagged, unresolvable
+	for y2 in 32:
+		var seam2 := 16 + int(sin(float(y2) * 0.6) * 1.6)
+		_over_px(img, seam2, y2, dark)
+		_over_px(img, seam2 + 1, y2, dark)
+	# <<<< on the left, >>>> on the right
+	for i in 3:
+		var cy := 9 + i * 7
+		_over_line(img, 11, cy, 8, cy + 2, dark)
+		_over_line(img, 8, cy + 2, 11, cy + 4, dark)
+		_over_line(img, 21, cy, 24, cy + 2, dark)
+		_over_line(img, 24, cy + 2, 21, cy + 4, dark)
+	_glow_lamp(img, 16, 8, Color(1.0, 0.78, 0.30), 2)
+	_glow_lamp(img, 16, 22, Color(1.0, 0.78, 0.30), 2)
 	# one eye per faction, glaring inward
-	_fill_circle(img, 11, 14, 2, Color.WHITE)
-	_fill_circle(img, 21, 14, 2, Color.WHITE)
-	_px(img, 12, 14, Color(0.1, 0.05, 0.05))
-	_px(img, 20, 14, Color(0.05, 0.05, 0.1))
+	for ei in 2:
+		var ex: int = 11 if ei == 0 else 21
+		var pup: Color = Color(0.20, 0.03, 0.03) if ei == 0 else Color(0.03, 0.05, 0.22)
+		_fill_circle(img, ex, 14, 3, dark)
+		_fill_circle(img, ex, 14, 2, Color(0.95, 0.96, 1.0))
+		_px(img, ex, 14, pup)
+		_px(img, ex, 15, pup)
 
-## Scope creep: a lit amoeba whose pseudopods are already reaching for the
-## next sprint. Tips glow — that's where the new requirements grow.
+## Scope creep: a lit amoeba whose pseudopods are already reaching for the next
+## sprint. Tips glow — that's where the new requirements grow.
 func _draw_scope_creep(img: Image, c: Color) -> void:
-	var hi := c.lightened(0.3)
-	var sh := c.darkened(0.35)
-	var dirs: Array[Vector2] = [Vector2(0, -1), Vector2(0, 1), Vector2(-1, 0), Vector2(1, 0), Vector2(0.7, -0.7), Vector2(-0.7, 0.7)]
+	var hi := c.lightened(0.34)
+	var sp := c.lightened(0.68)
+	var sh := c.darkened(0.40)
+	var sh2 := c.darkened(0.60)
+	var dirs: Array[Vector2] = [Vector2(0, -1), Vector2(0, 1), Vector2(-1, 0),
+		Vector2(1, 0), Vector2(0.7, -0.7), Vector2(-0.7, 0.7)]
 	for a in dirs:
-		var tip := Vector2(16, 16) + a * 14.0
-		_draw_line_img(img, 16 + int(a.x * 6.0), 16 + int(a.y * 6.0), int(tip.x), int(tip.y), c.darkened(0.15))
-		_fill_circle(img, int(tip.x), int(tip.y), 2, c)
-		_px(img, int(tip.x), int(tip.y), hi)
+		var tipx := 16 + int(a.x * 13.0)
+		var tipy := 16 + int(a.y * 13.0)
+		_thick_line(img, 16 + int(a.x * 5.0), 16 + int(a.y * 5.0), tipx, tipy, sh)
+		_draw_line_img(img, 16 + int(a.x * 5.0), 16 + int(a.y * 5.0), tipx, tipy, c)
+		_fill_circle(img, tipx, tipy, 2, sh)
+		_fill_circle(img, tipx, tipy, 1, c)
+		_px(img, tipx - 1, tipy - 1, sp)
+	_fill_circle(img, 16, 16, 9, sh2)
 	_fill_circle(img, 16, 16, 8, sh)
 	_fill_circle(img, 15, 15, 7, c)
-	_fill_circle(img, 13, 13, 3, hi)
-	_dither_rect(img, 12, 18, 9, 4, c, sh, true)
+	_fill_circle(img, 13, 13, 4, hi)
+	_fill_circle(img, 12, 12, 1, sp)
+	_px(img, 12, 12, WHITE_HOT)
+	_dither_rect(img, 11, 19, 11, 4, c, sh, true)
 	# organelles (absorbed tickets)
-	_px(img, 19, 18, sh)
-	_px(img, 12, 19, sh)
-	_px(img, 18, 12, sh)
-	# nucleus eyes
-	_fill_circle(img, 13, 15, 2, Color.WHITE)
-	_fill_circle(img, 19, 15, 2, Color.WHITE)
-	_px(img, 13, 15, Color(0.05, 0.15, 0.05))
-	_px(img, 19, 15, Color(0.05, 0.15, 0.05))
-
-## Dependency demon: a horned knot whose strands kink like the real graph.
-## Every node at the tips is Someone Else's Package.
-func _draw_dependency_demon(img: Image, c: Color) -> void:
-	var sh := c.darkened(0.4)
-	var hi := c.lightened(0.25)
-	for i in 8:
-		var ang := TAU * float(i) / 8.0 + 0.2
-		var d := Vector2(cos(ang), sin(ang))
-		var tip := Vector2(16, 16) + d * 14.0
-		var mid := Vector2(16, 16) + d * 9.0 + Vector2(-d.y, d.x) * 2.0
-		_draw_line_img(img, 16, 16, int(mid.x), int(mid.y), sh)
-		_draw_line_img(img, int(mid.x), int(mid.y), int(tip.x), int(tip.y), sh)
-		_fill_circle(img, int(tip.x), int(tip.y), 2, c.darkened(0.15))
-		_px(img, int(tip.x), int(tip.y), hi)
-	_fill_circle(img, 16, 16, 7, sh)
-	_fill_circle(img, 15, 15, 6, c)
-	_fill_circle(img, 13, 13, 3, hi)
-	# horns
-	_draw_line_img(img, 12, 10, 10, 6, sh)
-	_draw_line_img(img, 20, 10, 22, 6, sh)
-	# version-mismatch amber eyes, white-hot cores
-	_glow_core(img, 13, 14, Color(1.0, 0.85, 0.25))
-	_glow_core(img, 19, 14, Color(1.0, 0.85, 0.25))
-	# jagged grin
+	var orgs: Array[Vector2i] = [Vector2i(19, 19), Vector2i(12, 20), Vector2i(19, 12)]
+	for o in orgs:
+		_fill_circle(img, o.x, o.y, 1, sh2)
+		_over_px(img, o.x - 1, o.y - 1, hi)
+	for ex: int in [12, 20]:
+		_fill_circle(img, ex, 15, 3, Color(0.03, 0.06, 0.03))
+		_fill_circle(img, ex, 15, 2, Color(0.94, 1.0, 0.94))
+		_px(img, ex, 15, Color(0.03, 0.10, 0.03))
+		_px(img, ex, 16, Color(0.03, 0.10, 0.03))
+		_px(img, ex - 1, 14, WHITE_HOT)
+	# a grin that is already thinking about phase two
 	for gx in range(13, 20, 2):
-		_px(img, gx, 19, Color(0.05, 0.02, 0.04))
-		_px(img, gx + 1, 18, Color(0.05, 0.02, 0.04))
+		_over_px(img, gx, 20, Color(0.03, 0.07, 0.03))
+		_over_px(img, gx + 1, 21, Color(0.03, 0.07, 0.03))
 
-## Hallucination: a confident ghost with too many eyes, glitching at the
-## edges. Semi-transparent so the world shows through its certainty.
+## Dependency demon: a horned knot whose strands kink like the real graph. Six
+## strands, not eight — the real graph is worse, but the real graph does not
+## have to read at 32 pixels.
+func _draw_dependency_demon(img: Image, c: Color) -> void:
+	var sh := c.darkened(0.46)
+	var sh2 := c.darkened(0.68)
+	var hi := c.lightened(0.30)
+	var sp := c.lightened(0.66)
+	var amber := Color(1.0, 0.84, 0.22)
+	for i in 6:
+		var ang := TAU * float(i) / 6.0 + 0.35
+		var d := Vector2(cos(ang), sin(ang))
+		var tipx := 16 + int(d.x * 11.0)
+		var tipy := 16 + int(d.y * 11.0)
+		var midx := 16 + int(d.x * 7.0 - d.y * 2.0)
+		var midy := 16 + int(d.y * 7.0 + d.x * 2.0)
+		_thick_line(img, 16, 16, midx, midy, sh2)
+		_thick_line(img, midx, midy, tipx, tipy, sh2)
+		_draw_line_img(img, 16, 16, midx, midy, sh)
+		_draw_line_img(img, midx, midy, tipx, tipy, sh)
+		_fill_circle(img, tipx, tipy, 2, sh2)
+		_fill_circle(img, tipx, tipy, 1, c)
+		_px(img, tipx - 1, tipy - 1, sp)
+	# the knot itself owns the middle of the frame
+	_fill_circle(img, 16, 16, 9, sh2)
+	_fill_circle(img, 16, 16, 8, sh)
+	_fill_circle(img, 15, 15, 7, c)
+	_fill_circle(img, 13, 13, 4, hi)
+	_px(img, 12, 12, sp)
+	_px(img, 11, 12, WHITE_HOT)
+	for sgn: int in [-1, 1]:
+		_thick_line(img, 16 + sgn * 5, 10, 16 + sgn * 8, 3, sh2)
+		_draw_line_img(img, 16 + sgn * 5, 10, 16 + sgn * 8, 3, hi)
+		_px(img, 16 + sgn * 8, 2, sp)
+	# version-mismatch eyes
+	_glow_lamp(img, 13, 14, amber, 2)
+	_glow_lamp(img, 19, 14, amber, 2)
+	_fill_rect(img, 12, 19, 9, 2, Color(0.04, 0.02, 0.04))
+	for gx in range(13, 21, 2):
+		_over_px(img, gx, 19, Color(0.92, 0.94, 0.98))
+		_over_px(img, gx + 1, 20, Color(0.92, 0.94, 0.98))
+
+## Hallucination: a confident ghost with too many eyes, glitching at the edges.
+## The glitch bands are a real row displacement with a chromatic fringe, not a
+## painted stripe — it reads as a rendering fault, which is the joke.
 func _draw_hallucination(img: Image, c: Color) -> void:
-	var body := Color(c.r, c.g, c.b, 0.88)
-	var body_sh := Color(c.r * 0.7, c.g * 0.6, c.b * 0.8, 0.88)
-	var body_hi := Color(minf(c.r * 1.15, 1.0), minf(c.g * 1.2, 1.0), minf(c.b * 1.1, 1.0), 0.92)
-	_fill_circle(img, 16, 14, 10, body_sh)
-	_fill_circle(img, 15, 13, 9, body)
-	_fill_circle(img, 13, 10, 4, body_hi)
-	_fill_rect(img, 6, 14, 20, 12, body)
-	_fill_rect(img, 6, 14, 2, 12, body_hi)
-	_fill_rect(img, 24, 14, 2, 12, body_sh)
-	# wavy hem
-	for x in range(6, 26, 4):
-		_fill_circle(img, x + 2, 26, 2, Color(0, 0, 0, 0))
+	var body := Color(c.r, c.g, c.b, 0.94)
+	var body_sh := Color(c.r * 0.46, c.g * 0.32, c.b * 0.54, 0.94)
+	var body_sh2 := Color(c.r * 0.20, c.g * 0.13, c.b * 0.26, 0.94)
+	var body_hi := Color(minf(c.r * 1.15, 1.0), minf(c.g * 1.25, 1.0), minf(c.b * 1.12, 1.0), 0.96)
+	_fill_ellipse(img, 16, 14, 11, 11, body_sh2)
+	_fill_ellipse(img, 16, 13, 10, 10, body_sh)
+	_fill_ellipse(img, 15, 12, 9, 9, body)
+	_fill_ellipse(img, 12, 9, 4, 4, body_hi)
+	_px(img, 11, 8, Color(1.0, 1.0, 1.0, 0.96))
+	_fill_rect(img, 5, 14, 22, 12, body)
+	_fill_rect(img, 5, 14, 2, 12, body_hi)
+	_fill_rect(img, 24, 14, 3, 12, body_sh)
+	_fill_rect(img, 5, 24, 22, 2, body_sh2)
+	# a hem of three lobes, so the bottom of the silhouette has a shape
+	for i in 3:
+		_fill_circle(img, 8 + i * 8, 26, 3, Color(0, 0, 0, 0))
+		_fill_ellipse(img, 12 + i * 8, 26, 3, 2, body_sh)
+	_fill_rect(img, 5, 14, 22, 1, body_hi)
 	# too many eyes, all sincere
-	var eyes: Array[Vector2i] = [Vector2i(12, 12), Vector2i(20, 12), Vector2i(16, 18)]
+	var eyes: Array[Vector2i] = [Vector2i(11, 12), Vector2i(21, 12), Vector2i(16, 19)]
 	for e in eyes:
-		_fill_circle(img, e.x, e.y, 2, Color(0.95, 0.92, 1.0))
-		_px(img, e.x, e.y, Color(0.35, 0.1, 0.4))
+		_fill_circle(img, e.x, e.y, 3, Color(0.10, 0.03, 0.14, 0.96))
+		_fill_circle(img, e.x, e.y, 2, Color(0.97, 0.94, 1.0))
+		_px(img, e.x, e.y, Color(0.30, 0.06, 0.38))
+		_px(img, e.x, e.y + 1, Color(0.30, 0.06, 0.38))
 		_px(img, e.x - 1, e.y - 1, WHITE_HOT)
-	# glitch tears: neon slice + white-hot sliver offset below it
-	_fill_rect(img, 4, 9, 24, 1, Color(0.30, 1.0, 0.9, 0.75))
-	_fill_rect(img, 3, 10, 10, 1, Color(0.95, 0.97, 1.0, 0.45))
-	_fill_rect(img, 4, 20, 24, 1, Color(1.0, 0.4, 0.9, 0.75))
-	_fill_rect(img, 19, 21, 9, 1, Color(0.95, 0.97, 1.0, 0.45))
+	var bands: Array[int] = [9, 22]
+	var band_tint: Array[Color] = [Color(0.26, 1.0, 0.90), Color(1.0, 0.34, 0.90)]
+	for bi in 2:
+		var band_y: int = bands[bi]
+		var row: Array[Color] = []
+		for x in 32:
+			row.append(img.get_pixel(x, band_y))
+		for x2 in 32:
+			var src: Color = row[(x2 - 3 + 32) % 32]
+			if src.a > 0.05:
+				_px(img, x2, band_y, src)
+		var t: Color = band_tint[bi]
+		_over_line(img, 3, band_y, 28, band_y, Color(t.r, t.g, t.b, 0.95))
+		_fill_rect(img, 3 if band_y < 16 else 19, band_y + 1, 10, 1, Color(0.96, 0.98, 1.0, 0.55))
 
 ## THE LEGACY MONOLITH: a towering brick slab with per-brick value jitter,
-## structural cracks, dithered moss, and COBOL runes that still glow.
+## structural cracks, dithered moss, a crenellated top and COBOL runes that
+## still glow.
 func _draw_legacy_monolith(img: Image, _c: Color) -> void:
-	var brick := Color(0.47, 0.42, 0.38)
-	var mortar := brick.darkened(0.48)
-	_fill_rect(img, 3, 2, 26, 28, brick)
-	# offset brick rows, each brick hashed a little lighter or darker
+	var brick := Color(0.50, 0.44, 0.39)
+	var mortar := brick.darkened(0.68)
+	_fill_rect(img, 3, 2, 26, 27, brick)
 	for row in range(2, 30, 5):
-		var off := 0 if ((row - 2) / 5) % 2 == 0 else 4
+		var off: int = 0 if ((row - 2) / 5) % 2 == 0 else 4
 		for bx in range(off - 5, 29, 8):
 			var jit := _hash01(bx + 40, row) - 0.5
-			var bcol := brick.lightened(jit * 0.16) if jit > 0.0 else brick.darkened(-jit * 0.16)
+			var bcol: Color = brick.lightened(jit * 0.30) if jit > 0.0 else brick.darkened(-jit * 0.30)
 			_fill_rect(img, maxi(bx + 1, 3), row + 1, 7, 4, bcol)
-			_fill_rect(img, maxi(bx + 1, 3), row + 1, 7, 1, bcol.lightened(0.10))  # lit brick top
+			_fill_rect(img, maxi(bx + 1, 3), row + 1, 7, 1, bcol.lightened(0.20))
+			_fill_rect(img, maxi(bx + 1, 3), row + 4, 7, 1, bcol.darkened(0.28))
 		_fill_rect(img, 3, row, 26, 1, mortar)
 		for bx2 in range(3 + off, 29, 8):
 			_fill_rect(img, bx2, row, 1, 5, mortar)
-	# cracks with a dogleg, like real structural despair
-	_draw_line_img(img, 10, 3, 12, 14, Color(0.10, 0.09, 0.08))
-	_draw_line_img(img, 12, 14, 14, 28, Color(0.10, 0.09, 0.08))
-	_draw_line_img(img, 22, 5, 20, 16, Color(0.10, 0.09, 0.08))
-	_draw_line_img(img, 20, 16, 18, 27, Color(0.10, 0.09, 0.08))
-	# glowing COBOL runes: acid green with white-hot hearts
-	var rune := Color(0.4, 0.95, 0.5)
-	_fill_rect(img, 13, 12, 6, 2, rune)
-	_fill_rect(img, 15, 10, 2, 8, rune)
-	_glow_core(img, 16, 13, rune)
-	_fill_rect(img, 8, 22, 2, 4, rune.darkened(0.2))  # second rune, dimmer
-	_px(img, 8, 23, WHITE_HOT)
-	# moss clings to the top, dithered, creeping down the lit side
-	_dither_rect(img, 3, 2, 26, 2, Color(0.30, 0.50, 0.30), Color(0.22, 0.38, 0.24))
-	_dither_rect(img, 3, 4, 10, 1, Color(0.30, 0.50, 0.30), brick)
-	# the left edge catches the light
-	_fill_rect(img, 3, 2, 1, 28, brick.lightened(0.18))
+	# structural despair, with a dogleg
+	var crack := Color(0.05, 0.045, 0.04)
+	_thick_line(img, 10, 3, 12, 14, crack)
+	_thick_line(img, 12, 14, 14, 28, crack)
+	_thick_line(img, 22, 5, 20, 16, crack)
+	_thick_line(img, 20, 16, 18, 27, crack)
+	# glowing COBOL runes
+	var rune := Color(0.42, 0.98, 0.52)
+	_fill_rect(img, 12, 11, 8, 2, rune.darkened(0.30))
+	_fill_rect(img, 13, 17, 6, 2, rune.darkened(0.30))
+	_fill_rect(img, 15, 9, 2, 10, rune)
+	_glow_core(img, 16, 13, rune.lightened(0.30))
+	_fill_rect(img, 7, 22, 2, 5, rune.darkened(0.35))
+	_fill_rect(img, 7, 24, 4, 1, rune.darkened(0.35))
+	_glow_core(img, 8, 24, rune)
+	# moss clings to the lit shoulder
+	_dither_rect(img, 3, 2, 26, 2, Color(0.28, 0.50, 0.30), Color(0.18, 0.34, 0.22))
+	_dither_rect(img, 3, 4, 10, 1, Color(0.28, 0.50, 0.30), brick)
+	# crenellations, a lit left edge and a plinth: not a box
+	for cx0 in range(3, 29, 6):
+		_fill_rect(img, cx0, 0, 4, 2, brick.darkened(0.18))
+		_fill_rect(img, cx0, 0, 4, 1, brick.lightened(0.24))
+	_fill_rect(img, 3, 2, 1, 27, brick.lightened(0.30))
+	_fill_rect(img, 28, 2, 1, 27, brick.darkened(0.42))
+	_fill_rect(img, 1, 29, 30, 3, brick.darkened(0.30))
+	_fill_rect(img, 1, 29, 30, 1, brick.lightened(0.10))
 
-## THE INFINITE CONTEXT: hue-drifting rings around an eye that has read
-## everything you ever typed, including the deleted parts.
+## THE INFINITE CONTEXT: one orbital ring around an eye that has read everything
+## you ever typed, including the deleted parts. The eye is a LENS, not a marble,
+## and it owns the middle of the frame — an eye drawn small is a dot, and a dot
+## is not a threat.
+##
+## Round 6: this used to be two pairs of concentric ring outlines over a
+## two-lobed field, which at game zoom aliased into pure static — the same
+## defect that made its boss unreadable. It is now one solid sculpted mass
+## inside a single two-value ring, so the base creature and the boss are visibly
+## the same species: an orbiting shell around one enormous lens.
 func _draw_infinite_context(img: Image, c: Color) -> void:
-	for r in range(14, 3, -3):
-		var t := float(r) / 14.0
-		var ring := c.lerp(Color(0.3, 0.7, 1.0), 1.0 - t).darkened(0.15 * t)
-		_draw_circle_outline(img, 16, 16, r, ring)
-	# swirl arms with offset roots, spiraling inward
-	for a in range(0, 360, 60):
-		var rad := deg_to_rad(a)
-		var tip := Vector2(16, 16) + Vector2(cos(rad), sin(rad)) * 13.0
-		var midp := Vector2(16, 16) + Vector2(cos(rad + 0.5), sin(rad + 0.5)) * 8.0
-		_draw_line_img(img, int(midp.x), int(midp.y), int(tip.x), int(tip.y), c.darkened(0.25))
-	# The eye. It has read everything you ever typed, including the parts you
-	# deleted, and it would like to discuss them.
-	_fill_circle(img, 16, 16, 7, Color(0.06, 0.05, 0.12))
-	_fill_circle(img, 16, 16, 6, Color(0.92, 0.94, 1.0))
-	_fill_circle(img, 17, 17, 5, Color(0.66, 0.70, 0.86))    # the shadowed sclera
-	_fill_circle(img, 16, 16, 4, c)
-	_fill_circle(img, 17, 17, 3, c.darkened(0.40))
-	for a2 in 8:                                             # iris fibres
-		var ir := deg_to_rad(float(a2) * 45.0)
-		_px(img, 16 + int(cos(ir) * 3.0), 16 + int(sin(ir) * 3.0), c.lightened(0.35))
-	_fill_circle(img, 16, 16, 2, Color(0.02, 0.02, 0.05))
-	_glow_core(img, 14, 14, Color(0.85, 0.92, 1.0))
-	_px(img, 19, 19, c.lightened(0.55))                 # the bounce highlight
+	var ink := Color(0.030, 0.028, 0.055)
+	var ramp := _boss_ramp(c)
+	_draw_circle_outline(img, 16, 16, 14, ramp[0])
+	_draw_circle_outline(img, 16, 16, 13, ramp[2])
+	for a in range(0, 360, 90):
+		var rad := deg_to_rad(float(a) + 45.0)
+		_fill_circle(img, 16 + int(cos(rad) * 13.0), 16 + int(sin(rad) * 13.0), 2, ramp[1])
+	_fill_ellipse(img, 16, 16, 10, 10, ramp[1])
+	_sculpt(img, 16.0, 16.0, 10.0, 10.0, ramp)
+	_fill_ellipse(img, 16, 16, 7, 5, ink)
+	_fill_ellipse(img, 16, 16, 6, 4, Color(0.88, 0.90, 0.97))
+	_fill_ellipse(img, 15, 15, 4, 3, Color(0.97, 0.98, 1.0))
+	_fill_circle(img, 16, 16, 3, _vivid_color(c, 1.3))
+	_fill_circle(img, 16, 16, 1, ink)
+	_px(img, 14, 14, WHITE_HOT)
+	for a2 in range(0, 360, 90):
+		var rad2 := deg_to_rad(float(a2) + 45.0)
+		_glow_lamp(img, 16 + int(cos(rad2) * 13.0), 16 + int(sin(rad2) * 13.0), ramp[3], 1)
 
-## THE ENTERPRISE ARCHITECT: a tailored suit, a power tie, an access badge,
-## and an aura of governance that fades with distance (unlike the meetings).
+## THE ENTERPRISE ARCHITECT: a tailored suit, a power tie, an access badge, and
+## an aura of governance that fades with distance (unlike the meetings).
 func _draw_enterprise_architect(img: Image, c: Color) -> void:
-	# Governance aura, as corner brackets: the process is watching, but only
-	# from the corners, and only during business hours.
 	var gov := Color(c.r, c.g, minf(c.b + 0.2, 1.0), 0.42)
 	var bxs: Array[int] = [1, 30]
 	var bys: Array[int] = [1, 30]
@@ -1849,166 +2406,187 @@ func _draw_enterprise_architect(img: Image, c: Color) -> void:
 			for i in 5:
 				_px(img, bxs[bi] + dx * i, bys[bj], gov)
 				_px(img, bxs[bi], bys[bj] + dy * i, gov)
-	var suit := Color(0.22, 0.25, 0.40)
-	var suit_hi := Color(0.34, 0.39, 0.56)
-	var suit_sh := Color(0.13, 0.15, 0.25)
-	var skin := Color(0.86, 0.72, 0.60)
-	# head, with a haircut that costs more than your GPU
+	var suit := Color(0.15, 0.17, 0.29)
+	var suit_hi := Color(0.36, 0.42, 0.60)
+	var suit_sh := Color(0.06, 0.07, 0.14)
+	var skin := Color(0.88, 0.74, 0.62)
 	_shade_sphere(img, 16, 8, 5, skin)
-	_fill_rect(img, 11, 3, 10, 3, Color(0.24, 0.24, 0.28))
-	_fill_rect(img, 11, 3, 10, 1, Color(0.34, 0.34, 0.40))  # gel highlight
+	_fill_rect(img, 11, 2, 11, 4, Color(0.16, 0.16, 0.20))
+	_fill_rect(img, 11, 2, 11, 1, Color(0.40, 0.40, 0.48))   # gel highlight
+	_fill_rect(img, 11, 5, 11, 1, Color(0.08, 0.08, 0.11))
 	# rimless glasses, because he "just wants to understand the architecture"
-	_fill_rect(img, 12, 7, 4, 3, Color(0.72, 0.80, 0.92))
-	_fill_rect(img, 17, 7, 4, 3, Color(0.72, 0.80, 0.92))
-	_fill_rect(img, 16, 8, 1, 1, Color(0.30, 0.34, 0.42))
-	_fill_rect(img, 13, 8, 2, 1, Color(0.08, 0.08, 0.10))
-	_fill_rect(img, 18, 8, 2, 1, Color(0.08, 0.08, 0.10))
-	_px(img, 12, 7, WHITE_HOT)                        # the lens glint
-	_px(img, 17, 7, Color(0.85, 0.92, 1.0))
-	_fill_rect(img, 14, 11, 4, 1, skin.darkened(0.30))     # a mouth mid-sentence
-	# suit torso: lit left lapel, shadowed right
-	_fill_rect(img, 9, 13, 14, 16, suit)
-	_fill_rect(img, 9, 13, 2, 16, suit_hi)
-	_fill_rect(img, 21, 13, 2, 16, suit_sh)
-	_draw_line_img(img, 13, 13, 16, 18, suit_sh)  # lapel V
-	_draw_line_img(img, 19, 13, 16, 18, suit_sh)
-	_fill_rect(img, 14, 13, 4, 2, Color(0.93, 0.94, 0.97))  # collar
-	# the power tie, silk sheen included
-	for tyy in range(14, 27):
-		var w := 1 + (tyy - 14) / 6
-		var tie := Color(0.78, 0.14, 0.20) if tyy % 4 != 0 else Color(0.60, 0.10, 0.16)
+	_fill_rect(img, 11, 7, 5, 3, Color(0.80, 0.88, 0.98))
+	_fill_rect(img, 17, 7, 5, 3, Color(0.66, 0.74, 0.88))
+	_fill_rect(img, 16, 8, 1, 1, Color(0.24, 0.28, 0.36))
+	_fill_rect(img, 12, 8, 3, 1, Color(0.04, 0.04, 0.06))
+	_fill_rect(img, 18, 8, 3, 1, Color(0.04, 0.04, 0.06))
+	_px(img, 11, 7, WHITE_HOT)
+	_px(img, 12, 7, Color(0.92, 0.96, 1.0))
+	_fill_rect(img, 14, 11, 4, 1, skin.darkened(0.42))       # a mouth mid-sentence
+	_fill_rect(img, 12, 12, 9, 1, Color(0.05, 0.05, 0.09))   # jaw shadow
+	_fill_rect(img, 8, 13, 16, 16, suit)
+	_fill_rect(img, 8, 13, 2, 16, suit_hi)
+	_fill_rect(img, 22, 13, 2, 16, suit_sh)
+	_fill_rect(img, 8, 13, 16, 1, suit_hi.lightened(0.20))
+	_draw_line_img(img, 13, 13, 16, 19, suit_sh)             # lapel V
+	_draw_line_img(img, 19, 13, 16, 19, suit_sh)
+	_fill_rect(img, 14, 13, 5, 3, Color(0.95, 0.96, 0.99))   # collar
+	_fill_rect(img, 14, 13, 5, 1, WHITE_HOT)
+	for tyy in range(15, 28):
+		var w := 1 + (tyy - 15) / 5
+		var tie: Color = Color(0.86, 0.14, 0.20) if tyy % 4 != 0 else Color(0.56, 0.08, 0.14)
 		_fill_rect(img, 16 - w / 2, tyy, maxi(1, w), 1, tie)
-	_px(img, 16, 14, Color(0.95, 0.35, 0.4))
-	# arms
-	_fill_rect(img, 6, 14, 3, 11, suit)
-	_fill_rect(img, 6, 14, 1, 11, suit_hi)
-	_fill_rect(img, 23, 14, 3, 11, suit_sh)
+	_px(img, 16, 15, Color(1.0, 0.46, 0.48))
+	_fill_rect(img, 6, 14, 3, 12, suit)
+	_fill_rect(img, 6, 14, 1, 12, suit_hi)
+	_fill_rect(img, 23, 14, 3, 12, suit_sh)
 	# the deck, held where you cannot avoid it. The line only ever goes up.
-	_fill_rect(img, 22, 17, 8, 7, Color(0.92, 0.93, 0.97))
-	_fill_rect(img, 22, 17, 8, 1, Color(0.99, 1.0, 1.0))
-	_fill_rect(img, 22, 23, 8, 1, Color(0.55, 0.58, 0.66))
-	_draw_line_img(img, 23, 22, 28, 18, Color(0.20, 0.62, 0.35))
-	_px(img, 28, 18, Color(0.35, 0.95, 0.5))
-	_fill_rect(img, 23, 19, 3, 1, Color(0.62, 0.65, 0.72))
-	# access badge — clearance level: yes
-	_glow_core(img, 12, 17, Color(0.35, 0.65, 1.0))
+	_fill_rect(img, 22, 17, 9, 8, Color(0.94, 0.95, 0.99))
+	_fill_rect(img, 22, 17, 9, 1, WHITE_HOT)
+	_fill_rect(img, 22, 24, 9, 1, Color(0.42, 0.45, 0.54))
+	_draw_line_img(img, 23, 23, 29, 18, Color(0.14, 0.58, 0.30))
+	_glow_lamp(img, 29, 18, Color(0.34, 0.98, 0.50), 1)
+	_fill_rect(img, 23, 19, 4, 1, Color(0.55, 0.58, 0.66))
+	_fill_rect(img, 23, 21, 3, 1, Color(0.55, 0.58, 0.66))
+	_glow_lamp(img, 11, 18, Color(0.36, 0.68, 1.0), 1)  # clearance level: yes
 
-## NULL REFERENCE: the ghost of a value that was promised and never
-## delivered. Hollow where the face should be; asks one question, forever.
+## NULL REFERENCE: the ghost of a value that was promised and never delivered.
+## The face is the darkest hole in the whole cast and the question mark inside it
+## is the brightest thing on the sprite. That contrast IS the character.
 func _draw_null_reference(img: Image, c: Color) -> void:
-	var body := Color(c.r, c.g, c.b, 0.9)
-	var body_sh := body.darkened(0.35)
-	var body_hi := body.lightened(0.25)
-	# hooded wisp with a tapering tail
-	_fill_circle(img, 16, 13, 9, body_sh)
-	_fill_circle(img, 15, 12, 8, body)
-	_fill_circle(img, 13, 10, 3, body_hi)
-	var wob: Array[int] = [0, -2, 1, -1, 0]
-	for i in 5:
-		_fill_circle(img, 16 + wob[i], 22 + i * 2, 5 - i, body_sh if i % 2 == 0 else body)
+	var body := Color(c.r * 0.72, c.g * 0.60, c.b * 0.80, 0.96)
+	var body_sh := body.darkened(0.44)
+	var body_sh2 := body.darkened(0.66)
+	var body_hi := Color(minf(c.r * 1.25, 1.0), minf(c.g * 1.15, 1.0), minf(c.b * 1.2, 1.0), 0.98)
+	_fill_ellipse(img, 16, 13, 11, 11, body_sh2)
+	_fill_ellipse(img, 16, 12, 10, 10, body_sh)
+	_fill_ellipse(img, 15, 11, 9, 9, body)
+	_fill_ellipse(img, 12, 8, 4, 4, body_hi)
+	_px(img, 11, 7, Color(1.0, 1.0, 1.0, 0.98))
+	# a tapering tail with real lobes
+	var wob: Array[int] = [0, -2, 1, -1]
+	for i in 4:
+		_fill_ellipse(img, 16 + wob[i], 21 + i * 3, 8 - i * 2, 3, body_sh if i % 2 == 0 else body)
+		_fill_rect(img, 16 + wob[i] - (7 - i * 2), 21 + i * 3 - 2, (7 - i * 2) * 2, 1, body_sh2)
 	# the void where a face should be
-	_fill_circle(img, 16, 12, 5, Color(0.02, 0.02, 0.05))
-	# a question mark, glowing violet, white-hot dot
-	var q := Color(0.75, 0.55, 1.0)
-	_fill_rect(img, 14, 9, 3, 1, q)
-	_px(img, 17, 10, q)
-	_px(img, 16, 11, q)
-	_px(img, 16, 12, q)
-	_glow_core(img, 16, 15, q)
+	_fill_ellipse(img, 16, 13, 7, 7, Color(0.012, 0.012, 0.035))
+	_fill_ellipse(img, 16, 12, 6, 6, Color(0.008, 0.008, 0.024))
+	# the question, 2px strokes so it survives everything downstream
+	var q := Color(0.80, 0.58, 1.0)
+	_fill_rect(img, 13, 8, 6, 2, q)
+	_fill_rect(img, 18, 9, 2, 3, q)
+	_fill_rect(img, 15, 11, 4, 2, q)
+	_fill_rect(img, 15, 13, 2, 2, q)
+	_over_px(img, 14, 8, WHITE_HOT)
+	_over_px(img, 15, 8, WHITE_HOT)
+	_over_px(img, 15, 11, WHITE_HOT)
+	_glow_lamp(img, 16, 17, q, 1)
 
 ## LEGACY SYSTEM: a beige tower PC that predates several of your coworkers.
 ## Still on. Nobody knows what it runs. Nobody dares turn it off.
 func _draw_legacy_system(img: Image, _c: Color) -> void:
-	var beige := Color(0.55, 0.52, 0.44)
-	var beige_hi := Color(0.68, 0.65, 0.56)
-	var beige_sh := Color(0.38, 0.36, 0.30)
-	_fill_rect(img, 8, 3, 16, 27, beige)
-	_fill_rect(img, 8, 3, 2, 27, beige_hi)
-	_fill_rect(img, 22, 3, 2, 27, beige_sh)
-	_fill_rect(img, 8, 3, 16, 1, beige_hi.lightened(0.15))
+	var beige := Color(0.52, 0.49, 0.41)
+	var beige_hi := Color(0.84, 0.80, 0.70)
+	var beige_sh := Color(0.24, 0.22, 0.18)
+	_fill_rect(img, 8, 2, 17, 28, beige)
+	_fill_rect(img, 8, 2, 2, 28, beige_hi)
+	_fill_rect(img, 23, 2, 2, 28, beige_sh)
+	_fill_rect(img, 8, 2, 17, 1, beige_hi.lightened(0.35))
+	_fill_rect(img, 8, 29, 17, 1, beige_sh.darkened(0.40))
 	# dust on top — untouched since the last reorg
-	_dither_rect(img, 9, 4, 14, 2, Color(0.62, 0.60, 0.55), beige)
-	# CRT-green status screen with scanline text
-	_fill_rect(img, 11, 7, 10, 8, Color(0.04, 0.08, 0.05))
+	_dither_rect(img, 10, 3, 14, 2, Color(0.66, 0.63, 0.57), beige)
+	# CRT-green status screen, recessed
+	_fill_rect(img, 11, 6, 11, 10, beige_sh.darkened(0.30))
+	_fill_rect(img, 12, 7, 9, 8, Color(0.02, 0.05, 0.03))
 	for lrow in 3:
-		_fill_rect(img, 12, 9 + lrow * 2, 4 + (lrow * 3) % 5, 1, Color(0.35, 0.9, 0.45))
-	_glow_core(img, 13, 9, Color(0.5, 1.0, 0.55))  # the blinking cursor of doom
+		_fill_rect(img, 13, 9 + lrow * 2, 4 + (lrow * 3) % 5, 1, Color(0.30, 0.94, 0.42))
+	_glow_lamp(img, 14, 9, Color(0.46, 1.0, 0.52), 1)   # the blinking cursor of doom
+	_fill_rect(img, 11, 6, 11, 1, beige_hi)
 	# floppy slot + eject button
-	_fill_rect(img, 11, 18, 10, 2, beige_sh)
-	_fill_rect(img, 11, 18, 10, 1, Color(0.1, 0.1, 0.1))
-	_px(img, 20, 19, Color(0.75, 0.72, 0.65))
-	# vents
-	for vy in range(22, 28, 2):
-		_fill_rect(img, 11, vy, 10, 1, beige_sh.darkened(0.2))
+	_fill_rect(img, 11, 18, 11, 3, beige_sh)
+	_fill_rect(img, 11, 18, 11, 1, Color(0.05, 0.05, 0.06))
+	_fill_rect(img, 20, 19, 2, 1, Color(0.82, 0.79, 0.72))
+	for vy in range(23, 29, 2):
+		_fill_rect(img, 11, vy, 11, 1, beige_sh.darkened(0.35))
+		_fill_rect(img, 11, vy + 1, 11, 1, beige.lightened(0.12))
 	# TURBO. Nobody has ever pressed it. Nobody ever will.
-	_fill_rect(img, 17, 21, 4, 2, Color(0.42, 0.40, 0.34))
-	_fill_rect(img, 17, 21, 4, 1, Color(0.60, 0.58, 0.50))
-	# power LED: amber, eternal
-	_glow_core(img, 10, 26, Color(1.0, 0.7, 0.15))
-	# rust drip below the case seam
-	_draw_line_img(img, 23, 12, 23, 17, Color(0.45, 0.28, 0.15))
-	# A taped note, overhanging the case so the silhouette has a corner that
-	# isn't a rectangle. It says DO NOT TURN OFF. It is older than the team.
-	_fill_rect(img, 2, 15, 8, 7, Color(0.92, 0.86, 0.42))
-	_fill_rect(img, 2, 15, 8, 1, Color(0.99, 0.95, 0.62))
-	_fill_rect(img, 3, 17, 6, 1, Color(0.36, 0.31, 0.14))
-	_fill_rect(img, 3, 19, 4, 1, Color(0.36, 0.31, 0.14))
-	_fill_rect(img, 4, 14, 4, 1, Color(0.80, 0.80, 0.78, 0.75))  # the tape
+	_fill_rect(img, 17, 21, 5, 2, Color(0.40, 0.38, 0.32))
+	_fill_rect(img, 17, 21, 5, 1, Color(0.72, 0.69, 0.60))
+	_glow_lamp(img, 10, 27, Color(1.0, 0.68, 0.14), 1)  # power LED: amber, eternal
+	_draw_line_img(img, 24, 12, 24, 18, Color(0.42, 0.24, 0.12))
+	# A taped note. It says DO NOT TURN OFF. It is older than the team.
+	_fill_rect(img, 1, 15, 9, 8, Color(0.94, 0.88, 0.44))
+	_fill_rect(img, 1, 15, 9, 1, Color(1.0, 0.97, 0.68))
+	_fill_rect(img, 1, 22, 9, 1, Color(0.58, 0.52, 0.22))
+	_fill_rect(img, 2, 17, 7, 1, Color(0.30, 0.25, 0.10))
+	_fill_rect(img, 2, 19, 5, 1, Color(0.30, 0.25, 0.10))
+	_fill_rect(img, 3, 14, 5, 1, Color(0.86, 0.86, 0.84, 0.80))
 
-## CLOUD BILL: a serene little cumulus delivering a number with too many
-## digits. It knows you auto-renewed.
+## CLOUD BILL: a serene little cumulus delivering a number with too many digits.
+## It knows you auto-renewed.
 func _draw_cloud_bill(img: Image, c: Color) -> void:
-	var cl := Color(0.88, 0.92, 0.98)
-	var cl_sh := Color(0.62, 0.68, 0.82)
-	var cl_hi := Color(0.97, 0.98, 1.0)
-	# lumpy cumulus, lit top-left
-	_fill_circle(img, 11, 12, 6, cl_sh)
-	_fill_circle(img, 20, 12, 7, cl_sh)
-	_fill_circle(img, 15, 8, 6, cl_sh)
-	_fill_circle(img, 10, 11, 5, cl)
-	_fill_circle(img, 19, 11, 6, cl)
-	_fill_circle(img, 14, 7, 5, cl)
-	_fill_circle(img, 12, 6, 3, cl_hi)
-	_fill_rect(img, 6, 13, 21, 4, cl)
-	_fill_rect(img, 6, 16, 21, 1, cl_sh)
+	var cl := Color(0.86, 0.90, 0.98)
+	var cl_sh := Color(0.44, 0.50, 0.68)
+	var cl_sh2 := Color(0.22, 0.26, 0.42)
+	var cl_hi := Color(0.99, 1.0, 1.0)
+	_fill_circle(img, 11, 12, 7, cl_sh2)
+	_fill_circle(img, 21, 12, 8, cl_sh2)
+	_fill_circle(img, 15, 8, 7, cl_sh2)
+	_fill_circle(img, 11, 11, 6, cl_sh)
+	_fill_circle(img, 20, 11, 7, cl_sh)
+	_fill_circle(img, 15, 7, 6, cl_sh)
+	_fill_circle(img, 10, 10, 5, cl)
+	_fill_circle(img, 19, 10, 5, cl)
+	_fill_circle(img, 14, 6, 5, cl)
+	_fill_circle(img, 12, 5, 3, cl_hi)
+	_px(img, 11, 4, WHITE_HOT)
+	_fill_rect(img, 5, 13, 23, 4, cl)
+	_fill_rect(img, 5, 16, 23, 2, cl_sh)
+	_fill_rect(img, 5, 17, 23, 1, cl_sh2)   # a hard underside: not a white blob
 	# serene eyes with lids. It is not angry with you. It is simply itemised.
-	_fill_rect(img, 11, 10, 4, 2, Color(0.95, 0.96, 1.0))
-	_fill_rect(img, 18, 10, 4, 2, Color(0.95, 0.96, 1.0))
-	_fill_rect(img, 12, 11, 2, 1, Color(0.08, 0.10, 0.18))
-	_fill_rect(img, 19, 11, 2, 1, Color(0.08, 0.10, 0.18))
-	_fill_rect(img, 11, 9, 4, 1, cl_sh.darkened(0.25))
-	_fill_rect(img, 18, 9, 4, 1, cl_sh.darkened(0.25))
-	_fill_rect(img, 15, 14, 3, 1, cl_sh.darkened(0.25))   # a small, sympathetic mouth
-	# the dollar sign: a real one, with the stroke straight through it
-	var d := c
-	var d_sh := c.darkened(0.38)
-	_fill_rect(img, 13, 19, 7, 2, d)      # top serif
-	_fill_rect(img, 12, 20, 2, 3, d)      # upper bowl
-	_fill_rect(img, 13, 22, 7, 2, d)      # waist
-	_fill_rect(img, 18, 23, 2, 3, d)      # lower bowl
-	_fill_rect(img, 12, 25, 7, 2, d)      # bottom serif
-	_fill_rect(img, 15, 17, 2, 11, d.lightened(0.30))
-	_fill_rect(img, 13, 20, 7, 1, d_sh)   # the shadow under each stroke
-	_fill_rect(img, 13, 23, 7, 1, d_sh)
-	_glow_core(img, 16, 22, d.lightened(0.35))
+	for ex: int in [11, 18]:
+		_fill_rect(img, ex, 9, 5, 3, Color(0.97, 0.98, 1.0))
+		_fill_rect(img, ex + 1, 10, 2, 2, Color(0.05, 0.07, 0.14))
+		_fill_rect(img, ex, 8, 5, 1, cl_sh2)
+	_fill_rect(img, 14, 14, 4, 1, cl_sh2)   # a small, sympathetic mouth
+	# the number. Drawn twice — a near-black body one pixel proud, then the
+	# strokes on top — so it reads against a white cloud and a dark floor alike.
+	var d := c.lightened(0.24)
+	var d_hi := c.lightened(0.62)
+	var d_sh := c.darkened(0.50)
+	var ink := Color(0.04, 0.05, 0.09)
+	for pass_i in 2:
+		var col: Color = ink if pass_i == 0 else d
+		var o: int = 1 if pass_i == 0 else 0
+		_fill_rect(img, 12 - o, 19 - o, 8 + o * 2, 2 + o * 2, col)
+		_fill_rect(img, 11 - o, 20 - o, 2 + o * 2, 4 + o * 2, col)
+		_fill_rect(img, 12 - o, 23 - o, 8 + o * 2, 2 + o * 2, col)
+		_fill_rect(img, 18 - o, 24 - o, 2 + o * 2, 4 + o * 2, col)
+		_fill_rect(img, 11 - o, 27 - o, 8 + o * 2, 2 + o * 2, col)
+		_fill_rect(img, 15 - o, 18 - o, 2 + o * 2, 12 + o * 2, col)
+	_fill_rect(img, 15, 18, 1, 12, d_hi)
+	_fill_rect(img, 12, 21, 8, 1, d_sh)
+	_fill_rect(img, 12, 25, 8, 1, d_sh)
+	_glow_lamp(img, 16, 23, d_hi, 1)
 	# the decimals, raining, in the colour finance reserves for bad news
 	for i in 4:
-		var rx := 7 + ((i * 11) % 19)
-		var ry := 19 + ((i * 7) % 9)
-		_px(img, rx, ry, Color(1.0, 0.3, 0.3, 0.85 - float(i) * 0.14))
-		_px(img, rx, ry + 1, Color(1.0, 0.3, 0.3, 0.40))
+		var rx := 9 + ((i * 7) % 14)
+		var ry := 20 + ((i * 5) % 8)
+		_px(img, rx, ry, Color(1.0, 0.28, 0.28, 0.88 - float(i) * 0.14))
+		_px(img, rx, ry + 1, Color(1.0, 0.28, 0.28, 0.42))
 
 ## Fallback for enemy types without bespoke art: a shaded blob with attitude.
 func _draw_glow_blob(img: Image, c: Color) -> void:
-	_fill_circle(img, 16, 16, 12, c.darkened(0.35))
+	_fill_circle(img, 16, 16, 12, c.darkened(0.45))
 	_fill_circle(img, 15, 15, 11, c)
-	_fill_circle(img, 12, 12, 5, c.lightened(0.25))
-	_fill_circle(img, 12, 13, 3, Color.WHITE)
-	_fill_circle(img, 20, 13, 3, Color.WHITE)
-	_fill_circle(img, 12, 13, 1, Color.BLACK)
-	_fill_circle(img, 20, 13, 1, Color.BLACK)
-	_px(img, 11, 12, WHITE_HOT)
-	_px(img, 19, 12, WHITE_HOT)
+	_fill_circle(img, 12, 12, 5, c.lightened(0.30))
+	_px(img, 11, 11, WHITE_HOT)
+	for ex: int in [12, 20]:
+		_fill_circle(img, ex, 13, 3, Color(0.03, 0.03, 0.06))
+		_fill_circle(img, ex, 13, 2, Color.WHITE)
+		_px(img, ex, 13, Color.BLACK)
+		_px(img, ex, 14, Color.BLACK)
+		_px(img, ex - 1, 12, WHITE_HOT)
 
 func _draw_rect_outline(img: Image, x: int, y: int, w: int, h: int, col: Color) -> void:
 	for i in range(x, x + w):
@@ -2698,6 +3276,36 @@ func _glow_core(img: Image, x: int, y: int, accent: Color) -> void:
 	if x >= 0 and y >= 0 and x < img.get_width() and y < img.get_height():
 		_px(img, x, y, WHITE_HOT)
 
+## A bigger emissive tell than _glow_core: an accent disc, a hot inner disc, a
+## WHITE_HOT core, and a dim bleed ring painted only onto pixels that already
+## exist (so a lamp never grows the silhouette). Every region multiplies the
+## whole canvas by its ambient tint, and a near-white core is the only thing
+## that survives that multiply in EVERY region — which is why the tell is built
+## out of one.
+func _glow_lamp(img: Image, x: int, y: int, accent: Color, r: int = 2) -> void:
+	var hot := accent.lerp(WHITE_HOT, 0.55)
+	_fill_circle(img, x, y, r, accent)
+	_fill_circle(img, x, y, r - 1, hot)
+	_px(img, x, y, WHITE_HOT)
+	var bleed := accent.darkened(0.30)
+	var rr := float((r + 1) * (r + 1))
+	for dx in range(-r - 1, r + 2):
+		for dy in range(-r - 1, r + 2):
+			var d := float(dx * dx + dy * dy)
+			if d > float(r * r) and d <= rr:
+				_over_px(img, x + dx, y + dy, bleed)
+
+## A two-pixel line. One-pixel appendages (beetle legs, pseudopods, dependency
+## strands) survive neither the outline pass nor the threat halo at game zoom —
+## they come back as dithered noise. Two pixels is the floor for anything that
+## has to read as a limb.
+func _thick_line(img: Image, x0: int, y0: int, x1: int, y1: int, c: Color) -> void:
+	_draw_line_img(img, x0, y0, x1, y1, c)
+	if absi(x1 - x0) >= absi(y1 - y0):
+		_draw_line_img(img, x0, y0 + 1, x1, y1 + 1, c)
+	else:
+		_draw_line_img(img, x0 + 1, y0, x1 + 1, y1, c)
+
 ## Tint the top-left silhouette edge toward a rim color (bible rim light).
 ## Only fully-opaque pixels count as edges; soft halos stay soft.
 func _rim_light_pass(img: Image, rim: Color, strength := 0.6) -> void:
@@ -2776,12 +3384,34 @@ func _readability_pass(img: Image, min_luma: float, lift: float, sat: float) -> 
 			c.a = p.a
 			_px(img, x, y, c)
 
+## Widen a sprite's internal value range around a pivot: lights go lighter,
+## darks go darker, hue untouched. Every region's CanvasModulate multiplies the
+## whole canvas toward the floor's value, and a narrow range collapses into one
+## flat blob under that multiply. This is the single pass that stopped enemies
+## reading as smudges — it costs nothing and it survives every ambient tint,
+## because it trades on VALUE rather than hue.
+func _value_expand(img: Image, pivot: float, amount: float) -> void:
+	for x in img.get_width():
+		for y in img.get_height():
+			var p := img.get_pixel(x, y)
+			if p.a <= 0.5:
+				continue
+			var l: float = p.r * 0.299 + p.g * 0.587 + p.b * 0.114
+			var k: float = (l - pivot) * amount
+			_px(img, x, y, Color(clampf(p.r + k, 0.0, 1.0), clampf(p.g + k, 0.0, 1.0),
+				clampf(p.b + k, 0.0, 1.0), p.a))
+
 ## Two-ring emissive halo hugging the outline. Ring one is opaque enough to
 ## count as "solid" so ring two can grow outside it; together they read as a
 ## 4px threat glow at the 2x scale enemies render at. This is the single change
 ## that makes a dark creature pop off a dark floor without repainting it.
 func _threat_halo(img: Image, hue: Color) -> void:
-	_halo_pass(img, Color(hue.r, hue.g, hue.b, 0.48))
+	# Ring one MUST land above 0.5 alpha: _halo_pass only grows from pixels whose
+	# alpha is > 0.5, so at the old 0.48 the second call found nothing adjacent
+	# to a "solid" pixel that was not already painted and the two-ring halo this
+	# comment describes was silently a single one-pixel ring. 0.55 quantises to
+	# 140/255 = 0.549 in RGBA8, which clears the test with room to spare.
+	_halo_pass(img, Color(hue.r, hue.g, hue.b, 0.55))
 	_halo_pass(img, Color(hue.r, hue.g, hue.b, 0.19))
 
 ## Soft elliptical contact shadow under the silhouette, stamped into empty

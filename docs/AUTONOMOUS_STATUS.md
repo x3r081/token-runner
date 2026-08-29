@@ -806,3 +806,47 @@ the beetle, then add per-type telegraphs/behaviours in `enemy_base.gd`.
 - Known minors (next round): portal halo still reads hot on cloud_district's
   light floors; menu near-facade darkness makes some windows float; ui_hover
   and typing SFX are generated but unwired (no natural call site yet).
+
+### Round 5 — Graphics & gameplay deep pass (47 agents across 3 workflows)
+Structure: 10 disjoint-ownership build tracks + adversarial reviewer each (20),
+then an independent art-director critique of every QA frame + 3 targeted fixes
+(7), then a 10-track sweep fixing all 31 critic defects (20).
+
+**Gameplay**: per-type enemy behaviours with telegraphs (chargers, ranged,
+shielded, splitters), group tactics and staggered aggro; multi-phase boss move
+sets; encounter staging (guard posts, ambush pockets, defended caches, boss
+arenas with cover) replacing random scatter; player feel (movement weight,
+attack recoil, perfect-dodge reward, directional hit reaction); layered impact
+FX and per-type deaths; +463 lines of quests, +318 dialogue, +165 events.
+
+**Graphics**: region zones became irregular kerbed shapes with dithered
+interlock (the pasted-patch look is gone); backdrop/mid/foreground depth
+planes; per-region grade; enemy readability (rim light, accent tell); boss art
+with real silhouettes; menu skyline hero; label layout with collision
+avoidance.
+
+**The critic pass was the highest-value step.** It caught what tests and my own
+review missed: the Dream App console — the core progression screen — rendering
+at ~30% alpha (root cause: two tweens fighting `modulate:a`, the hologram pulse
+capturing `open_panel`'s zero and riding its own slow curve); `Gpu Mines` /
+`Api Bazaar` title-casing in the largest text on screen; every NPC nameplate
+effectively invisible; the map's region list fading to nothing (unbounded
+`stagger_rows` cascade); ~25 flat red X crosses in Production reading as
+missing textures.
+
+**Cross-file fixes applied centrally** (no agent owned them): enemies never set
+`z_index` so every prop drew in front of them; the 5 new boss textures were
+never loaded; `pin_everything` / `caret_gamble` / `mission_statement` were
+authored but unreachable; `game_theme.stagger_rows()` unbounded cascade and
+`panel_box()` 0.92 alpha affected 10 UI surfaces.
+
+**Validation**: 28/28 suites green (349 asserts), zero SCRIPT/Parse/shader
+errors in a real windowed run, all 17 QA frames recaptured and inspected by
+eye. Adversarial verifiers caught a non-parsing `world_label.gd` (shadowed loop
+variable) — the exact failure mode that once silently killed every caption.
+
+**Known remaining (next round, all low severity)**: thin red 1px lines still
+radiate across the gpu_mines/token_vault floors; a cyan four-corner bracket in
+Production frames empty floor; a dark glyph box overlaps the first word of the
+"Do not open. Heat." caption; destination text at portals is dim against the
+vortex glow; the non-localhost regions still share a broadly similar footprint.

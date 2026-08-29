@@ -6,6 +6,7 @@ extends Control
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 const _Comedy = preload("res://scripts/ui/comedy_lines.gd")
+const _Modal = preload("res://scripts/ui/modal_panel.gd")
 
 const _ArchDiagram = preload("res://scripts/ui/arch_diagram.gd")
 
@@ -15,9 +16,14 @@ const _ArchDiagram = preload("res://scripts/ui/arch_diagram.gd")
 @onready var _ship_btn: Button = $Panel/Margin/VBox/ShipBtn
 
 var _diagram: Control
+var _wallet: Label
 var _ship_pulse: Tween
 var _first_populate := true
 var _base_subtitle := ""
+
+## Currencies upgrades are actually priced in (data/upgrades/dream_app.json).
+## The HUD carries tokens and compute only, so the console has to say the rest.
+const _WALLET_RESOURCES: Array[String] = ["tokens", "compute", "api_credits", "reputation"]
 
 func _ready() -> void:
 	_apply_theme()
@@ -29,8 +35,10 @@ func _ready() -> void:
 	$Panel/Margin/VBox/ShipBtn.pressed.connect(_on_ship)
 	_ship_btn.tooltip_text = _Comedy.pick("ship_tip", _Comedy.SHIP_BTN_TIPS)
 	_update_ship_status()
-	_start_hologram_pulse()
+	# Order matters: the entrance tween owns modulate:a until it is finished, and
+	# the hologram pulse only takes over afterwards. See _start_hologram_pulse().
 	_GameTheme.open_panel(_panel)
+	_start_hologram_pulse()
 
 ## Live, procedurally-drawn architecture diagram that grows more ridiculous with
 ## every upgrade/decision (shown near the top of the panel).
@@ -39,6 +47,21 @@ func _setup_diagram() -> void:
 	var vbox: VBoxContainer = $Panel/Margin/VBox
 	vbox.add_child(_diagram)
 	vbox.move_child(_diagram, 2)  # just under the subtitle
+	# The diagram is the only decorative element in a panel that is otherwise all
+	# guidance, and it was claiming 178px of a column whose minimums already
+	# overflowed the panel — which is how the Close button ended up shoved down
+	# into the HUD's ability bar. It gets 156: the lowest thing it draws is the
+	# INFRA box at y140 + 11 half-height = y151, so nothing is clipped.
+	#
+	# Measured against the height ModalPanel actually granted the panel, not
+	# against the viewport: with stretch mode "canvas_items" + aspect "expand" the
+	# viewport is never shorter than 1080 whatever the window is, so a viewport
+	# test here would be a branch that can never fire. If the reserved HUD bands
+	# ever squeeze the column this hard, the gag is what goes — the ship checklist
+	# and the upgrade prices are the reason anyone opened this screen.
+	_diagram.custom_minimum_size = Vector2(470, 156)
+	if (_panel.offset_bottom - _panel.offset_top) < 700.0:
+		_diagram.visible = false
 	_diagram.refresh()
 
 func _apply_theme() -> void:
@@ -48,10 +71,36 @@ func _apply_theme() -> void:
 	# the room to say all of that without arguing with its own layout.
 	_panel.offset_left = -460.0
 	_panel.offset_right = 460.0
-	_panel.offset_top = -440.0
-	_panel.offset_bottom = 440.0
+	# Height and vertical placement come from the modal kit, which keeps the panel
+	# clear of both bands the HUD owns. Hard-coded ±440 drew "Close Console"
+	# straight on top of ability slot 3 — the bar is MOUSE_FILTER_IGNORE so the
+	# click still reached the button, but the frame showed "Close Console" and
+	# "Rubber Duck" printed over each other, which is worse: the player cannot
+	# tell what they are about to press.
+	_Modal.place_centred(_panel, 900.0)
+	# The column's minimum heights have to ADD UP to less than the panel, or the
+	# VBox lays its tail out past the bottom edge — which is exactly what pushed
+	# "Close Console" onto ability slot 3. Tighter margins and separation buy that
+	# room back; the scroll keeps only a floor and takes the slack via EXPAND_FILL.
+	var margin: MarginContainer = $Panel/Margin
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_bottom", 12)
+	var col: VBoxContainer = $Panel/Margin/VBox
+	col.add_theme_constant_override("separation", 6)
 	var scroll: ScrollContainer = $Panel/Margin/VBox/Scroll
-	scroll.custom_minimum_size = Vector2(0, 300)
+	scroll.custom_minimum_size = Vector2(0, 120)
+	# This is a SHOP and it never showed the player's balance. Worse, upgrades are
+	# priced in four currencies (tokens, compute, API credits, reputation) and the
+	# HUD only carries two of them — so "Buy · 41 API" was unanswerable without
+	# closing the console. The wallet line sits directly above the buy list, in the
+	# same abbreviations the buttons use, so "can I afford this" is one glance.
+	_wallet = Label.new()
+	_wallet.name = "Wallet"
+	_wallet.add_theme_font_size_override("font_size", 14)
+	_wallet.add_theme_color_override("font_color", _GameTheme.GOLD)
+	_GameTheme.outline_text(_wallet, 2)
+	col.add_child(_wallet)
+	col.move_child(_wallet, scroll.get_index())
 	add_theme_stylebox_override("panel", _GameTheme.dream_app_panel())
 	_panel.add_theme_stylebox_override("panel", _GameTheme.dream_app_panel())
 	_GameTheme.add_sheen(_panel, _GameTheme.with_alpha(_GameTheme.CYAN, 0.05), 8.0)
@@ -63,22 +112,62 @@ func _apply_theme() -> void:
 	_subtitle.add_theme_color_override("font_color", _GameTheme.accent_muted())
 	var totals_label: Label = $Panel/Margin/VBox/Totals
 	totals_label.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
+	totals_label.add_theme_font_size_override("font_size", 14)
 	totals_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# The checklist is seven lines and it is the answer to "why can't I deploy",
+	# so it stays whole — at 14 it costs the column 20px less and reads the same.
+	var ship_status: Label = $Panel/Margin/VBox/ShipStatus
+	ship_status.add_theme_font_size_override("font_size", 14)
 	_ship_btn.add_theme_stylebox_override("normal", _GameTheme.ship_button())
 	_ship_btn.add_theme_stylebox_override("hover", _GameTheme.ship_button())
 	_ship_btn.add_theme_color_override("font_color", _GameTheme.accent_cyan())
 	_GameTheme.attach_hover_motion(_ship_btn)
 	_GameTheme.style_button($Panel/Margin/VBox/CloseBtn, _GameTheme.CYAN, 14)
-	# Backdrop eases in so the world dims like a monitor waking up.
+	# The dim is split in two on purpose.
+	#
+	# The heavy part is a ModalPanel scrim at the BOTTOM of the HUD layer: at 0.55
+	# the lit apartment, the portal and the world captions were still the brightest
+	# things on screen and the console lost the contrast hierarchy to the room it
+	# is supposed to suppress. Sitting under the HUD, it can be that heavy without
+	# switching off the HP bar and the resource readout — which matters, because
+	# opening this console does NOT pause the game.
+	#
+	# The authored Backdrop stays as the light half: a soft tint over the HUD that
+	# eases in, so the room still "dims like a monitor waking up" and the HUD
+	# recedes a step without becoming unreadable.
+	_Modal.attach_scrim(self)
 	var bd: ColorRect = $Backdrop
+	bd.color = _GameTheme.with_alpha(_Modal.SCRIM_TINT, 0.30)
 	bd.modulate.a = 0.0
 	var bt := bd.create_tween().set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	bt.tween_property(bd, "modulate:a", 1.0, _GameTheme.T_STD)
 
+## THE bug behind "the Dream App console renders at 25-35% alpha over a lit
+## world". This pulse used to be created BEFORE GameTheme.open_panel(), and both
+## tweens drove `_panel.modulate:a`. open_panel() sets alpha to 0 and rides it to
+## 1 in 0.25s; the pulse captured its own start value on the same frame, i.e. 0,
+## and crawled 0 -> 0.985 over 1.4s. The moment the fast tween finished the panel
+## SNAPPED back onto the slow one's curve — ~18% alpha at 0.25s, ~35% at 0.5s —
+## and the whole console was a ghost with the room, the NPCs and the world
+## captions reading straight through it. That is the frame the critic saw.
+##
+## Now: the pulse starts only after the entrance is done, is pinned with .from()
+## so it can never inherit someone else's alpha, is pause-proof (a frozen tween
+## here would strand the console at whatever alpha it stopped on), and rides
+## 0.97..1.0 — a hologram breath you can still read a price list through.
 func _start_hologram_pulse() -> void:
-	var tween := create_tween().set_loops()
-	tween.tween_property(_panel, "modulate:a", 0.985, 1.4)
-	tween.tween_property(_panel, "modulate:a", 1.0, 1.4)
+	var lead := create_tween().set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	lead.tween_interval(_GameTheme.T_STD + 0.05)
+	lead.tween_callback(_begin_hologram_pulse)
+
+func _begin_hologram_pulse() -> void:
+	if not is_instance_valid(_panel):
+		return
+	_panel.modulate.a = 1.0
+	var tween := _panel.create_tween().set_loops().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	tween.tween_property(_panel, "modulate:a", 0.97, 1.4).from(1.0)
+	tween.tween_property(_panel, "modulate:a", 1.0, 1.4).from(0.97)
 
 func _populate() -> void:
 	var vbox: VBoxContainer = $Panel/Margin/VBox/Scroll/BranchList
@@ -109,8 +198,11 @@ func _populate() -> void:
 			quip.text = _Comedy.branch_quip(branch)
 		else:
 			quip.text = _next_note(next, branch)
-		quip.add_theme_font_size_override("font_size", 11)
-		quip.add_theme_color_override("font_color", _GameTheme.with_alpha(_GameTheme.TEXT_DIM, 0.8))
+		# 11px at 80% alpha was, in the captured frame, effectively invisible — and
+		# this line carries the real debt number, not just the joke. Full-strength
+		# TEXT_DIM at 12px: still clearly the second line of the row, still legible.
+		quip.add_theme_font_size_override("font_size", 12)
+		quip.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
 		quip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		col.add_child(quip)
 		h.add_child(col)
@@ -134,8 +226,10 @@ func _populate() -> void:
 			h.add_child(btn)
 		vbox.add_child(h)
 	if _first_populate:
-		# Rows cascade in once; refreshes after a purchase snap instantly.
-		_GameTheme.stagger_rows(vbox, 0.05, 0.1)
+		# Rows cascade in once; refreshes after a purchase snap instantly. The
+		# cascade is bounded (see ModalPanel.reveal_rows) so the bottom of the
+		# upgrade list is never dimmer than the top by the time anyone looks.
+		_Modal.reveal_rows(vbox)
 		_first_populate = false
 	_update_totals()
 
@@ -164,6 +258,43 @@ func _update_totals() -> void:
 		verdict = "The debt surcharge is now a bigger line item than the features."
 	$Panel/Margin/VBox/Totals.text = "Features: %d | Stability: %d | Security: %d   —   %s\nPrices below already include your debt surcharge (+%d%%). Every upgrade adds debt; debt raises every future price." % [
 		totals.features, totals.stability, totals.security, verdict, surcharge]
+	_update_wallet()
+	_enforce_column_budget.call_deferred()
+
+## Last-resort budget guard for defect #2, measured instead of estimated.
+##
+## A Control never draws smaller than its minimum size, so if the column's
+## minimum heights still add up to more than the panel was granted, the VBox lays
+## its tail out PAST the bottom edge and "Close Console" lands on the ability bar
+## again — the exact defect this round was filed for. Deferred because an
+## autowrapped label only knows its real wrapped height once it has been given a
+## width. Nothing here can shrink guidance, so the decoration goes: the
+## architecture gag is the only row in this column nobody needs to read. One-way
+## by design (it can hide, never re-show), so it cannot oscillate.
+func _enforce_column_budget() -> void:
+	if not is_instance_valid(_panel) or not is_instance_valid(_diagram):
+		return
+	if not _diagram.visible:
+		return
+	var col: VBoxContainer = $Panel/Margin/VBox
+	# Granted height, not size.y: if the column has already overflowed, size.y IS
+	# the overflow and the test would pass while the panel hangs off the bottom.
+	# 24 = Margin top+bottom (12 each), 36 = dream_app_panel()'s content margin.
+	var budget: float = (_panel.offset_bottom - _panel.offset_top) - 24.0 - 36.0
+	if col.get_combined_minimum_size().y > budget:
+		_diagram.visible = false
+
+## What you can actually spend, in the same abbreviations the Buy buttons use.
+## Refreshed with the totals (open + every purchase) rather than off
+## ResourceManager.resource_changed: focus regenerates every frame and that
+## signal fires with it, which would rebuild these strings 60 times a second.
+func _update_wallet() -> void:
+	if not is_instance_valid(_wallet):
+		return
+	var parts: Array[String] = []
+	for res: String in _WALLET_RESOURCES:
+		parts.append("%d %s" % [int(ResourceManager.get_value(res)), _res_abbr(res)])
+	_wallet.text = "YOU HAVE:   %s" % "   ·   ".join(parts)
 
 func _res_abbr(res: String) -> String:
 	match res:

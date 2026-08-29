@@ -54,7 +54,13 @@ float mote_layer(vec2 uv, float scale, float t, float ph) {
 	d.y *= mix(1.0, 0.14, streak);                   // stretch into a rain streak
 	float dd = length(d) * 2.0;
 	float tw = mix(1.0, 0.45 + 0.55 * sin(t * 2.7 + h * 41.0), twinkle);
-	return (1.0 - smoothstep(0.0, mote_size, dd)) * max(tw, 0.0);
+	// Round 5: same energy, redistributed. The old single smoothstep gave every
+	// mote a broad soft disc, and a screenful of broad soft discs is haze with
+	// extra steps. A dim halo plus a small hot core reads as a PARTICLE — it
+	// catches the light, it does not fog the room.
+	float halo = 1.0 - smoothstep(0.0, mote_size, dd);
+	float core = halo * halo;
+	return (halo * 0.45 + core * core * 0.80) * max(tw, 0.0);
 }
 
 void fragment() {
@@ -71,8 +77,14 @@ void fragment() {
 	float fog = 0.0;
 	if (fog_amount > 0.0005) {
 		float banks = vnoise(vec2(base.x * 2.6 + t * 0.030, base.y * 4.2 - t * 0.012));
-		banks = pow(clamp(banks, 0.0, 1.0), 1.8);
-		fog = fog_amount * (0.40 + 0.85 * banks);
+		banks += 0.45 * vnoise(vec2(base.x * 6.1 - t * 0.048, base.y * 9.3 + t * 0.021));
+		banks = pow(clamp(banks / 1.45, 0.0, 1.0), 2.6);
+		// Round 5: the old base term was a FLAT 0.40 * fog_amount added to every
+		// pixel of the region — a coloured lift over the whole frame, which is
+		// exactly the milk the QA frames complained about in gpu_mines and
+		// token_vault. The base is now a trace and the banks carry the effect,
+		// so haze happens in PLACES: it drifts past, it does not sit on the lens.
+		fog = fog_amount * (0.08 + 1.30 * banks);
 	}
 
 	vec3 add = mote_color.rgb * clamp(m, 0.0, 2.0) * brightness * mote_color.a

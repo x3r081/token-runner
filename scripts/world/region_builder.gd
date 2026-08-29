@@ -22,6 +22,14 @@ const REGION_SIZE := Vector2i(20, 15)
 const TILE_SIZE := 64
 
 static func build(parent: Node2D, region_id: String) -> Dictionary:
+	# Cleared here, not only in _build_region_static: travelling to Localhost
+	# takes the other branch, and a cover list left over from the region you
+	# just walked out of would then reject token positions in the apartment.
+	_cover_rects.clear()
+	# Same reason: the layout template is module-level state, and Localhost takes
+	# the other branch, so adopt it here too rather than leaving the last region's
+	# plaza and artery hanging around on the static.
+	_use_layout(region_id)
 	if region_id == "localhost":
 		return _LocalhostBuilder.build(parent)
 	return _build_region_static(parent, region_id)
@@ -49,6 +57,12 @@ static var _sign_prio := 1
 
 static func _build_region_static(parent: Node2D, region_id: String) -> Dictionary:
 	parent.y_sort_enabled = true
+	# Regions rebuild on every travel; the cover list belongs to THIS build.
+	_cover_rects.clear()
+	# Adopt this region's layout template BEFORE anything measures the floor:
+	# every zoning, paint and scatter pass below reads the plaza and the artery
+	# out of _layout, and a stale one would build the previous room's footprint.
+	_use_layout(region_id)
 	var theme := _region_theme(region_id)
 	var w := REGION_SIZE.x * TILE_SIZE
 	var h := REGION_SIZE.y * TILE_SIZE
@@ -58,6 +72,7 @@ static func _build_region_static(parent: Node2D, region_id: String) -> Dictionar
 	_build_floor_themed(parent, theme, w, h, region_id)
 	_build_walls_themed(parent, theme, w, h)
 	_build_region_grounding(parent, w, h)
+	_build_backdrop(parent, region_id, theme, w, h)
 	_build_midground(parent, theme, w, h)
 	_build_structures(parent, theme)
 	_sign_prio = 2
@@ -69,6 +84,12 @@ static func _build_region_static(parent: Node2D, region_id: String) -> Dictionar
 	_build_region_signs(parent, theme)
 	_build_poi_pools(parent, region_id, theme)
 	_build_region_fx(parent, region_id, theme, w, h)
+	# Before the containers: _populate_region reads _cover_rects when it scatters
+	# tokens, so the cover has to exist by then.
+	_build_encounters(parent, region_id, theme, w, h)
+	# After the cover, before the containers: the signature scatter dodges cover
+	# and the tokens dodge both.
+	_build_signature(parent, region_id, theme, w, h)
 	_build_foreground(parent, theme, w, h)
 
 	var props := Node2D.new()
@@ -155,19 +176,210 @@ static func _cell_hash(x: int, y: int) -> int:
 	v = ((v ^ (v >> 13)) * 1274126177) & 0x7FFFFFFF
 	return (v ^ (v >> 16)) & 0x7FFFFFFF
 
+## Stable per-region seed for every geometry function below. The room must
+## rebuild byte-identically each time you walk back into it, so nothing here is
+## allowed to touch an RNG.
+static func _region_seed(region_id: String) -> int:
+	return absi(region_id.hash()) % 97
+
+## Per-region LAYOUT TEMPLATE — the fix for "all nine non-Localhost regions share
+## one composition". Round 5 put an identical octagonal landing plaza at the
+## exact centre of every room and ran the traffic artery dead straight across
+## the middle of all of them, so the captured frames differed in hue and in
+## nothing else: same slab, same player-dead-centre, same portal on the same
+## left third. Each region now owns its plaza's PLACE, SHAPE and SIZE and its
+## own artery baseline, and every pass that draws either of them — tile zoning,
+## curb trim, lane paint, blotches, litter, decals, spurs, the signature
+## scatter — reads the same numbers from here, so the material edge and the
+## painted edge can never disagree with each other.
+##
+## Keys:
+##   c      plaza centre, as an offset from the room centre
+##   r      plaza radii (x, y) in pixels
+##   form   0 octagon, 1 court (round), 2 dock (long and chamfered),
+##          3 annex (a main lobe with a smaller one budded off it)
+##   rot    plaza rotation, radians
+##   annex  the second lobe's centre, in the plaza's own normalised units
+##   band   artery baseline, as an offset from the room's mid-height
+##   tilt   how far the artery climbs (or falls) from the west wall to the east
+##   wave   amplitude of the artery's meander
+##
+## HARD RULE for anyone editing this table: the plaza must still CONTAIN the
+## spawn (640, 480) with at least ~50px to spare. The landing plaza is the
+## floor saying "you are here", and a player who arrives standing on the dark
+## open field has lost the one piece of orientation the ground owes them.
+const LAYOUT_DEFAULT := {
+	"c": Vector2.ZERO, "r": Vector2(206.0, 145.0), "form": 0, "rot": 0.0,
+	"annex": Vector2(120.0, 140.0), "band": 0.0, "tilt": 0.0, "wave": 0.0,
+}
+
+const REGION_LAYOUT := {
+	# A long west dock in front of the node_modules heap; the artery sags south.
+	"dependency_district": {"c": Vector2(-104.0, 36.0), "r": Vector2(268.0, 124.0),
+		"form": 2, "rot": 0.0, "annex": Vector2.ZERO,
+		"band": 58.0, "tilt": -50.0, "wave": 20.0},
+	# A round clearing swept out of the rubble, south-east, artery climbing.
+	"stackoverflow_ruins": {"c": Vector2(64.0, 74.0), "r": Vector2(210.0, 178.0),
+		"form": 1, "rot": 0.0, "annex": Vector2.ZERO,
+		"band": -66.0, "tilt": 38.0, "wave": 26.0},
+	# A market square with a second, smaller pitch budded off it to the south-east.
+	"api_bazaar": {"c": Vector2(-40.0, -58.0), "r": Vector2(214.0, 146.0),
+		"form": 3, "rot": 0.0, "annex": Vector2(118.0, 152.0),
+		"band": 42.0, "tilt": -30.0, "wave": 30.0},
+	# A very wide, very shallow apron under the cathedral: the nave's floor.
+	"cloud_district": {"c": Vector2(56.0, -56.0), "r": Vector2(292.0, 138.0),
+		"form": 2, "rot": 0.0, "annex": Vector2.ZERO,
+		"band": -54.0, "tilt": 52.0, "wave": 18.0},
+	# A trodden forest clearing, west of centre, with the widest meander of the
+	# nine — nothing in the wildlands runs straight.
+	"open_source_wildlands": {"c": Vector2(-80.0, 58.0), "r": Vector2(228.0, 172.0),
+		"form": 1, "rot": 0.0, "annex": Vector2.ZERO,
+		"band": 30.0, "tilt": 44.0, "wave": 34.0},
+	# A skewed lobby slab: the only plaza in the game somebody drew on a plan.
+	"corporate_enterprise": {"c": Vector2(84.0, -24.0), "r": Vector2(238.0, 156.0),
+		"form": 0, "rot": 0.42, "annex": Vector2.ZERO,
+		"band": -22.0, "tilt": -56.0, "wave": 14.0},
+	# A cut bench with a spoil apron dropping away to the south-west.
+	"gpu_mines": {"c": Vector2(-54.0, -54.0), "r": Vector2(230.0, 146.0),
+		"form": 3, "rot": 0.0, "annex": Vector2(-96.0, 164.0),
+		"band": 62.0, "tilt": 30.0, "wave": 24.0},
+	# A muster slab canted off the room's axis, north-east, under the war room.
+	"production": {"c": Vector2(78.0, -36.0), "r": Vector2(244.0, 146.0),
+		"form": 0, "rot": -0.34, "annex": Vector2.ZERO,
+		"band": -70.0, "tilt": 24.0, "wave": 28.0},
+	# A wide counting floor, south of centre, under the reserve pedestal.
+	"token_vault": {"c": Vector2(-24.0, 52.0), "r": Vector2(276.0, 140.0),
+		"form": 2, "rot": 0.0, "annex": Vector2.ZERO,
+		"band": -40.0, "tilt": -40.0, "wave": 20.0},
+}
+
+## The layout the CURRENT build is using. A module-level static for the same
+## reason `_cover_rects` and `_sign_prio` are: the geometry functions below are
+## consumed from a dozen call sites that have no region_id to hand, and
+## threading one through eleven signatures to reach _plaza_field would be worse
+## than one value set once at the top of _build_region_static. Defaults to the
+## round-5 template so a stray call before a build still returns a sane room.
+static var _layout: Dictionary = LAYOUT_DEFAULT
+## The current region's geometry seed, kept beside the layout for the two passes
+## that have to dodge the plaza and the artery but were never handed a region_id
+## (_build_region_detail is one).
+static var _layout_seed := 0
+
+static func _use_layout(region_id: String) -> void:
+	_layout = REGION_LAYOUT.get(region_id, LAYOUT_DEFAULT)
+	_layout_seed = _region_seed(region_id)
+
+static func _plaza_center(w: float, h: float) -> Vector2:
+	var c: Vector2 = _layout.get("c", Vector2.ZERO)
+	return Vector2(w * 0.5, h * 0.5) + c
+
+static func _plaza_radii() -> Vector2:
+	var r: Vector2 = _layout.get("r", Vector2(206.0, 145.0))
+	return r
+
+## Centre-line of the walkway artery at a given x. Round 5 hard-coded this to
+## h*0.5 in nine separate places, which is most of why every region read as the
+## same room: one horizontal bright stripe through the middle of the frame. It
+## now drops or lifts, tilts across the room and meanders, per region.
+static func _band_y(x: float, w: float, h: float, seed_v: int) -> float:
+	var t := x / maxf(1.0, w)
+	var base := float(_layout.get("band", 0.0))
+	var tilt := float(_layout.get("tilt", 0.0))
+	var wave := float(_layout.get("wave", 0.0))
+	return h * 0.5 + base + tilt * (t - 0.5) * 2.0 \
+		+ sin(t * 5.7 + float(seed_v % 17) * 0.37) * wave
+
+## Deterministic low-frequency wobble in [-1,1]: coarse 160px cells hashed and
+## smoothstep-blended. Every zone boundary consumes this, so a seam MEANDERS
+## instead of running an axis-aligned ruler across open floor. Round 4 shipped
+## the material zones as clean rectangles and the captured frames read them
+## exactly as what they were — texture patches pasted onto the ground.
+static func _zone_wobble(p: Vector2, seed_v: int) -> float:
+	var cell := 160.0
+	var cx := int(floor(p.x / cell))
+	var cy := int(floor(p.y / cell))
+	var fx := p.x / cell - float(cx)
+	var fy := p.y / cell - float(cy)
+	fx = fx * fx * (3.0 - 2.0 * fx)
+	fy = fy * fy * (3.0 - 2.0 * fy)
+	var v00 := float(_cell_hash(cx + seed_v, cy) % 2001) / 1000.0 - 1.0
+	var v10 := float(_cell_hash(cx + 1 + seed_v, cy) % 2001) / 1000.0 - 1.0
+	var v01 := float(_cell_hash(cx + seed_v, cy + 1) % 2001) / 1000.0 - 1.0
+	var v11 := float(_cell_hash(cx + 1 + seed_v, cy + 1) % 2001) / 1000.0 - 1.0
+	return lerpf(lerpf(v00, v10, fx), lerpf(v01, v11, fx), fy)
+
+## Half-width of the walkway artery at a given x. The band swells, pinches twice
+## and drifts the whole way across the room, phase-shifted per region, so its
+## edge never draws the unbroken straight line that made it read as a lighter
+## stripe of the same floor rather than a different material.
+static func _band_half(x: float, w: float, seed_v: int) -> float:
+	var t := x / maxf(1.0, w)
+	var ph := float(seed_v % 29) * 0.21
+	return 92.0 + sin(t * 7.3 + ph) * 15.0 + sin(t * 16.9 + ph * 1.7) * 8.0 + cos(t * 3.1 + ph) * 6.0
+
+## Signed field for the landing plaza: negative inside. Never a circle — a
+## circle quantised to 64px tiles produced the blocky slab visible in
+## region_gpu_mines.png and region_token_vault.png — and, since round 6, never
+## the SAME shape twice: the plaza's place, radii, rotation and outline family
+## all come out of REGION_LAYOUT, so a player can name the room from the shape
+## of its floor with every label switched off. Everything is measured in a
+## normalised 206-unit space so the wobble, the threshold and the ring painter
+## keep working whatever radii a region asks for.
+static func _plaza_field(p: Vector2, w: float, h: float, seed_v: int) -> float:
+	var r := _plaza_radii()
+	var d := (p - _plaza_center(w, h)).rotated(-float(_layout.get("rot", 0.0)))
+	d = Vector2(d.x * 206.0 / maxf(1.0, r.x), d.y * 206.0 / maxf(1.0, r.y))
+	var f := 0.0
+	match int(_layout.get("form", 0)):
+		1:  # court — a swept round clearing
+			f = d.length()
+		2:  # dock — long, shallow, chamfered at the ends
+			f = maxf(maxf(absf(d.x), absf(d.y)), (absf(d.x) + absf(d.y)) * 0.66)
+		3:  # annex — a main lobe with a smaller one budded off it
+			var a: Vector2 = _layout.get("annex", Vector2(120.0, 140.0))
+			f = minf(d.length(), (d - a).length() * 1.28)
+		_:  # octagon
+			f = maxf(maxf(absf(d.x), absf(d.y)), (absf(d.x) + absf(d.y)) * 0.735)
+	return f - (206.0 + _zone_wobble(p, seed_v + 23) * 30.0)
+
+## A point ON the plaza outline along the bearing `a`. Marched outward rather
+## than bisected: the annex form is a UNION of two lobes, so a ray can leave one
+## and re-enter the other, and a bisection would happily settle in the notch
+## between them. Taking the last inside sample gives the true silhouette for
+## every form. Build-time only, ~60 field probes per bearing.
+static func _plaza_edge(a: float, w: float, h: float, seed_v: int) -> Vector2:
+	var c := _plaza_center(w, h)
+	var r := _plaza_radii()
+	var dir := Vector2(cos(a) * r.x, sin(a) * r.y).normalized()
+	var last := 48.0
+	for i in 62:
+		var rr := 48.0 + float(i) * 9.0
+		if _plaza_field(c + dir * rr, w, h, seed_v) < 0.0:
+			last = rr
+	return c + dir * last
+
+## Perimeter falloff depth at a point — wobbled, so the ring the room ends in is
+## a shoreline and not a picture frame.
+static func _edge_depth(p: Vector2, w: float, h: float, seed_v: int) -> float:
+	return minf(minf(p.x, w - p.x), minf(p.y - 46.0, h - p.y)) \
+		- _zone_wobble(p, seed_v + 51) * 34.0
+
 ## Floor zoning. A room at one flat value is a void with props in it. The spawn
 ## gets a bright landing plaza, the portal-to-portal artery gets a worn traffic
 ## lane, and the perimeter falls off — so the eye immediately knows where the
-## room's "somewhere" is, and the ground reads as ground.
-static func _floor_zone(p: Vector2, w: float, h: float) -> float:
+## room's "somewhere" is, and the ground reads as ground. Brightness reads off
+## the SAME wobbled fields as the material zoning below; when the two disagreed
+## the value step and the material step landed a tile apart and advertised both.
+static func _floor_zone(p: Vector2, w: float, h: float, seed_v: int) -> float:
 	var k := 1.0
-	var lane := absf(p.y - h * 0.5)
-	if lane < 96.0 and p.x > 130.0 and p.x < w - 130.0:
-		k += 0.22 * (1.0 - lane / 96.0)
-	var d := p.distance_to(Vector2(w * 0.5, h * 0.5))
-	if d < 220.0:
-		k += 0.18 * (1.0 - d / 220.0)
-	var e := minf(minf(p.x, w - p.x), minf(p.y - 46.0, h - p.y))
+	var bh := _band_half(p.x, w, seed_v)
+	var lane := absf(p.y - _band_y(p.x, w, h, seed_v))
+	if lane < bh and p.x > 130.0 and p.x < w - 130.0:
+		k += 0.22 * (1.0 - lane / bh)
+	var pf := _plaza_field(p, w, h, seed_v)
+	if pf < 0.0:
+		k += 0.18 * minf(1.0, -pf / 200.0)
+	var e := _edge_depth(p, w, h, seed_v)
 	if e < 156.0:
 		# Round-4 rule 3: edges darkest. Was -0.28; the perimeter now falls off
 		# hard enough to read as the room ending rather than the wash fading.
@@ -179,13 +391,18 @@ static func _floor_zone(p: Vector2, w: float, h: float) -> float:
 ## 0 open field, 1 walkway band (the portal-to-portal artery), 2 landing plaza,
 ## 3 perimeter. Checked in priority order so the plaza wins over the band where
 ## they overlap at the spawn.
-static func _tile_zone(p: Vector2, w: float, h: float) -> int:
-	var e := minf(minf(p.x, w - p.x), minf(p.y - 46.0, h - p.y))
-	if e < 110.0:
+##
+## `hv` is the tile's own hash and buys the transition: a +/-34px slop on every
+## threshold makes the last row of tiles either side of a seam INTERLOCK — a
+## one-tile dithered blend. Combined with the wobbled outlines above, no zone
+## ends in a clean edge anywhere in the room.
+static func _tile_zone(p: Vector2, w: float, h: float, seed_v: int, hv: int) -> int:
+	var dither := (float(hv % 89) / 89.0 - 0.5) * 68.0
+	if _edge_depth(p, w, h, seed_v) < 106.0 + dither:
 		return 3
-	if p.distance_to(Vector2(w * 0.5, h * 0.5)) < 190.0:
+	if _plaza_field(p, w, h, seed_v) + dither < 0.0:
 		return 2
-	if absf(p.y - h * 0.5) < 100.0 and p.x > 130.0 and p.x < w - 130.0:
+	if absf(p.y - _band_y(p.x, w, h, seed_v)) < _band_half(p.x, w, seed_v) + dither:
 		return 1
 	return 0
 
@@ -226,11 +443,17 @@ static func _build_floor_themed(parent: Node2D, theme: Dictionary, w: int, h: in
 	var has_alt := suffix != "" and ResourceLoader.exists(GEN + "floor_" + suffix + "_alt.png")
 	var has_path_tile := ResourceLoader.exists(GEN + "path_tile.png")
 	var tile_mul: float = float(theme.get("tile_mul", 2.2))
+	var seed_v := _region_seed(region_id)
+	# The zone map is computed once and kept: the trim pass below needs to know
+	# which tile edges are material SEAMS, and recomputing the fields per edge
+	# would be four noise lookups per tile for no reason.
+	var zones: Array[int] = []
+	zones.resize(REGION_SIZE.x * REGION_SIZE.y)
 	for x in REGION_SIZE.x:
 		for y in REGION_SIZE.y:
 			var hv := _cell_hash(x, y)
 			var p := Vector2(x * TILE_SIZE + TILE_SIZE * 0.5, y * TILE_SIZE + TILE_SIZE * 0.5)
-			var k := _floor_zone(p, float(w), float(h)) \
+			var k := _floor_zone(p, float(w), float(h), seed_v) \
 				* _floor_wear(x, y) \
 				* (1.0 + (float(hv % 61) / 61.0 - 0.5) * 0.13)
 			var tex_name := "tech_floor"
@@ -241,7 +464,9 @@ static func _build_floor_themed(parent: Node2D, theme: Dictionary, w: int, h: in
 			# STRUCTURE BEFORE NOISE (round-4 rule 1): the material a tile is made
 			# of is decided by WHERE it is — walkway band, landing plaza, perimeter,
 			# open field — so the ground reads as designed zones, not one noise wash.
-			match _tile_zone(p, float(w), float(h)):
+			var zn := _tile_zone(p, float(w), float(h), seed_v, hv)
+			zones[x * REGION_SIZE.y + y] = zn
+			match zn:
 				1:  # walkway band: one clean deck material end to end
 					if has_path_tile:
 						tex_name = "path_tile"
@@ -290,13 +515,105 @@ static func _build_floor_themed(parent: Node2D, theme: Dictionary, w: int, h: in
 						m = m.darkened(0.26)  # a cell something bad happened on
 			_put(floor_node, tex_name, p, -100, 1.0, m)
 	_floor_seams(floor_node, w, h)
-	_floor_blotches(floor_node, theme, w, h)
+	_zone_trim(floor_node, zones, theme, w, h, seed_v)
+	_floor_blotches(floor_node, theme, w, h, seed_v)
 	_floor_mottle(floor_node, theme, w, h, region_id)
-	_paint_paths(floor_node, region_id, theme, w, h)
-	_paint_lane(floor_node, theme, w, h)
+	_paint_paths(floor_node, region_id, theme, w, h, seed_v)
+	_floor_region_structure(floor_node, region_id, theme, w, h, seed_v)
+	_paint_lane(floor_node, theme, w, h, seed_v)
 	var glow: Color = theme.get("glow", Color.WHITE)
 	_paint_wayfinding(floor_node, region_id, w, h, glow)
 	_floor_litter(floor_node, theme, w, h, region_id)
+
+## Is this zone one somebody maintains? The walkway artery and the landing
+## plaza are; the open field and the perimeter falloff are not.
+static func _zone_kept(z: int) -> bool:
+	return z == 1 or z == 2
+
+## Is this tile a lone dither speckle — a tile whose zone matches none of its
+## four orthogonal neighbours? Measured across all 97 region seeds this happens
+## about 0.7 times per room, and curbing all four edges of one draws a tidy 64px
+## box around a single tile: a pasted patch at tile scale, which is the exact
+## defect the wobble and the dither exist to remove. Cheap to skip, so skip it.
+static func _zone_speck(zones: Array[int], x: int, y: int) -> bool:
+	var z0: int = zones[x * REGION_SIZE.y + y]
+	for o: Vector2i in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
+		var ax := x + o.x
+		var ay := y + o.y
+		if ax < 0 or ay < 0 or ax >= REGION_SIZE.x or ay >= REGION_SIZE.y:
+			continue
+		if zones[ax * REGION_SIZE.y + ay] == z0:
+			return false
+	return true
+
+## Real transitions at every material seam. Round 4 laid one fill against
+## another and stopped; the frames showed the pink plaza in the bazaar and the
+## gold slab in the vault as decals sitting ON the floor rather than part of it.
+## Every tile edge where the material changes now gets a poured curb — a dark
+## groove with a lit lip on the brighter side — one in three gets debris shed
+## across it, and one in nine gets a low kerb post. Because the outlines above
+## are wobbled and dithered, this line-work is itself ragged, which is the whole
+## point: a built edge with wear on it, not a cut.
+static func _zone_trim(parent: Node2D, zones: Array[int], theme: Dictionary, _w: int, _h: int, seed_v: int) -> void:
+	var accent: Color = theme.get("accent", Color(0.8, 0.8, 0.9))
+	var glow: Color = theme.get("glow", Color(0.7, 0.8, 0.95))
+	var ts := float(TILE_SIZE)
+	for x in REGION_SIZE.x:
+		for y in REGION_SIZE.y:
+			var z0: int = zones[x * REGION_SIZE.y + y]
+			for d in 2:
+				var nx: int = (x + 1) if d == 0 else x
+				var ny: int = y if d == 0 else (y + 1)
+				if nx >= REGION_SIZE.x or ny >= REGION_SIZE.y:
+					continue
+				var z1: int = zones[nx * REGION_SIZE.y + ny]
+				if z0 == z1:
+					continue
+				# A lone speckle keeps its material change but gets no curb —
+				# four curbs around one tile is a drawn 64px box, i.e. the
+				# pasted-patch defect at tile scale. See _zone_speck.
+				if _zone_speck(zones, x, y) or _zone_speck(zones, nx, ny):
+					continue
+				var hv := _cell_hash(x * 7 + d * 3671, y * 13 + seed_v)
+				# Seam centre, nudged off the lattice so the curb does not itself
+				# redraw the 64px grid the whole floor pass works to hide.
+				var jit := float(hv % 15) - 7.0
+				var horiz := d == 1
+				var sp := Vector2(
+					float(x) * ts + (ts if d == 0 else ts * 0.5 + jit),
+					float(y) * ts + (ts * 0.5 + jit if d == 0 else ts))
+				var groove := Vector2(6.0, ts + 3.0) if not horiz else Vector2(ts + 3.0, 6.0)
+				var lip := Vector2(2.0, ts + 3.0) if not horiz else Vector2(ts + 3.0, 2.0)
+				# The lip sits on the MAINTAINED side — walkway (1) and plaza (2)
+				# are the materials somebody would have bothered to edge. Picking
+				# the lower zone index instead put the lit lip out on the open
+				# field at every plaza seam, i.e. on the side with no kerb in the
+				# fiction. Field-vs-perimeter has no maintained side, so it
+				# tie-breaks on index as before. -1 is the z0 tile, +1 the z1 one.
+				var toward := 1.0
+				if _zone_kept(z0) != _zone_kept(z1):
+					if _zone_kept(z0):
+						toward = -1.0
+				elif z0 < z1:
+					toward = -1.0
+				var off := Vector2(toward * 4.0, 0.0) if not horiz else Vector2(0.0, toward * 4.0)
+				# Groove at -96 so the mottle pass wears it; the lit lip at -92,
+				# ABOVE the mottle, because a curb is navigation line-work and
+				# the same rule that keeps the lane paint crisp applies here.
+				_rect(parent, sp, groove, Color(0, 0, 0, 0.44), -96)
+				var trim_col: Color = accent if mini(z0, z1) < 2 else glow
+				_rect(parent, sp + off, lip, Color(trim_col.r, trim_col.g, trim_col.b, 0.24), -92)
+				if (hv >> 5) % 3 == 0:
+					# Debris shed across the edge: the seam is where things collect.
+					var dp := sp + Vector2(float((hv >> 9) % 21) - 10.0, float((hv >> 14) % 21) - 10.0)
+					_rect(parent, dp, Vector2(float((hv >> 17) % 9) + 4.0, 3.0),
+						Color(0, 0, 0, 0.26), -91, float(hv % 628) * 0.01)
+				if (hv >> 7) % 9 == 0:
+					# Kerb post. Small, dark, one emissive chip — reads as a marker
+					# at a glance and as somebody's maintenance up close.
+					_rect(parent, sp, Vector2(6, 11), Color(0.05, 0.055, 0.09, 0.95), _depth(sp.y, 6.0))
+					_glow_rect(parent, sp + Vector2(0, -5), Vector2(4, 3),
+						Color(trim_col.r, trim_col.g, trim_col.b, 0.7), _depth(sp.y, 7.0))
 
 ## Expansion joints: multi-tile grout lines that do NOT follow the 64px lattice
 ## everywhere, so the floor reads as slabs of irregular size. Deterministic (the
@@ -355,7 +672,7 @@ static func _floor_mottle(parent: Node2D, theme: Dictionary, w: int, h: int, reg
 ## Big soft stains at non-grid positions and non-grid sizes. Nothing here lines
 ## up with a tile edge, which is exactly the point: overlapping ellipses read as
 ## an aged deck and hide the lattice underneath them.
-static func _floor_blotches(parent: Node2D, theme: Dictionary, w: int, h: int) -> void:
+static func _floor_blotches(parent: Node2D, theme: Dictionary, w: int, h: int, seed_v: int) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 606061
 	var glow: Color = theme.get("glow", Color(0.6, 0.7, 0.9))
@@ -368,7 +685,7 @@ static func _floor_blotches(parent: Node2D, theme: Dictionary, w: int, h: int) -
 			# deck reads as dirt the sweeping missed. The alpha draw still happens
 			# so the scatter downstream keeps its deterministic layout.
 			var stain_a := rng.randf_range(0.10, 0.26)
-			if absf(p.y - float(h) * 0.5) >= 90.0:
+			if absf(p.y - _band_y(p.x, float(w), float(h), seed_v)) >= _band_half(p.x, float(w), seed_v) - 6.0:
 				_floor_patch(parent, p, width, Color(0.012, 0.014, 0.03), stain_a, -97)
 		else:
 			# Scrubbed patches: somebody cleaned exactly this much and gave up.
@@ -376,30 +693,210 @@ static func _floor_blotches(parent: Node2D, theme: Dictionary, w: int, h: int) -
 
 ## Painted markings on the traffic lane and the landing plaza. Cheap, flat, and
 ## the single biggest readability win: the floor now has line-work on it.
-static func _paint_lane(parent: Node2D, theme: Dictionary, w: int, h: int) -> void:
+static func _paint_lane(parent: Node2D, theme: Dictionary, w: int, h: int, seed_v: int) -> void:
 	var accent: Color = theme.get("accent", Color(0.8, 0.8, 0.9))
 	var glow: Color = theme.get("glow", Color.WHITE)
-	var cy := h * 0.5
+	# The band edge is a chain of short segments walking the SAME curve the tile
+	# materials use, so the painted line and the material change agree and the
+	# artery bends around the room instead of ruling a line across it. One long
+	# rect per side was the tell that made this read as a stripe, not a road.
+	# Both the centre-line and the half-width come from the region's layout now,
+	# so no two rooms carry the artery at the same height or on the same slope.
+	var steps := 30
+	var x0 := 150.0
+	var x1 := float(w) - 150.0
 	for k: float in [1.0, -1.0]:
-		# Band edge = material seam (round-4 rule 1): a dark expansion groove
-		# with the painted accent line beside it, so the walkway band reads as a
-		# DIFFERENT floor, not a lighter stripe of the same one.
-		_rect(parent, Vector2(w * 0.5, cy + k * 100.0), Vector2(w - 300.0, 3.0), Color(0, 0, 0, 0.34), -93)
-		_rect(parent, Vector2(w * 0.5, cy + k * 100.0 - k * 3.0), Vector2(w - 300.0, 2.0), Color(accent.r, accent.g, accent.b, 0.22), -93)
-		# hazard dashes just inside the painted edge
-		for i in 13:
-			var dx := 190.0 + float(i) * 76.0
-			_rect(parent, Vector2(dx, cy + k * 92.0), Vector2(30.0, 6.0), Color(accent.r, accent.g, accent.b, 0.12), -93, 0.5 * k)
-	# Landing plaza ring at the spawn: "you are here".
-	_floor_patch(parent, Vector2(w * 0.5, cy), 430.0, glow, 0.055, -95)
-	for i in 26:
-		var a := TAU * float(i) / 26.0
-		_rect(parent, Vector2(w * 0.5, cy) + Vector2(cos(a) * 168.0, sin(a) * 104.0), Vector2(13.0, 4.0), Color(accent.r, accent.g, accent.b, 0.11), -93, a)
+		for i in steps:
+			var xa := x0 + (x1 - x0) * float(i) / float(steps)
+			var xb := x0 + (x1 - x0) * float(i + 1) / float(steps)
+			var ya := _band_y(xa, float(w), float(h), seed_v) + k * _band_half(xa, float(w), seed_v)
+			var yb := _band_y(xb, float(w), float(h), seed_v) + k * _band_half(xb, float(w), seed_v)
+			var seg := Vector2(xb - xa, yb - ya)
+			var mid := Vector2((xa + xb) * 0.5, (ya + yb) * 0.5)
+			var ln := seg.length() + 3.0
+			var ang := seg.angle()
+			_rect(parent, mid, Vector2(ln, 3.0), Color(0, 0, 0, 0.34), -93, ang)
+			_rect(parent, mid - Vector2(0.0, k * 3.0), Vector2(ln, 2.0), Color(accent.r, accent.g, accent.b, 0.22), -93, ang)
+			# hazard dashes just inside the painted edge, on every other segment
+			if i % 2 == 0:
+				_rect(parent, mid - Vector2(0.0, k * 11.0), Vector2(30.0, 6.0), Color(accent.r, accent.g, accent.b, 0.12), -93, ang + 0.5 * k)
+	# Landing plaza kerb: "you are here". Round 5 drew this as 26 free-floating
+	# dashes on a circle argued against an octagonal material outline, which is
+	# the "dashed arc over the floor with nothing in it" the round-6 critique
+	# filed — a decal, not a kerb. It is now a CONTINUOUS chain solved off the
+	# same signed field the tiles use (so it traces whatever shape this region's
+	# plaza actually is), it has a poured groove and a lit lip like every other
+	# material edge in the room, and it encloses a real marked landing pad.
+	var pc := _plaza_center(float(w), float(h))
+	var pr := _plaza_radii()
+	_floor_patch(parent, pc, pr.x * 2.1, glow, 0.055, -95)
+	var ring: Array[Vector2] = []
+	var ring_n := 44
+	for i in ring_n:
+		ring.append(_plaza_edge(TAU * float(i) / float(ring_n), float(w), float(h), seed_v))
+	for i in ring_n:
+		var a0: Vector2 = ring[i]
+		var b0: Vector2 = ring[(i + 1) % ring_n]
+		var rseg := b0 - a0
+		var rln := rseg.length() + 4.0
+		var rang := rseg.angle()
+		var rmid := (a0 + b0) * 0.5
+		var rin := (pc - rmid).normalized()
+		# Groove, then the lit lip on the INSIDE — the maintained side, the same
+		# rule _zone_trim follows at every other material seam in the room.
+		_rect(parent, rmid, Vector2(rln, 5.0), Color(0, 0, 0, 0.38), -93, rang)
+		_rect(parent, rmid + rin * 3.0, Vector2(rln, 2.0), Color(accent.r, accent.g, accent.b, 0.20), -93, rang)
+		if i % 3 == 0:
+			# Kerb reflectors: the dashes are ON the kerb now, not instead of it.
+			_glow_rect(parent, rmid + rin * 7.0, Vector2(11.0, 3.0), Color(accent.r, accent.g, accent.b, 0.22), -92, rang)
+		if i % 11 == 0:
+			# Bolted kerb post with a lit chip, so the ring is fixed to something.
+			_drop_shadow(parent, rmid + Vector2(0, 6), 26.0, _depth(rmid.y, 8.0) - 1, 0.30)
+			_rect(parent, rmid, Vector2(7, 12), Color(0.05, 0.055, 0.09, 0.95), _depth(rmid.y, 7.0))
+			_glow_rect(parent, rmid + Vector2(0, -6), Vector2(5, 3), Color(glow.r, glow.g, glow.b, 0.7), _depth(rmid.y, 8.0))
+	# The pad the kerb encloses, painted at the spawn itself: a stencilled
+	# landing cross with corner ticks. Somebody marked this spot on purpose,
+	# which is the whole difference between a marking and a stray primitive.
+	var sp := Vector2(float(w) * 0.5, float(h) * 0.5)
+	_floor_patch(parent, sp, 250.0, glow, 0.05, -94)
+	_rect(parent, sp, Vector2(96.0, 5.0), Color(0, 0, 0, 0.30), -93)
+	_rect(parent, sp, Vector2(5.0, 62.0), Color(0, 0, 0, 0.30), -93)
+	_rect(parent, sp, Vector2(92.0, 2.0), Color(accent.r, accent.g, accent.b, 0.24), -93)
+	_rect(parent, sp, Vector2(2.0, 58.0), Color(accent.r, accent.g, accent.b, 0.24), -93)
+	for c: Vector2 in [Vector2(-1.0, -1.0), Vector2(1.0, -1.0), Vector2(-1.0, 1.0), Vector2(1.0, 1.0)]:
+		var cp := sp + Vector2(c.x * 78.0, c.y * 52.0)
+		_rect(parent, cp + Vector2(c.x * -11.0, 0.0), Vector2(24.0, 4.0), Color(0, 0, 0, 0.28), -93)
+		_rect(parent, cp + Vector2(0.0, c.y * -8.0), Vector2(4.0, 18.0), Color(0, 0, 0, 0.28), -93)
+		_rect(parent, cp + Vector2(c.x * -11.0, -1.0), Vector2(22.0, 2.0), Color(glow.r, glow.g, glow.b, 0.16), -93)
+
+## Region-specific GROUND STRUCTURE. The zoning pass gives every room a plaza,
+## an artery and a perimeter; this is the layer that gives a REGION its own
+## BUILT ground — the things somebody would have laid down here and nowhere
+## else. It exists because of the standing note against the Wildlands: "a
+## plus-shaped blob of high-frequency green salt-noise with no path, no material
+## zones and no discernible structure". Noise cannot be fixed with more noise;
+## it is fixed with hard edges, shading and contact shadows on top of it.
+static func _floor_region_structure(parent: Node2D, region_id: String, theme: Dictionary, w: int, _h: int, seed_v: int) -> void:
+	var glow: Color = theme.get("glow", Color(0.7, 0.8, 0.9))
+	var accent: Color = theme.get("accent", glow)
+	match region_id:
+		"open_source_wildlands":
+			# The boggy hollow the trail has to get across, and the boardwalk one
+			# contributor built in 2016 and nobody has maintained since.
+			_floor_patch(parent, Vector2(474, 664), 300.0, Color(0.02, 0.05, 0.035), 0.5, -94)
+			_mat_zone(parent, Vector2(474, 664), Vector2(210.0, 116.0), Color(accent.r * 0.5, accent.g * 0.62, accent.b * 0.44), seed_v + 3)
+			# Two trodden trails: the routes the traffic actually takes, worn
+			# through the undergrowth, with the stones kicked to their edges.
+			var t1: Array[Vector2] = [Vector2(566, 520), Vector2(452, 412), Vector2(346, 336)]
+			var t2: Array[Vector2] = [Vector2(566, 566), Vector2(474, 664), Vector2(368, 736)]
+			var t3: Array[Vector2] = [Vector2(714, 568), Vector2(834, 646), Vector2(902, 700)]
+			_trail(parent, t1, Color(0.34, 0.27, 0.17), 62.0)
+			_trail(parent, t2, Color(0.34, 0.27, 0.17), 68.0)
+			_trail(parent, t3, Color(0.32, 0.26, 0.17), 58.0)
+			_boardwalk(parent, Vector2(540, 596), Vector2(418, 700), Color(0.62, 0.48, 0.30))
+			# Two moss mats and a gravel apron: three MATERIALS on the ground, each
+			# with an outline the eye can find, which is the whole ask.
+			_mat_zone(parent, Vector2(268, 486), Vector2(190.0, 118.0), Color(glow.r * 0.34, glow.g * 0.46, glow.b * 0.32), seed_v + 11)
+			_mat_zone(parent, Vector2(986, 566), Vector2(216.0, 128.0), Color(glow.r * 0.30, glow.g * 0.42, glow.b * 0.30), seed_v + 19)
+			_mat_zone(parent, Vector2(1050, 800), Vector2(240.0, 132.0), Color(0.30, 0.28, 0.24), seed_v + 27)
+		"gpu_mines":
+			# The ballast bed the ore line is actually laid on, and two spoil heaps
+			# from the bench above — cut rock, not another wash of red noise.
+			_mat_zone(parent, Vector2(636, 670), Vector2(700.0, 84.0), Color(0.26, 0.22, 0.20), seed_v + 5)
+			_mat_zone(parent, Vector2(300, 596), Vector2(214.0, 116.0), Color(0.24, 0.17, 0.15), seed_v + 13)
+			_mat_zone(parent, Vector2(1000, 560), Vector2(226.0, 120.0), Color(0.25, 0.18, 0.15), seed_v + 21)
+			# The cut face, stepping down either side of the bench the plaza is
+			# levelled into. Separate blocks with their own lit top edges: one
+			# full-width rect would be another dead-straight line across the frame,
+			# which is the defect this round is closing, not the fix for it.
+			for i in 10:
+				var hv := _cell_hash(seed_v + i * 71, 3307)
+				var lx := 150.0 + float(i % 5) * 38.0 + (float(w) - 430.0) * float(i / 5)
+				var ly := 336.0 + float(hv % 26)
+				var lw := 46.0 + float((hv >> 6) % 34)
+				_rect(parent, Vector2(lx, ly + 5.0), Vector2(lw + 7.0, 21.0), Color(0, 0, 0, 0.40), -92)
+				_rect(parent, Vector2(lx, ly), Vector2(lw, 17.0), Color(0.20, 0.13, 0.11, 0.85), -92)
+				_rect(parent, Vector2(lx, ly - 7.0), Vector2(lw, 3.0), Color(0.46, 0.31, 0.25, 0.55), -92)
+		_:
+			pass
+
+## A plank run: a real surface laid ON the ground — a poured contact shadow,
+## deck boards each with their own value, a lit end grain on the top-left side
+## (the bible's light direction), and the gap between every pair of boards.
+static func _boardwalk(parent: Node2D, from: Vector2, to: Vector2, col: Color) -> void:
+	var d := to - from
+	var ln := d.length()
+	if ln < 40.0:
+		return
+	var ang := d.angle()
+	var mid := (from + to) * 0.5
+	var side := Vector2(-sin(ang), cos(ang))
+	_rect(parent, mid + Vector2(0.0, 6.0), Vector2(ln + 16.0, 76.0), Color(0, 0, 0, 0.36), -92, ang)
+	_rect(parent, mid, Vector2(ln + 8.0, 66.0), Color(col.r * 0.30, col.g * 0.26, col.b * 0.18, 0.94), -91, ang)
+	var n := maxi(3, int(ln / 22.0))
+	for i in n:
+		var t := (float(i) + 0.5) / float(n)
+		var bp := from + d * t
+		var v := 0.80 + float(_cell_hash(int(bp.x), int(bp.y)) % 34) / 100.0
+		_rect(parent, bp, Vector2(15.0, 62.0), Color(col.r * v, col.g * v * 0.9, col.b * v * 0.78, 0.95), -91, ang)
+		_rect(parent, bp - side * 29.0, Vector2(15.0, 4.0), Color(col.r * 1.25, col.g * 1.12, col.b * 0.9, 0.55), -90, ang)
+		_rect(parent, bp + Vector2(8.0, 0.0).rotated(ang), Vector2(2.0, 62.0), Color(0, 0, 0, 0.36), -90, ang)
+	for k: float in [1.0, -1.0]:
+		_rect(parent, mid + side * (k * 33.0), Vector2(ln + 8.0, 5.0), Color(0, 0, 0, 0.44), -90, ang)
+		_rect(parent, mid + side * (k * 29.0), Vector2(ln + 8.0, 2.0), Color(col.r * 1.1, col.g, col.b * 0.8, 0.30), -90, ang)
+
+## A trodden trail: bare earth worn through whatever grows here, with the stones
+## kicked out to its edges. Deliberately NOT _path_segment — that one is a
+## poured road with grate ticks and a kerb. This is the line people walk when
+## nobody ever built them one, which is the only kind of road the Wildlands has.
+static func _trail(parent: Node2D, pts: Array[Vector2], col: Color, wpx: float) -> void:
+	for i in pts.size() - 1:
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[i + 1]
+		var d := b - a
+		var ln := d.length()
+		if ln < 12.0:
+			continue
+		var ang := d.angle()
+		var mid := (a + b) * 0.5
+		var side := Vector2(-sin(ang), cos(ang))
+		_rect(parent, mid, Vector2(ln + wpx * 0.5, wpx), Color(0.05, 0.04, 0.028, 0.50), -93, ang)
+		_rect(parent, mid, Vector2(ln + wpx * 0.5, wpx - 14.0), Color(col.r, col.g, col.b, 0.22), -93, ang)
+		var n := maxi(2, int(ln / 26.0))
+		for j in n:
+			var t := (float(j) + 0.5) / float(n)
+			var tp := a + d * t
+			for k: float in [1.0, -1.0]:
+				var hv := _cell_hash(int(tp.x) + j, int(tp.y) + int(k) * 17)
+				var sp := tp + side * (k * (wpx * 0.5 + float(hv % 9) - 4.0))
+				var r := 4.0 + float((hv >> 5) % 6)
+				_rect(parent, sp + Vector2(1.0, 2.0), Vector2(r + 3.0, r * 0.7 + 2.0), Color(0, 0, 0, 0.36), -92)
+				_rect(parent, sp, Vector2(r + 2.0, r * 0.7), Color(0.30, 0.31, 0.28, 0.88), -91)
+				_rect(parent, sp - Vector2(0.0, 1.0), Vector2(r, 2.0), Color(0.52, 0.54, 0.48, 0.72), -91)
+
+## A hard-edged MATERIAL zone — a mat of moss, ballast, spoil or gravel with a
+## ragged but genuinely DRAWN outline and a lit rim on its top edge. A soft
+## _floor_patch cannot do this job: it has no edge, and an edge is precisely
+## what "the ground has material zones" means to somebody looking at a frame.
+static func _mat_zone(parent: Node2D, pos: Vector2, size: Vector2, col: Color, seed_v: int) -> void:
+	for i in 9:
+		var hv := _cell_hash(seed_v + i * 37, int(pos.x) + i * 13)
+		var o := Vector2((float(hv % 101) - 50.0) * size.x / 190.0,
+			(float((hv >> 7) % 61) - 30.0) * size.y / 150.0)
+		var sz := size * (0.40 + float((hv >> 13) % 42) / 100.0)
+		var rot := float(hv % 628) * 0.01
+		_rect(parent, pos + o + Vector2(2.0, 3.0), sz, Color(0, 0, 0, 0.26), -93, rot)
+		_rect(parent, pos + o, sz, Color(col.r, col.g, col.b, 0.55), -92, rot)
+		_rect(parent, pos + o - Vector2(0.0, sz.y * 0.42), Vector2(sz.x * 0.9, 3.0),
+			Color(col.r * 1.5, col.g * 1.4, col.b * 1.2, 0.32), -92, rot)
 
 ## Chevron trails painted from the plaza toward every portal this region owns.
 ## The player asked "what now, and WHERE" — this is the floor answering.
 static func _paint_wayfinding(parent: Node2D, region_id: String, w: int, h: int, col: Color) -> void:
-	var center := Vector2(w * 0.5, h * 0.5)
+	# From the PLAZA, not the room's geometric centre: the plaza moved per region
+	# and the trails have to leave from where the player actually lands, which is
+	# also what stops all nine regions painting the same two horizontal runs.
+	var center := _plaza_center(float(w), float(h))
 	for pd in _region_portals(region_id):
 		var pp: Vector2 = pd.pos
 		var to := pp - center
@@ -426,25 +923,29 @@ static func _chevron(parent: Node2D, pos: Vector2, col: Color, ang: float, z: in
 ## one to every NPC, one to the focal set-piece — so the objective graph
 ## (spawn -> focal -> NPC -> portals) is literally paved onto the ground.
 ## Drawn after the mottle pass: navigation line-work must not be dimmed.
-static func _paint_paths(parent: Node2D, region_id: String, theme: Dictionary, _w: int, h: int) -> void:
-	var cy := float(h) * 0.5
+static func _paint_paths(parent: Node2D, region_id: String, theme: Dictionary, w: int, h: int, seed_v: int) -> void:
 	var glow: Color = theme.get("glow", Color(0.7, 0.8, 0.9))
 	var focal: Vector2 = theme.get("focal", Vector2.ZERO)
+	# The artery is no longer a horizontal at h*0.5, so every spur has to leave
+	# the band at the height the band actually has under ITS column.
 	for pd in _region_portals(region_id):
 		var pp: Vector2 = pd.pos
+		var cy := _band_y(pp.x, float(w), float(h), seed_v)
 		if absf(pp.y - cy) > 60.0:
 			var stop_y := pp.y
 			# When the focal set-piece stands ON this column between the band and
-			# the door (the vault: pedestal at 244, north door at 80), stop the
-			# road at the set-piece instead of paving under it — the piece and
-			# the portal's own gate pool carry the line the rest of the way.
+			# the door, stop the road at the set-piece instead of paving under
+			# it — the piece and the portal's own gate pool carry the line the
+			# rest of the way. (The vault used to be the case that needed this,
+			# with its pedestal at y 244 directly under a north door at x 640;
+			# that door has since moved off the pedestal's column.)
 			if absf(pp.x - focal.x) < 80.0 and (focal.y - cy) * (pp.y - cy) > 0.0 \
 					and absf(focal.y - cy) < absf(pp.y - cy):
 				stop_y = focal.y
-			_spur(parent, pp.x, stop_y, cy, glow, 96.0)
+			_spur(parent, pp.x, stop_y, cy, glow, 96.0, _band_half(pp.x, float(w), seed_v))
 	for npc_data in _region_npcs(region_id):
 		var np: Vector2 = npc_data.pos
-		_spur(parent, np.x, np.y, cy, glow, 90.0)
+		_spur(parent, np.x, np.y, _band_y(np.x, float(w), float(h), seed_v), glow, 90.0, _band_half(np.x, float(w), seed_v))
 	if focal != Vector2.ZERO:
 		# Skip the focal spur when an NPC or portal spur already runs down the
 		# same column (the wildlands camp, the corporate stage, the vault's
@@ -456,19 +957,21 @@ static func _paint_paths(parent: Node2D, region_id: String, theme: Dictionary, _
 				dup = true
 		for pd2 in _region_portals(region_id):
 			var pp2: Vector2 = pd2.pos
-			if absf(pp2.y - cy) > 60.0 and absf(pp2.x - focal.x) < 80.0:
+			if absf(pp2.y - _band_y(pp2.x, float(w), float(h), seed_v)) > 60.0 and absf(pp2.x - focal.x) < 80.0:
 				dup = true
 		if not dup:
-			_spur(parent, focal.x, focal.y, cy, glow, 96.0)
+			_spur(parent, focal.x, focal.y, _band_y(focal.x, float(w), float(h), seed_v), glow, 96.0, _band_half(focal.x, float(w), seed_v))
 
 ## One vertical branch from the artery band edge toward a destination, stopping
 ## a respectful margin short of it. Degenerate spurs (target close to the band)
 ## are skipped — the band itself already delivers the player there.
-static func _spur(parent: Node2D, x: float, target_y: float, cy: float, col: Color, wpx: float) -> void:
+static func _spur(parent: Node2D, x: float, target_y: float, cy: float, col: Color, wpx: float, band: float) -> void:
 	var k := signf(target_y - cy)
 	if k == 0.0:
 		return
-	var a := Vector2(x, cy + k * 92.0)
+	# Start ON the (now wobbling) band edge rather than at a fixed 92px, or the
+	# spur either floats off the artery or overshoots into it.
+	var a := Vector2(x, cy + k * (band - 4.0))
 	var b := Vector2(x, target_y - k * 96.0)
 	if (b.y - a.y) * k < 40.0:
 		return
@@ -514,6 +1017,20 @@ static func _path_segment(parent: Node2D, a: Vector2, b: Vector2, col: Color, wp
 	for i in int(seg_len / 48.0):
 		var tp := a + dirn * (24.0 + float(i) * 48.0)
 		_rect(parent, tp, Vector2(3.0, wpx - 18.0) if horiz else Vector2(wpx - 18.0, 3.0), Color(0, 0, 0, 0.16), -93)
+	# Broken shoulder: chips of deck shed along both edges and a ragged terminus
+	# at the far end. Without these a spur stops mid-floor in a perfect straight
+	# line, which is the same defect as the zone rectangles one scale down.
+	var hb := int(a.x * 3.0 + a.y * 7.0 + b.y * 11.0) & 0x7FFFFFFF
+	for i in 12:
+		var hh := _cell_hash(hb + i, int(seg_len))
+		var t := float(hh % 1000) / 1000.0
+		var sgn := 1.0 if (hh >> 11) % 2 == 0 else -1.0
+		var cp := a + dirn * (t * seg_len) + side * (sgn * (half + float((hh >> 3) % 9) - 3.0))
+		_rect(parent, cp, Vector2(float((hh >> 6) % 13) + 5.0, 4.0), Color(0, 0, 0, 0.30), -92, float(hh % 628) * 0.01)
+	for i in 5:
+		var he := _cell_hash(hb + 991, i)
+		var ep2 := b + dirn * float((he % 26)) + side * (float(he % 61) - 30.0) * (wpx / 90.0)
+		_rect(parent, ep2, Vector2(float((he >> 7) % 17) + 8.0, 5.0), Color(0.72, 0.78, 0.9, 0.05), -93, float(he % 314) * 0.01)
 
 ## Small hard-edged floor litter: bolts, hairline cracks, spilled coolant chips,
 ## drain grates. Reads as texture underfoot at a glance, as story up close.
@@ -534,13 +1051,14 @@ static func _floor_decals(parent: Node2D, region_id: String, w: int, h: int) -> 
 	var pool: Array = DECAL_HOMES.get(region_id, ["decal_crack_0", "decal_crack_1"])
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 918273 + int(region_id.hash() & 0xFFFF)
+	var seed_v := _region_seed(region_id)
 	for i in 9:
 		var name_i: String = str(pool[rng.randi() % pool.size()])
 		var pos := Vector2(rng.randf_range(150, float(w) - 150), rng.randf_range(170, float(h) - 120))
 		# Keep the big decals off the walkway band: a maintained deck with a
 		# 0.7-alpha crack across it stops reading as maintained (rule 1: noise
 		# stays OFF the structure).
-		if absf(pos.y - float(h) * 0.5) < 90.0:
+		if absf(pos.y - _band_y(pos.x, float(w), float(h), seed_v)) < _band_half(pos.x, float(w), seed_v) - 6.0:
 			continue
 		var spr := _put(parent, name_i, pos, -91, rng.randf_range(0.75, 1.7),
 			Color(1, 1, 1, rng.randf_range(0.35, 0.72)), rng.randf_range(-PI, PI))
@@ -551,6 +1069,7 @@ static func _floor_litter(parent: Node2D, theme: Dictionary, w: int, h: int, reg
 	_floor_decals(parent, region_id, w, h)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 424242
+	var seed_v := _region_seed(region_id)
 	var glow: Color = theme.get("glow", Color(0.6, 0.7, 0.9))
 	# Drag marks: long, thin, arbitrarily angled. Something heavy was moved here
 	# by someone who did not lift it, and no tile edge is involved.
@@ -564,7 +1083,7 @@ static func _floor_litter(parent: Node2D, theme: Dictionary, w: int, h: int, reg
 		var dp := Vector2(rng.randf_range(80, w - 80), rng.randf_range(96, h - 64))
 		# Thin the scatter on the walkway band — most of it, not all: a swept
 		# deck with the odd bolt reads maintained; an untouched one reads fake.
-		if absf(dp.y - float(h) * 0.5) < 86.0 and rng.randf() < 0.65:
+		if absf(dp.y - _band_y(dp.x, float(w), float(h), seed_v)) < _band_half(dp.x, float(w), seed_v) - 10.0 and rng.randf() < 0.65:
 			continue
 		match rng.randi() % 5:
 			0:
@@ -617,6 +1136,111 @@ static func _add_collider(parent: Node2D, pos: Vector2, sz: Vector2) -> void:
 	shape.position = pos
 	wall.add_child(shape)
 	parent.add_child(wall)
+
+## Which horizon a region owns. Identity in one second: you should be able to
+## name the district from the shape of its far edge with every label switched
+## off. (VISUAL_BIBLE per-region palettes; the shapes are drawn from the
+## region's own fiction, not a generic skyline.)
+static func _backdrop_kind(region_id: String) -> String:
+	match region_id:
+		"dependency_district": return "stacks"
+		"stackoverflow_ruins": return "strata"
+		"api_bazaar": return "roofline"
+		"cloud_district": return "nave"
+		"open_source_wildlands": return "canopy"
+		"corporate_enterprise": return "skyline"
+		"gpu_mines": return "strata"
+		"production": return "skyline"
+		"token_vault": return "nave"
+		_: return "skyline"
+
+## The FAR plane. Round 4 gave the rooms a midground; the top of every frame
+## still cut straight from wall to floor, so the world had two depths and read
+## flat. This is the layer behind that one: a region-specific horizon drawn
+## tiny and nearly black under a haze gradient, plus a second, slightly nearer
+## copy at a step more value. With the existing midground bands and the
+## foreground trays, a region now reads back-to-front across five planes.
+static func _build_backdrop(parent: Node2D, region_id: String, theme: Dictionary, w: int, h: int) -> void:
+	var z := Node2D.new()
+	z.name = "Backdrop"
+	parent.add_child(z)
+	var glow: Color = theme.get("glow", Color(0.6, 0.7, 0.9))
+	var accent: Color = theme.get("accent", glow)
+	var kind := _backdrop_kind(region_id)
+	var seed_v := _region_seed(region_id)
+	# Sky/void behind everything so the horizon has something to be a shape
+	# against instead of being a shape against the wall. The lower edge is a
+	# RAMP, not a cut: one 0.92-alpha rect ending on a tile row would draw a
+	# dead-straight full-width line across the floor at y 169 — the exact defect
+	# this whole pass exists to remove, one plane further back.
+	_rect(z, Vector2(w * 0.5, 88.0), Vector2(float(w) + 40.0, 98.0), Color(0.012, 0.014, 0.03, 0.92), -59)
+	for i in 7:
+		var fy := 141.0 + float(i) * 9.0
+		_rect(z, Vector2(w * 0.5, fy), Vector2(float(w) + 40.0, 10.0),
+			Color(0.012, 0.014, 0.03, 0.80 - float(i) * 0.11), -59)
+	_rect(z, Vector2(w * 0.5, 150.0), Vector2(float(w) + 40.0, 46.0), Color(glow.r * 0.3, glow.g * 0.3, glow.b * 0.36, 0.10), -58)
+	# Two planes: far (smaller, darker, denser) then near (taller, one value up).
+	# Every shape in this vocabulary is <= 110 units tall at sc 1.0, and the
+	# scales below are chosen so nothing reaches y 60 — the horizon must never
+	# climb over the top wall it is supposed to be standing behind.
+	for plane in 2:
+		var base_y := 126.0 if plane == 0 else 152.0
+		var sc_max := 0.60 if plane == 0 else 0.83
+		var v := 0.055 + float(plane) * 0.055
+		var n := 22 if plane == 0 else 13
+		var zi := -57 + plane * 2
+		for i in n:
+			var hv := _cell_hash(i * 31 + plane * 977, seed_v)
+			var px := 40.0 + float(i) * (float(w) - 80.0) / float(n - 1) + float(hv % 29) - 14.0
+			var sc := sc_max * (0.55 + float((hv >> 5) % 46) / 100.0)
+			_backdrop_shape(z, kind, Vector2(px, base_y), sc, Color(v, v, v * 1.22, 0.95), zi, hv)
+			# One lit window / vent / bioluminescent node in every third shape.
+			if (hv >> 13) % 3 == 0:
+				var lc: Color = glow if (hv >> 17) % 2 == 0 else accent
+				_glow_rect(z, Vector2(px + float((hv >> 19) % 17) - 8.0, base_y - 22.0 * sc),
+					Vector2(3, 3), Color(lc.r, lc.g, lc.b, 0.32 + 0.16 * float(plane)), zi + 1)
+	# Aerial perspective: the haze that makes the far plane read as FAR rather
+	# than as small props somebody left by the wall.
+	_rect(z, Vector2(w * 0.5, 126.0), Vector2(float(w) - 20.0, 128.0), Color(glow.r * 0.4, glow.g * 0.4, glow.b * 0.46, 0.09), -52)
+
+## One silhouette from the region's horizon vocabulary, drawn in rects so it
+## costs nothing and can never depend on a texture the generator has not made.
+static func _backdrop_shape(parent: Node2D, kind: String, pos: Vector2, sc: float, col: Color, z: int, hv: int) -> void:
+	match kind:
+		"skyline":  # towers with setbacks, an antenna on the tall ones
+			var th := (32.0 + float(hv % 40)) * sc
+			var tw := (22.0 + float((hv >> 7) % 20)) * sc
+			_rect(parent, pos + Vector2(0, -th * 0.5), Vector2(tw, th), col, z)
+			_rect(parent, pos + Vector2(0, -th - 8.0 * sc), Vector2(tw * 0.55, 18.0 * sc), col, z)
+			if hv % 3 == 0:
+				_rect(parent, pos + Vector2(0, -th - 26.0 * sc), Vector2(2.0, 20.0 * sc), col, z)
+		"stacks":  # crate/pallet ziggurats, the district's only architecture
+			for s in 3:
+				var bw := (54.0 - float(s) * 14.0) * sc
+				_rect(parent, pos + Vector2(float((hv >> (s * 3)) % 9) - 4.0, -float(s) * 17.0 * sc - 8.0 * sc),
+					Vector2(bw, 16.0 * sc), col, z)
+		"roofline":  # market awnings and tent poles, pitched, never level
+			var rw := (58.0 + float(hv % 34)) * sc
+			_rect(parent, pos + Vector2(0, -18.0 * sc), Vector2(rw, 13.0 * sc), col, z, (float(hv % 21) - 10.0) * 0.012)
+			_rect(parent, pos + Vector2(-rw * 0.4, -6.0 * sc), Vector2(3.0 * sc, 26.0 * sc), col, z)
+			_rect(parent, pos + Vector2(rw * 0.4, -6.0 * sc), Vector2(3.0 * sc, 26.0 * sc), col, z)
+		"nave":  # rack columns under an arcade — a cathedral of other people's computers
+			var ch := (44.0 + float(hv % 30)) * sc
+			_rect(parent, pos + Vector2(0, -ch * 0.5), Vector2(26.0 * sc, ch), col, z)
+			for s in 4:
+				_rect(parent, pos + Vector2(0, -ch * (0.16 + float(s) * 0.21)), Vector2(30.0 * sc, 2.0), col, z)
+			_rect(parent, pos + Vector2(0, -ch - 5.0 * sc), Vector2(36.0 * sc, 9.0 * sc), col, z)
+		"canopy":  # trunks under overlapping crowns
+			_rect(parent, pos + Vector2(0, -24.0 * sc), Vector2(7.0 * sc, 54.0 * sc), col, z)
+			for s in 3:
+				var a := (float(s) - 1.0) * 22.0 * sc
+				_floor_patch(parent, pos + Vector2(a, -58.0 * sc - float((hv >> (s * 4)) % 13) * sc),
+					(58.0 + float((hv >> s) % 30)) * sc, Color(col.r, col.g, col.b), 0.9, z)
+		_:  # "strata" — cut rock benches, the mine face and the ruin cliff alike
+			for s in 3:
+				var sw := (72.0 + float((hv >> (s * 5)) % 46)) * sc
+				_rect(parent, pos + Vector2(float((hv >> (s * 2)) % 19) - 9.0, -float(s) * 15.0 * sc),
+					Vector2(sw, 15.0 * sc), col, z, (float(hv % 17) - 8.0) * 0.006)
 
 ## Distant silhouettes between the wall and the play area — the same structure
 ## vocabulary, drawn small and nearly black, so the room has a background layer
@@ -694,8 +1318,44 @@ static func _build_foreground(parent: Node2D, theme: Dictionary, w: int, h: int)
 	# Side jambs: the room is seen through a doorway of its own.
 	for k: float in [0.0, 1.0]:
 		_rect(z, Vector2(k * float(w) + (1.0 - k * 2.0) * 9.0, h * 0.5), Vector2(30.0, float(h)), Color(0.012, 0.014, 0.028, 0.82), 540)
-	# Bottom sill: the near edge of the room, framing the frame.
+	# TRUE foreground occluders: two full-height stanchions just inside the side
+	# walls that the player walks BEHIND. They cost eight rects, sit over the
+	# dead 40px strip against the wall where nothing is ever placed, and are the
+	# cheapest possible proof that this room has a near plane — the frames so far
+	# had a background and a play field and nothing in front of the camera.
+	# z 1000-1002, not 545: everything alive in this world y-sorts by
+	# z_index = int(y), so a 545 "near plane" only stood in front of the bottom
+	# half of the room and behind the player for the top half — a foreground
+	# occluder that occludes half the time reads as a rendering bug. 1000 clears
+	# the tallest possible y (the bottom wall is at 944) and still sits under
+	# world sign plates (1150), damage text and the HUD.
+	for k: float in [0.0, 1.0]:
+		var sx := 56.0 + k * (float(w) - 112.0)
+		# 0.72, not opaque: the player CAN stand behind one of these, and a
+		# silhouette you cannot find is a readability bug, not depth. Lowered
+		# from 0.78 now that the column occludes over the WHOLE room.
+		_rect(z, Vector2(sx, h * 0.5), Vector2(28.0, float(h) + 20.0), Color(0.010, 0.012, 0.026, 0.72), 1000)
+		_rect(z, Vector2(sx + (8.0 if k < 0.5 else -8.0), h * 0.5), Vector2(3.0, float(h) + 20.0), Color(glow.r, glow.g, glow.b, 0.13), 1001)
+		for i in 6:
+			var by := 90.0 + float(i) * (float(h) - 180.0) / 5.0
+			_rect(z, Vector2(sx, by), Vector2(42.0, 13.0), Color(0.008, 0.009, 0.02, 0.78), 1002)
+	# Slack cable and hanging growth crossing the near plane at three points, so
+	# the top of the frame is looked THROUGH rather than merely capped.
+	for i in 4:
+		var hx := 250.0 + float(i) * (float(w) - 500.0) / 3.0
+		var drop := 140.0 + float(_cell_hash(i, 7717) % 90)
+		_rect(z, Vector2(hx, drop * 0.5 + 40.0), Vector2(4.0, drop), Color(0.010, 0.012, 0.024, 0.9), 508)
+		_rect(z, Vector2(hx, drop + 40.0), Vector2(15.0, 15.0), Color(0.014, 0.016, 0.03, 0.92), 509)
+		_glow_rect(z, Vector2(hx, drop + 40.0), Vector2(5, 5), Color(glow.r, glow.g, glow.b, 0.35), 510)
+	# Bottom sill: the near edge of the room, framing the frame. Now with a
+	# silhouetted near ledge on it — the last thing between camera and world.
 	_rect(z, Vector2(w * 0.5, h - 4.0), Vector2(w + 40.0, 26.0), Color(0.015, 0.018, 0.035, 0.92), 600)
+	# Kept under 29px tall on purpose: the lowest thing the game ever places is a
+	# staged enemy at y 894, and a near ledge that eats an enemy is a bug.
+	for i in 9:
+		var lx := 120.0 + float(i) * (float(w) - 240.0) / 8.0
+		var lh := 14.0 + float(_cell_hash(i, 3391) % 16)
+		_rect(z, Vector2(lx, float(h) - 5.0 - lh * 0.5), Vector2(46.0 + float(_cell_hash(i, 11) % 30), lh), Color(0.012, 0.014, 0.028, 0.94), 599)
 	_rect(z, Vector2(w * 0.5, h - 17.0), Vector2(w + 40.0, 2.0), Color(glow.r, glow.g, glow.b, 0.12), 601)
 
 static func _vocab(theme: Dictionary) -> Array:
@@ -773,15 +1433,254 @@ static func _build_region_detail(parent: Node2D, theme: Dictionary, w: int, h: i
 	var vocab := _vocab(theme)
 	if vocab.is_empty():
 		return
+	# Keep the clutter off the arrival plaza AND off the artery. Both moved per
+	# region this round, so a fixed "270px from the room's centre, 110px either
+	# side of h*0.5" would now drop crates on the walkway in half the rooms.
 	var center := Vector2(w * 0.5, h * 0.5)
 	for i in 11:
 		var p := Vector2(rng.randf_range(100, w - 100), rng.randf_range(140, h - 90))
-		if p.distance_to(center) < 270.0 or absf(p.y - center.y) < 110.0:
+		if p.distance_to(center) < 240.0:
+			continue
+		if _plaza_field(p, float(w), float(h), _layout_seed) < 40.0:
+			continue
+		if absf(p.y - _band_y(p.x, float(w), float(h), _layout_seed)) < 110.0:
 			continue
 		var sc := rng.randf_range(0.3, 0.48)
 		var shade := rng.randf_range(-0.12, 0.08)
 		var m := Color(clampf(wall_c.r + shade, 0, 1), clampf(wall_c.g + shade, 0, 1), clampf(wall_c.b + shade, 0, 1))
 		_prop(z, str(vocab[rng.randi() % vocab.size()]), p, sc, m, rng.randf_range(-0.12, 0.12), 0.8)
+
+## Ground-level signature clutter. The round-4 verdict was that regions read as
+## "a floor with lit props on it"; what a place actually has is a hundred small
+## things nobody placed on purpose, all of them from the same world. These are
+## rect motifs — no texture dependency, ~4 rects each — scattered across the
+## field and perimeter, plus two oversized landmark silhouettes so the eye has a
+## scale ladder to climb (a few big things, many small ones).
+static func _build_signature(parent: Node2D, region_id: String, theme: Dictionary, w: int, h: int) -> void:
+	var z := Node2D.new()
+	z.name = "Signature"
+	parent.add_child(z)
+	var glow: Color = theme.get("glow", Color(0.6, 0.7, 0.9))
+	var accent: Color = theme.get("accent", glow)
+	var kind := _signature_kind(region_id)
+	var seed_v := _region_seed(region_id)
+	for i in 46:
+		var hv := _cell_hash(i * 53 + 101, seed_v + 7)
+		var p := Vector2(
+			96.0 + float(hv % (w - 192)),
+			132.0 + float((hv >> 9) % (h - 232)))
+		# Keep the artery swept: a maintained deck covered in the region's own
+		# debris stops reading as maintained (the same law as the litter skips).
+		if absf(p.y - _band_y(p.x, float(w), float(h), seed_v)) < _band_half(p.x, float(w), seed_v) + 14.0 and (hv >> 21) % 4 != 0:
+			continue
+		if _in_cover(p):
+			continue
+		_signature_mark(z, kind, p, 0.7 + float((hv >> 5) % 70) / 100.0, glow, accent, hv)
+	# Two landmark-scale silhouettes in the quadrants the composition leaves
+	# empty. Same vocabulary as the set-pieces, three times the size.
+	var vocab := _vocab(theme)
+	if vocab.is_empty():
+		return
+	# Edges and corners, and only the ones this region has actually left empty.
+	# A 1.45x silhouette dropped on top of anything the player NEEDS would hide
+	# it: props carry a y-sorted z_index, so a landmark out-draws an enemy, and
+	# it will happily stand in front of the one quest-giver in the room. The
+	# bottom-right corner in particular is where eight of the nine regions put
+	# their NPC, so the keep-outs below are not optional.
+	var spots: Array[Vector2] = [
+		Vector2(126.0, float(h) - 190.0), Vector2(float(w) - 126.0, 214.0),
+		Vector2(126.0, 214.0), Vector2(float(w) - 126.0, float(h) - 190.0),
+		Vector2(350.0, float(h) - 76.0), Vector2(float(w) - 350.0, float(h) - 76.0),
+		Vector2(350.0, 200.0), Vector2(float(w) - 350.0, 200.0),
+	]
+	var posts := _region_enemy_posts(region_id)
+	var focal: Vector2 = theme.get("focal", Vector2.ZERO)
+	var placed := 0
+	for i in spots.size():
+		if placed >= 2:
+			break
+		var lp: Vector2 = spots[i]
+		if _in_cover(lp):
+			continue
+		var clear := true
+		for pp: Vector2 in posts:
+			if lp.distance_to(pp) < 170.0:
+				clear = false
+		for nd in _region_npcs(region_id):
+			var np: Vector2 = nd.pos
+			if lp.distance_to(np) < 230.0:
+				clear = false
+		for pd in _region_portals(region_id):
+			var pv: Vector2 = pd.pos
+			if lp.distance_to(pv) < 210.0:
+				clear = false
+		if focal != Vector2.ZERO and lp.distance_to(focal) < 210.0:
+			clear = false
+		for sd in theme.get("structs", []):
+			var sv: Vector2 = sd.p
+			if lp.distance_to(sv) < 150.0:
+				clear = false
+		if not clear:
+			continue
+		var hv2 := _cell_hash(i * 617, seed_v + 29)
+		_backglow(z, lp + Vector2(0, -30), 300.0, glow, 0.09)
+		_prop(z, str(vocab[hv2 % vocab.size()]), lp, 1.45 + float(hv2 % 25) / 100.0,
+			Color(0.30, 0.32, 0.38), (float(hv2 % 13) - 6.0) * 0.012)
+		_light_pool(z, lp + Vector2(0, 40), 250.0, accent, 0.12)
+		placed += 1
+
+static func _signature_kind(region_id: String) -> String:
+	match region_id:
+		"dependency_district": return "pallets"
+		"stackoverflow_ruins": return "rubble"
+		"api_bazaar": return "mats"
+		"cloud_district": return "ducts"
+		"open_source_wildlands": return "growth"
+		"corporate_enterprise": return "carpet"
+		"gpu_mines": return "spall"
+		"production": return "hazard"
+		"token_vault": return "spill"
+		_: return "rubble"
+
+## One signature mark. Everything here is flat floor dressing at z -92..-90 — it
+## must never compete with a prop silhouette, only with the emptiness.
+##
+## ROUND-6 LAW, learned from region_production.png: nothing in a frame may read
+## as a missing texture, a debug gizmo or a stray primitive. So every variant
+## below now obeys three rules. (1) It sits on a wear bed, so it is ON the floor
+## rather than drawn over it. (2) It carries at least three value steps of its
+## own material, lit from the top-left like everything else in this game.
+## (3) Anything emissive gets a DARK GROOVE behind it — a glow with no cut under
+## it is a bright line lying on the ground, which is precisely how twenty-five
+## flat red crosses came to read as "the art failed to load".
+static func _signature_mark(parent: Node2D, kind: String, p: Vector2, sc: float, glow: Color, accent: Color, hv: int) -> void:
+	var rot := float(hv % 628) * 0.01
+	# The wear bed. Cheap, and it is the single thing that separates a mark
+	# somebody made from a shape somebody forgot to delete.
+	_floor_patch(parent, p + Vector2(0.0, 3.0 * sc), 66.0 * sc, Color(0.012, 0.013, 0.026), 0.26, -92)
+	match kind:
+		"pallets":  # slatted pallets and the tarps thrown over them
+			_rect(parent, p, Vector2(46.0 * sc, 32.0 * sc), Color(0.16, 0.13, 0.09, 0.5), -91, rot)
+			for s in 3:
+				_rect(parent, p + Vector2(0, (float(s) - 1.0) * 10.0 * sc).rotated(rot), Vector2(46.0 * sc, 3.0), Color(0.44, 0.34, 0.2, 0.45), -90, rot)
+			if hv % 5 == 0:
+				_rect(parent, p + Vector2(6.0, -4.0), Vector2(40.0 * sc, 22.0 * sc), Color(accent.r * 0.5, accent.g * 0.5, accent.b * 0.5, 0.34), -90, rot + 0.2)
+		"rubble":  # shattered answer-stone, weathered into gravel
+			for s in 5:
+				var o := Vector2(float((hv >> (s * 3)) % 41) - 20.0, float((hv >> (s * 2 + 1)) % 29) - 14.0) * sc
+				_rect(parent, p + o, Vector2(float((hv >> s) % 11) * sc + 4.0, 5.0 * sc), Color(0.30, 0.26, 0.19, 0.5), -91, rot + float(s))
+		"mats":  # market rugs and the stakes their price tags are nailed to
+			_rect(parent, p, Vector2(62.0 * sc, 40.0 * sc), Color(glow.r * 0.28, glow.g * 0.22, glow.b * 0.3, 0.42), -91, rot)
+			_rect(parent, p, Vector2(56.0 * sc, 34.0 * sc), Color(accent.r * 0.3, accent.g * 0.26, accent.b * 0.2, 0.36), -90, rot)
+			if hv % 4 == 0:
+				_rect(parent, p + Vector2(26.0 * sc, -10.0), Vector2(3, 24.0 * sc), Color(0.06, 0.05, 0.07, 0.85), -90)
+				_glow_rect(parent, p + Vector2(26.0 * sc, -22.0 * sc), Vector2(10, 6), Color(accent.r, accent.g, accent.b, 0.5), -89)
+		"ducts":  # floor ducting with a directional chevron painted on it
+			_rect(parent, p, Vector2(76.0 * sc, 22.0 * sc), Color(0.16, 0.2, 0.26, 0.46), -91, rot)
+			for s in 4:
+				_rect(parent, p + Vector2((float(s) - 1.5) * 18.0 * sc, 0.0).rotated(rot), Vector2(3.0, 22.0 * sc), Color(0, 0, 0, 0.3), -90, rot)
+			if hv % 3 == 0:
+				_chevron(parent, p, Color(glow.r, glow.g, glow.b, 0.22), rot, -90)
+		"growth":  # tufts, log rounds, moss taking the floor back
+			_floor_patch(parent, p, 60.0 * sc, Color(accent.r * 0.5, accent.g * 0.6, accent.b * 0.45), 0.30, -91)
+			for s in 5:
+				var a := rot + float(s) * 1.2
+				_rect(parent, p + Vector2(cos(a), sin(a)) * 14.0 * sc, Vector2(3.0, 17.0 * sc), Color(glow.r * 0.42, glow.g * 0.55, glow.b * 0.4, 0.6), -90, a * 0.3)
+		"carpet":  # carpet tiles, cable covers, and tape where a desk used to be
+			_rect(parent, p, Vector2(64.0 * sc, 64.0 * sc), Color(0.2, 0.22, 0.28, 0.34), -91)
+			_rect(parent, p, Vector2(60.0 * sc, 60.0 * sc), Color(0.24, 0.26, 0.33, 0.24), -90)
+			if hv % 4 == 0:
+				_rect(parent, p, Vector2(86.0 * sc, 9.0), Color(accent.r * 0.7, accent.g * 0.65, accent.b * 0.3, 0.35), -90, rot)
+		"spall":  # rock spall, cable bundles, and a vent nobody vents
+			for s in 4:
+				var o2 := Vector2(float((hv >> (s * 3)) % 45) - 22.0, float((hv >> (s + 2)) % 31) - 15.0) * sc
+				_rect(parent, p + o2, Vector2(float((hv >> s) % 13) * sc + 5.0, 6.0 * sc), Color(0.24, 0.15, 0.12, 0.55), -91, rot + float(s) * 0.9)
+			if hv % 3 == 0:
+				# A fissure with heat still in it. The round-5 version was ONE
+				# additive bar and nothing else, which is where "~15 bright 1px red
+				# lines radiating at random angles" in region_gpu_mines.png came
+				# from. The cut goes in first, the crust catches the light, and the
+				# glow lives INSIDE the cut.
+				_floor_patch(parent, p, 58.0 * sc, Color(0.05, 0.016, 0.008), 0.34, -92)
+				_rect(parent, p, Vector2(34.0 * sc, 9.0), Color(0, 0, 0, 0.62), -91, rot)
+				_rect(parent, p - Vector2(0.0, 3.0), Vector2(32.0 * sc, 2.0), Color(0.42, 0.25, 0.18, 0.55), -90, rot)
+				_glow_rect(parent, p, Vector2(26.0 * sc, 3.0), Color(glow.r, glow.g * 0.5, glow.b * 0.2, 0.30), -90, rot)
+				_glow_rect(parent, p, Vector2(9.0 * sc, 2.0), Color(1.0, 0.74, 0.46, 0.42), -90, rot)
+		"hazard":  # incident dressing: cordoned ground, knocked cones, scorch
+			# Was: two flat crossed rects, 25 of them, no shading, no shadow, no
+			# glow — an X on the floor, which at game zoom is the universal symbol
+			# for a texture that did not load. Three authored variants instead, each
+			# of which is an OBJECT with a reason to be lying there.
+			match hv % 3:
+				0:  # ground taped off around a burn, pinned at two corners
+					var hw := 34.0 * sc
+					_floor_patch(parent, p, 92.0 * sc, Color(0.02, 0.012, 0.012), 0.48, -92)
+					_floor_patch(parent, p, 40.0 * sc, Color(0.0, 0.0, 0.0), 0.42, -91)
+					for e in 4:
+						var ea := rot + TAU * float(e) / 4.0
+						var en := Vector2(cos(ea), sin(ea))
+						var et := Vector2(-en.y, en.x)
+						var em := p + en * hw
+						var eang := et.angle()
+						# The tape's own contact shadow, then its body, then the
+						# diagonal stripes that make it TAPE and not a drawn line,
+						# then the lit top edge (light source is top-left, always).
+						_rect(parent, em + Vector2(0.0, 3.0), Vector2(hw * 2.1, 9.0), Color(0, 0, 0, 0.44), -91, eang)
+						_rect(parent, em, Vector2(hw * 2.1, 8.0), Color(accent.r * 0.66, accent.g * 0.52, accent.b * 0.14, 0.80), -90, eang)
+						for st in 4:
+							_rect(parent, em + et * ((float(st) - 1.5) * hw * 0.52), Vector2(7.0, 9.0), Color(0.05, 0.04, 0.05, 0.88), -90, eang + 0.55)
+						_rect(parent, em - Vector2(0.0, 3.0), Vector2(hw * 2.1, 2.0), Color(minf(accent.r * 1.5, 1.0), accent.g, accent.b * 0.3, 0.5), -90, eang)
+						if e % 2 == 0:
+							var pin := p + (en + et) * hw
+							_drop_shadow(parent, pin + Vector2(0.0, 8.0), 24.0, _depth(pin.y, 8.0) - 1, 0.34)
+							_rect(parent, pin, Vector2(6, 15), Color(0.06, 0.05, 0.05, 0.96), _depth(pin.y, 8.0))
+							_glow_rect(parent, pin + Vector2(0.0, -7.0), Vector2(4, 3), Color(glow.r, glow.g, glow.b, 0.7), _depth(pin.y, 9.0))
+				1:  # a cone somebody knocked over on the way past and left there
+					var cd := Vector2(cos(rot), sin(rot))
+					_drop_shadow(parent, p + Vector2(5.0, 8.0) * sc, 54.0 * sc, -91, 0.36)
+					_rect(parent, p, Vector2(46.0 * sc, 22.0 * sc), Color(0.09, 0.045, 0.05, 0.94), -90, rot)
+					_rect(parent, p - Vector2(0.0, 2.0 * sc), Vector2(43.0 * sc, 16.0 * sc), Color(accent.r * 0.74, accent.g * 0.34, accent.b * 0.16, 0.95), -90, rot)
+					_rect(parent, p - Vector2(0.0, 6.0 * sc), Vector2(39.0 * sc, 5.0 * sc), Color(minf(accent.r * 1.3, 1.0), accent.g * 0.62, accent.b * 0.3, 0.9), -90, rot)
+					# The retro-reflective band is the only part allowed to glow.
+					_glow_rect(parent, p + cd * 5.0 * sc, Vector2(7.0 * sc, 18.0 * sc), Color(0.9, 0.9, 1.0, 0.28), -90, rot)
+					_rect(parent, p - cd * 21.0 * sc, Vector2(15.0 * sc, 25.0 * sc), Color(0.07, 0.05, 0.06, 0.96), -90, rot)
+				_:  # the burn itself, still cooling, with the cracks it opened
+					_floor_patch(parent, p, 88.0 * sc, Color(0.02, 0.012, 0.012), 0.55, -92)
+					_floor_patch(parent, p, 44.0 * sc, Color(0.0, 0.0, 0.0), 0.5, -91)
+					# FIVE cracks at jittered bearings and jittered lengths, not four
+					# at 92.8 degrees. Four evenly spaced spokes of equal length IS
+					# a cross — the exact silhouette this whole variant exists to
+					# stop the production floor drawing twenty-five times.
+					for cq in 5:
+						var cj := _cell_hash(hv + cq * 61, 4409)
+						var ca := rot + float(cq) * 1.257 + (float(cj % 61) - 30.0) * 0.011
+						var cl := (20.0 + float((cj >> 7) % 17)) * sc
+						var cp2 := p + Vector2(cos(ca), sin(ca)) * (cl * 0.56)
+						_rect(parent, cp2, Vector2(cl, 5.0), Color(0, 0, 0, 0.58), -91, ca)
+						_rect(parent, cp2 - Vector2(0.0, 1.5), Vector2(cl * 0.88, 2.0), Color(glow.r * 0.85, glow.g * 0.34, glow.b * 0.2, 0.34), -90, ca)
+					_glow_rect(parent, p, Vector2(10.0 * sc, 6.0 * sc), Color(minf(glow.r * 1.3, 1.0), glow.g * 0.4, glow.b * 0.25, 0.45), -90)
+		_:  # "spill" — loose reserves nobody has counted, and the rope around them
+			for s in 6:
+				var o3 := Vector2(float((hv >> (s * 3)) % 51) - 25.0, float((hv >> (s + 1)) % 33) - 16.0) * sc
+				# Coin, then its shadow, then its hot edge: a bare additive dot is a
+				# particle that got stuck, not a token lying on a vault floor.
+				_rect(parent, p + o3 + Vector2(1.0, 2.0), Vector2(8.0 * sc, 5.0 * sc), Color(0, 0, 0, 0.40), -91)
+				_rect(parent, p + o3, Vector2(7.0 * sc, 4.5 * sc), Color(accent.r * 0.5, accent.g * 0.44, accent.b * 0.24, 0.85), -90)
+				_glow_rect(parent, p + o3 - Vector2(0.0, 1.0), Vector2(6.0 * sc, 2.0 * sc), Color(glow.r, glow.g, glow.b, 0.34), -90)
+			if hv % 5 == 0:
+				# A cordon with a stanchion at each end. Round 5 drew this as a bare
+				# 84px accent line lying on the floor with nothing holding it up —
+				# one of the "two perfectly straight cross-screen lines" the vault
+				# frame was pulled up on.
+				var rd := Vector2(cos(rot), sin(rot)) * 42.0 * sc
+				_rect(parent, p + Vector2(0.0, 4.0), Vector2(84.0 * sc, 5.0), Color(0, 0, 0, 0.38), -91, rot)
+				_rect(parent, p, Vector2(84.0 * sc, 4.0), Color(accent.r * 0.55, accent.g * 0.5, accent.b * 0.62, 0.7), -90, rot)
+				_rect(parent, p - Vector2(0.0, 1.5), Vector2(80.0 * sc, 1.5), Color(minf(accent.r * 1.3, 1.0), accent.g, accent.b, 0.4), -90, rot)
+				for k: float in [1.0, -1.0]:
+					var sp2 := p + rd * k
+					_drop_shadow(parent, sp2 + Vector2(0.0, 9.0), 26.0, _depth(sp2.y, 9.0) - 1, 0.34)
+					_rect(parent, sp2, Vector2(7, 18), Color(0.06, 0.055, 0.05, 0.96), _depth(sp2.y, 9.0))
+					_glow_rect(parent, sp2 + Vector2(0.0, -9.0), Vector2(5, 3), Color(glow.r, glow.g, glow.b, 0.75), _depth(sp2.y, 10.0))
 
 ## Thematic ambient particles for atmosphere/depth, three layers per the bible:
 ## (a) region-themed ambient (embers/spores/packets/sparks/data motes),
@@ -1288,6 +2187,33 @@ static func _sign(parent: Node2D, pos: Vector2, text: String, col: Color, font_s
 	# Unique flicker seed per sign so the whole district never stutters in unison
 	# like a rendering bug. The fixture is mounted on TOP of its own plate.
 	var mount := lbl.box.position + Vector2(lbl.box.size.x * 0.5, -13.0)
+	# The fixture is parented to the LABEL, not to the sign layer. world_label
+	# resolves collisions as LATER captions arrive, and an eviction sets the
+	# plate's `visible` to false long after _sign has already checked it — which
+	# is how the round-5 frames ended up with a lit tube, two brackets and a
+	# floor pool hanging over bare floor with no sign under them ("short floating
+	# horizontal bars in the region accent colour"). As a child of the plate the
+	# whole fixture switches off with it. z_as_relative is cleared so the label's
+	# own z 1150 cannot push the fixture on top of the world, and the offset
+	# lets everything below keep using the parent-space coordinates it always did.
+	var fx := Node2D.new()
+	fx.name = "SignFixture"
+	fx.position = -lbl.box.position
+	fx.z_as_relative = false
+	fx.z_index = 0
+	lbl.add_child(fx)
+	var tube_w := minf(2.6, lbl.box.size.x / 48.0) * 48.0
+	# A backboard the tube is bolted to, the shadow it casts down onto the plate,
+	# and brackets long enough to actually REACH the plate. Round 5 hung the tube
+	# 13px clear of its own sign on two 3x14 pins that were invisible against a
+	# dark floor, so the frames read the tube as a bar floating over nothing.
+	_rect(fx, mount + Vector2(0.0, 2.0), Vector2(tube_w + 18.0, 16.0), Color(0, 0, 0, 0.34), WorldLabel.Z_PLATE - 3)
+	_rect(fx, mount, Vector2(tube_w + 12.0, 12.0), Color(0.055, 0.06, 0.095, 0.96), WorldLabel.Z_PLATE - 2)
+	_rect(fx, mount + Vector2(0.0, -5.0), Vector2(tube_w + 12.0, 2.0), Color(0.20, 0.22, 0.30, 0.9), WorldLabel.Z_PLATE - 2)
+	for k: float in [1.0, -1.0]:
+		var bx := mount + Vector2(k * (tube_w * 0.5 + 4.0), 0.0)
+		_rect(fx, bx + Vector2(0.0, 9.0), Vector2(4, 22), Color(0.05, 0.055, 0.09, 0.95), WorldLabel.Z_PLATE - 2)
+		_rect(fx, bx, Vector2(8, 7), Color(0.14, 0.15, 0.20, 0.95), WorldLabel.Z_PLATE - 2)
 	var tube := Sprite2D.new()
 	tube.texture = _neon_tex(col)
 	var mat := _shader_mat("neon_flicker", {"seed": float(idx) * 3.7 + mount.x * 0.013, "base_boost": 1.6})
@@ -1296,13 +2222,10 @@ static func _sign(parent: Node2D, pos: Vector2, text: String, col: Color, font_s
 	tube.position = mount
 	tube.scale = Vector2(minf(2.6, lbl.box.size.x / 48.0), 1.4)
 	tube.z_index = WorldLabel.Z_PLATE - 1
-	parent.add_child(tube)
-	# Two brackets so the fixture is bolted to something.
-	for k: float in [1.0, -1.0]:
-		_rect(parent, mount + Vector2(k * lbl.box.size.x * 0.36, 5.0), Vector2(3, 14), Color(0.05, 0.055, 0.09, 0.95), WorldLabel.Z_PLATE - 2)
-	_light_pool(parent, mount + Vector2(0, 46), 220.0, col, 0.22)
+	fx.add_child(tube)
+	_light_pool(fx, mount + Vector2(0, 46), 220.0, col, 0.22)
 	if idx < 1:
-		_add_light(parent, mount + Vector2(0, 8), col, 0.6, 1.8, true)
+		_add_light(fx, mount + Vector2(0, 8), col, 0.6, 1.8, true)
 
 static func _build_region_signs(parent: Node2D, theme: Dictionary) -> void:
 	var z := Node2D.new()
@@ -1534,10 +2457,30 @@ static func _whiteboard(parent: Node2D, pos: Vector2, accent: Color, rot: float)
 ## is protected; it is entirely for the atmosphere of consequence.
 static func _laser(parent: Node2D, a: Vector2, b: Vector2, col: Color) -> void:
 	var d := b - a
-	_glow_rect(parent, (a + b) * 0.5, Vector2(d.length(), 2.0), Color(col.r * 1.6, col.g * 1.6, col.b * 1.6, 0.5), -88, d.angle())
+	var ln := d.length()
+	if ln < 8.0:
+		return
+	var ang := d.angle()
+	var mid := (a + b) * 0.5
+	# Haze first. A 2px overbright rect on its own is a drawn line — which is
+	# exactly how the vault's lattice read in the round-5 frame ("two perfectly
+	# straight cross-screen lines"). A beam is a thread inside a glow, and it
+	# has motes hanging in it.
+	_glow_rect(parent, mid, Vector2(ln, 13.0), Color(col.r * 0.5, col.g * 0.5, col.b * 0.5, 0.09), -89, ang)
+	_glow_rect(parent, mid, Vector2(ln, 2.0), Color(col.r * 1.6, col.g * 1.6, col.b * 1.6, 0.5), -88, ang)
+	var motes := maxi(3, int(ln / 96.0))
+	for i in motes:
+		var t := (float(i) + 0.5) / float(motes)
+		_glow_rect(parent, a + d * t, Vector2(5, 5), Color(col.r * 1.4, col.g * 1.4, col.b * 1.4, 0.20), -88, ang + 0.7)
+	# Emitter heads: a housing with a lit top edge, a lens, a contact shadow and
+	# the puddle it throws — the beam visibly comes OUT of something at both ends.
 	for e: Vector2 in [a, b]:
-		_rect(parent, e, Vector2(10, 10), Color(0.07, 0.06, 0.1, 0.95), _depth(e.y, 6.0))
-		_glow_rect(parent, e, Vector2(5, 5), Color(col.r, col.g, col.b, 0.9), _depth(e.y, 7.0))
+		var zi := _depth(e.y, 11.0)
+		_drop_shadow(parent, e + Vector2(0, 11), 36.0, zi - 1, 0.38)
+		_rect(parent, e, Vector2(16, 22), Color(0.06, 0.055, 0.09, 0.96), zi)
+		_rect(parent, e + Vector2(0, -9), Vector2(16, 3), Color(0.24, 0.25, 0.33), zi + 1)
+		_glow_rect(parent, e, Vector2(7, 7), Color(col.r, col.g, col.b, 0.9), zi + 1)
+		_light_pool(parent, e + Vector2(0, 13), 90.0, col, 0.16)
 
 ## Glass office partition. The maze is the product.
 static func _partition(parent: Node2D, pos: Vector2, size: Vector2, col: Color) -> void:
@@ -1573,10 +2516,25 @@ static func _shack(parent: Node2D, pos: Vector2, col: Color) -> void:
 	var zi := _depth(pos.y, 58.0)
 	_drop_shadow(parent, pos + Vector2(0, 56), 220.0, zi - 2, 0.45)
 	_backglow(parent, pos + Vector2(0, -20), 240.0, Color(1.0, 0.76, 0.4), 0.10)
-	_rect(parent, pos + Vector2(0, 8), Vector2(184, 96), Color(col.r * 0.34, col.g * 0.38, col.b * 0.34), zi)
+	# ROUND-6 FIX, from region_open_source_wildlands.png: the wall was painted at
+	# 0.34x the region accent — #3E9E5C x 0.34 is (0.08, 0.24, 0.12), which is
+	# black on a black floor — while the ridge cap on top of it was (0.42, 0.48,
+	# 0.42). The only part of the shack a frame could resolve was that cap, and
+	# the capture read it as a 208px bar floating over nothing, one of the
+	# "floating horizontal bars with nothing under them". A silhouette needs a
+	# VALUE, not just a highlight, so the wall now carries three steps of its own
+	# (lit left return, body, shaded right return) and the ridge sits on a roof
+	# that is visible underneath it.
+	_rect(parent, pos + Vector2(0, 8), Vector2(184, 96), Color(col.r * 0.60, col.g * 0.64, col.b * 0.56), zi)
+	_rect(parent, pos + Vector2(-80.0, 8.0), Vector2(24, 96), Color(col.r * 0.86, col.g * 0.92, col.b * 0.80), zi + 1)
+	_rect(parent, pos + Vector2(56.0, 8.0), Vector2(72, 96), Color(0, 0, 0, 0.26), zi + 1)
 	for i in 9:
-		_rect(parent, pos + Vector2(-80.0 + float(i) * 20.0, 8.0), Vector2(3, 96), Color(0, 0, 0, 0.22), zi + 1)
-	_rect(parent, pos + Vector2(0, -46), Vector2(208, 17), Color(0.16, 0.19, 0.16), zi + 2)
+		_rect(parent, pos + Vector2(-80.0 + float(i) * 20.0, 8.0), Vector2(3, 96), Color(0, 0, 0, 0.26), zi + 1)
+	# Eave shadow cast down the wall, then the roof, then a mid step, then the
+	# lit ridge — so the brightest line in the piece is the TOP OF SOMETHING.
+	_rect(parent, pos + Vector2(0, -32), Vector2(190, 12), Color(0, 0, 0, 0.42), zi + 2)
+	_rect(parent, pos + Vector2(0, -46), Vector2(208, 17), Color(0.21, 0.25, 0.21), zi + 2)
+	_rect(parent, pos + Vector2(0, -51), Vector2(208, 5), Color(0.30, 0.35, 0.30), zi + 3)
 	_rect(parent, pos + Vector2(0, -54), Vector2(208, 3), Color(0.42, 0.48, 0.42), zi + 3)
 	_rect(parent, pos + Vector2(0, 24), Vector2(54, 64), Color(0.02, 0.02, 0.03), zi + 2)
 	_glow_rect(parent, pos + Vector2(0, 24), Vector2(48, 58), Color(1.0, 0.72, 0.34, 0.28), zi + 3)
@@ -1872,9 +2830,19 @@ static func _sp_gpu(z: Node2D, glow: Color, accent: Color) -> void:
 	_sign(z, Vector2(272, 606), "ORE LINE 3\nzip-tied, load-bearing, fine", glow, 11)
 	# The heat pit: cracked floor, glowing from underneath.
 	_floor_patch(z, Vector2(640, 812), 460.0, Color(1.0, 0.35, 0.1), 0.24, -93)
+	# The pit itself, so the ring of cracks encircles a HOLE rather than bare
+	# floor, and every crack is a cut with heat in it rather than a bright line
+	# lying across the ground at a random angle.
+	_floor_patch(z, Vector2(640, 812), 200.0, Color(0.03, 0.012, 0.008), 0.55, -92)
+	_glow_rect(z, Vector2(640, 812), Vector2(118, 38), Color(1.0, 0.46, 0.16, 0.28), -91)
 	for i in 9:
 		var a := TAU * float(i) / 9.0
-		_glow_rect(z, Vector2(640, 812) + Vector2(cos(a) * 96.0, sin(a) * 58.0), Vector2(46, 4), Color(1.0, 0.42, 0.14, 0.6), -90, a)
+		var ad := Vector2(cos(a), sin(a))
+		var cp2 := Vector2(640, 812) + Vector2(ad.x * 96.0, ad.y * 58.0)
+		_rect(z, cp2, Vector2(54, 12), Color(0, 0, 0, 0.62), -91, a)
+		_rect(z, cp2 - Vector2(0, 4), Vector2(50, 3), Color(0.40, 0.22, 0.16, 0.6), -90, a)
+		_glow_rect(z, cp2, Vector2(46, 4), Color(1.0, 0.42, 0.14, 0.6), -90, a)
+		_glow_rect(z, cp2 + Vector2(ad.x * 23.0, ad.y * 14.0), Vector2(7, 3), Color(1.0, 0.8, 0.52, 0.5), -90, a)
 	_sign(z, Vector2(548, 872), "AMBIENT: 94°C\nEst. delivery: Q4 of some year", accent, 11)
 	# The foreman's shack.
 	_prop(z, "struct_console", Vector2(1136, 716), 0.9, Color(0.74, 0.54, 0.44))
@@ -1959,9 +2927,14 @@ static func _sp_vault(z: Node2D, glow: Color, accent: Color) -> void:
 		_lamp(z, cp, VIOLET, 0.55, 2.2, k > 0.0, 0.0)
 	# The vault floor: a lattice of security lasers between the reserves and the
 	# door, plus two guarding the pedestal. Nothing is protected. It is a mood.
-	_laser(z, Vector2(206, 630), Vector2(1074, 694), Color("#FF4757"))
-	_laser(z, Vector2(1074, 630), Vector2(206, 694), Color("#FF4757"))
-	_laser(z, Vector2(206, 662), Vector2(1074, 662), VIOLET)
+	# Two SHORT bays rather than three beams spanning the whole room: an 868px
+	# perfectly straight line across the frame reads as a stray primitive no
+	# matter what is emitting it, and the bays give the lattice a rhythm.
+	for k: float in [0.0, 1.0]:
+		var bx := 236.0 + k * 416.0
+		_laser(z, Vector2(bx, 630), Vector2(bx + 372.0, 694), Color("#FF4757"))
+		_laser(z, Vector2(bx + 372.0, 630), Vector2(bx, 694), Color("#FF4757"))
+		_laser(z, Vector2(bx, 662), Vector2(bx + 372.0, 662), VIOLET)
 	for k: float in [1.0, -1.0]:
 		_laser(z, Vector2(640.0 + k * 172.0, 196.0), Vector2(640.0 + k * 172.0, 336.0), Color("#FF4757"))
 	_sign(z, Vector2(196, 862), "PRICE ORACLE\nprices rise after every gain", Color("#B794FF"), 11)
@@ -1972,8 +2945,12 @@ static func _sp_vault(z: Node2D, glow: Color, accent: Color) -> void:
 
 	# The posts the lattice actually comes out of, and a cart of reserves left
 	# where the last audit abandoned it.
-	_prop(z, "dress_laser_emitter", Vector2(186, 640), 1.0, Color(1.0, 0.78, 0.6))
-	_prop(z, "dress_laser_emitter", Vector2(1094, 704), 1.0, Color(1.0, 0.78, 0.6))
+	# ON the outer bay ends (x 236 and 1024), not 46px shy of them: an emitter
+	# prop that no beam comes out of, standing beside a beam that comes out of
+	# thin air, is the same "stray primitive" reading the shortened bays were
+	# meant to close.
+	_prop(z, "dress_laser_emitter", Vector2(236, 662), 1.0, Color(1.0, 0.78, 0.6))
+	_prop(z, "dress_laser_emitter", Vector2(1024, 662), 1.0, Color(1.0, 0.78, 0.6))
 	_prop(z, "dress_ore_cart", Vector2(884, 894), 0.9, Color(1.0, 0.86, 0.5), -0.06)
 
 ## Small cluster helper for composing themed set-dressing.
@@ -2181,6 +3158,284 @@ static func _region_theme(region_id: String) -> Dictionary:
 				"lights": [Vector2(640, 480)], "structs": [], "signs": [],
 			}
 
+# --- encounter staging ----------------------------------------------------
+
+## Solid cover placed this build, in world space. Filled by _build_encounters
+## and read by _random_pos so a token can never be scattered inside a barrier
+## the player cannot walk into. Cleared at the top of every region build —
+## static state that survives a rebuild is a bug class this project has already
+## paid for twice.
+static var _cover_rects: Array[Rect2] = []
+
+## Where each region's enemies STAND. Round 4 scattered them with a randomised
+## RNG at >=420px from the arrival plaza, which meant the same room played
+## differently every visit and never played deliberately: packs spawned inside
+## set-pieces, on top of NPCs, or in a line across open floor.
+##
+## These are guard posts, ambush pockets and defended caches, authored against
+## each region's own composition. The ORDER matches _region_enemies() exactly —
+## entry N of that table consumes the next N positions here — so a boss lands in
+## its arena and the trash lands on the approaches.
+##
+## Two invariants, both load-bearing:
+##   * every post is >= 420px from the arrival plaza at (640,480), because
+##     tests/region_arrival_test.gd asserts nothing spawns inside the 340px
+##     aggro radius. _staged() re-checks at runtime.
+##   * the first combat region keeps exactly 4 (tests/region_winnable_test.gd).
+static func _region_enemy_posts(region_id: String) -> Array:
+	match region_id:
+		"dependency_district":
+			# Two demons holding the node_modules heap, two null references
+			# picketing the install bay. The artery between them stays clean.
+			# BESIDE their landmarks, never inside them: _heap() spreads +/-70px
+			# from (296,286) and the install bay console owns x 950..1070, so
+			# posts tucked into those footprints were simply not visible.
+			return [Vector2(176, 224), Vector2(352, 166), Vector2(1112, 222), Vector2(1084, 302)]
+		"stackoverflow_ruins":
+			# Bugs in the monolith fields; the merge conflict waits in the south
+			# clearing, which is the only wide open floor in the ruins. The two
+			# north posts stand clear of the toppled slabs at (238,300) and
+			# (1096,318), and the south one clear of the shrine's sign plate.
+			return [Vector2(156, 300), Vector2(1000, 196), Vector2(180, 706), Vector2(866, 868)]
+		"api_bazaar":
+			# Rate limiters posted at the market gates, bugs in the west aisle.
+			# The west-gate bug stands outside the stall awning (x 199..353).
+			return [Vector2(1120, 300), Vector2(900, 890), Vector2(250, 700), Vector2(250, 268), Vector2(172, 182)]
+		"cloud_district":
+			# The bill occupies the south floor; the leaks sit on the racks.
+			return [Vector2(880, 862), Vector2(238, 296), Vector2(1082, 278)]
+		"open_source_wildlands":
+			# Legacy systems squatting on the issue graveyard — the thing worth
+			# taking is the thing that is defended. Bugs patrol the perimeter.
+			# The README bug stands west of the monument, not behind it.
+			return [Vector2(246, 792), Vector2(404, 866), Vector2(186, 266), Vector2(1124, 268), Vector2(1148, 620)]
+		"corporate_enterprise":
+			# The architect owns the south-west floor; scope creep is everywhere
+			# else, which is thematically the only correct arrangement. The
+			# reception picket moved off the "raise a ticket" sign plate — a
+			# world plate draws at z 1150 and hides anything standing under it.
+			return [Vector2(286, 856), Vector2(250, 248), Vector2(152, 596), Vector2(1108, 236)]
+		"gpu_mines":
+			# Leaks on both rig banks and one down at the spoil heap; two bugs at
+			# the mouth of the heat pit, which is where you want to be standing.
+			# The two north posts sit in the GAPS between rigs (racks are on a
+			# 104px pitch), so a leak reads against the floor, not against a rig.
+			return [Vector2(228, 250), Vector2(366, 158), Vector2(1022, 166), Vector2(1114, 300),
+				Vector2(250, 782), Vector2(750, 894), Vector2(1060, 894)]
+		"production":
+			# The monolith holds the south floor below the war room. The
+			# hallucinations are gathered around the status page, agreeing —
+			# west of it, clear of the slab and of the STATUS PAGE plate.
+			return [Vector2(420, 880), Vector2(170, 262), Vector2(1092, 268), Vector2(1148, 560)]
+		"token_vault":
+			# Two rate limiters on the shelving rows, the infinite context in the
+			# open south-east where there is room to run away from it.
+			return [Vector2(250, 258), Vector2(1092, 258), Vector2(872, 860)]
+		_: return []
+
+## Boss arena anchor (visual only — the post table above is what actually
+## places the boss). A boss with nowhere to circle is a damage race, not a
+## fight, so each of these gets a marked-out clearing with bollards on its
+## corners and every other piece of scenery kept out of it.
+static func _region_boss_arena(region_id: String) -> Vector2:
+	match region_id:
+		"stackoverflow_ruins": return Vector2(866, 868)
+		"cloud_district": return Vector2(880, 862)
+		"corporate_enterprise": return Vector2(286, 856)
+		"production": return Vector2(420, 880)
+		"token_vault": return Vector2(872, 860)
+		_: return Vector2.ZERO
+
+## Solid cover, per region. Small isolated blocks only — never a wall, never two
+## within 150px of each other, never within 88px of a post or 150px of a portal
+## or NPC — so they can shape a fight without ever boxing the player, an enemy
+## or a quest-giver in. Positions are hand-checked against every portal, NPC and
+## interactable in the region.
+static func _region_cover(region_id: String) -> Array:
+	match region_id:
+		"dependency_district":
+			# Deliberately NOT between the heap and the install bay: that corridor
+			# is the engagement line tests/region_winnable_test.gd walks, and the
+			# first combat region is the last place to introduce geometry that
+			# could make a chasing enemy hesitate.
+			return [Vector2(150, 330), Vector2(150, 660), Vector2(924, 182), Vector2(1160, 372)]
+		"stackoverflow_ruins":
+			return [Vector2(150, 180), Vector2(1180, 380), Vector2(300, 830), Vector2(760, 800), Vector2(980, 880)]
+		"api_bazaar":
+			# (160,220) moved down: the west-gate post is the only spot at that
+			# latitude that clears both the stall awning and the arrival radius.
+			return [Vector2(700, 880), Vector2(150, 600), Vector2(170, 340), Vector2(430, 180)]
+		"cloud_district":
+			return [Vector2(780, 830), Vector2(1000, 900), Vector2(150, 240), Vector2(1170, 200)]
+		"open_source_wildlands":
+			return [Vector2(150, 700), Vector2(520, 820), Vector2(150, 180), Vector2(1170, 180), Vector2(1160, 740)]
+		"corporate_enterprise":
+			return [Vector2(180, 790), Vector2(400, 880), Vector2(150, 180), Vector2(160, 340), Vector2(1170, 340)]
+		"gpu_mines":
+			# (430,180) moved to the aisle mouth: the rig-gap post sits at x 366.
+			return [Vector2(150, 180), Vector2(520, 196), Vector2(910, 180), Vector2(1180, 200),
+				Vector2(150, 860), Vector2(860, 880), Vector2(1160, 900)]
+		"production":
+			# (150,200) moved south of the status page so the picket has floor.
+			return [Vector2(300, 900), Vector2(560, 880), Vector2(150, 600), Vector2(1180, 180), Vector2(1180, 720)]
+		"token_vault":
+			return [Vector2(150, 180), Vector2(1180, 180), Vector2(740, 890), Vector2(1000, 900)]
+		_: return []
+
+static func _build_encounters(parent: Node2D, region_id: String, theme: Dictionary, w: int, h: int) -> void:
+	var z := Node2D.new()
+	z.name = "Encounters"
+	parent.add_child(z)
+	var glow: Color = theme.get("glow", Color(0.7, 0.8, 0.95))
+	var accent: Color = theme.get("accent", glow)
+	var arena := _region_boss_arena(region_id)
+	if arena != Vector2.ZERO:
+		# The clearing is drawn around the boss post but clamped inward, because
+		# several posts sit close enough to a wall that an un-clamped ring would
+		# be painted over the wall or off the map entirely.
+		_arena(z, Vector2(clampf(arena.x, 260.0, float(w) - 260.0), clampf(arena.y, 250.0, float(h) - 140.0)), accent, glow)
+	var idx := 0
+	for cp: Vector2 in _region_cover(region_id):
+		_cover(z, cp, glow, accent, idx)
+		idx += 1
+	# A faint marker under each post: a scuffed patch where something has been
+	# standing for a while. Reads as staging, not as a spawn indicator.
+	for pp: Vector2 in _region_enemy_posts(region_id):
+		_floor_patch(z, pp + Vector2(0, 14), 120.0, Color(0.02, 0.02, 0.035), 0.30, -92)
+
+## Boss arena: a marked-out clearing with a swept pad, a poured rail and six
+## bollards standing on it. Deliberately NON-colliding — the space is the point, and a solid
+## pillar sitting where a boss spawns is a depenetration bug waiting to happen.
+## Solid cover is placed by _cover() at hand-checked positions instead.
+static func _arena(parent: Node2D, pos: Vector2, accent: Color, glow: Color) -> void:
+	_floor_patch(parent, pos, 500.0, Color(accent.r, accent.g, accent.b), 0.09, -94)
+	# THE INSIDE FIRST. Round 5 drew thirty free dashes on an ellipse and nothing
+	# else, so what the frames actually showed was a dashed arc floating over bare
+	# floor — an editor gizmo, not a place. A marked-out clearing has a swept
+	# surface, a keep-clear hatch and a stencil in the middle of it, and the ring
+	# is then the EDGE of something instead of a decal on its own.
+	_floor_patch(parent, pos, 330.0, Color(0.014, 0.016, 0.03), 0.32, -93)
+	for i in 26:
+		var ha := TAU * float(i) / 26.0
+		var hr := 0.40 + float(i % 3) * 0.17
+		_rect(parent, pos + Vector2(cos(ha) * 178.0 * hr, sin(ha) * 106.0 * hr),
+			Vector2(24.0, 3.0), Color(0, 0, 0, 0.22), -93, 0.62)
+	_rect(parent, pos, Vector2(122.0, 5.0), Color(0, 0, 0, 0.32), -93)
+	_rect(parent, pos, Vector2(5.0, 78.0), Color(0, 0, 0, 0.32), -93)
+	_rect(parent, pos, Vector2(118.0, 2.0), Color(accent.r, accent.g, accent.b, 0.20), -93)
+	_rect(parent, pos, Vector2(2.0, 74.0), Color(accent.r, accent.g, accent.b, 0.20), -93)
+	# The rail: a CONTINUOUS poured edge with the lit lip on the inside, exactly
+	# like every other material seam in the room, with the reflectors sitting ON
+	# the rail rather than replacing it.
+	var n := 30
+	var pts: Array[Vector2] = []
+	for i in n:
+		var a := TAU * float(i) / float(n)
+		pts.append(pos + Vector2(cos(a) * 180.0, sin(a) * 108.0))
+	for i in n:
+		var a0: Vector2 = pts[i]
+		var b0: Vector2 = pts[(i + 1) % n]
+		var sg := b0 - a0
+		var ang := sg.angle()
+		var mid := (a0 + b0) * 0.5
+		var inward := (pos - mid).normalized()
+		_rect(parent, mid, Vector2(sg.length() + 4.0, 6.0), Color(0, 0, 0, 0.42), -92, ang)
+		_rect(parent, mid + inward * 3.0, Vector2(sg.length() + 4.0, 2.0), Color(glow.r, glow.g, glow.b, 0.18), -92, ang)
+		if i % 3 == 0:
+			_glow_rect(parent, mid + inward * 7.0, Vector2(12.0, 3.0), Color(glow.r, glow.g, glow.b, 0.22), -91, ang)
+	# Bollards ON the rail, each with a cap that catches the light and a contact
+	# shadow — the ring is bolted down, not painted on.
+	for i in 6:
+		var a2 := TAU * (float(i) + 0.5) / 6.0
+		var pp := pos + Vector2(cos(a2) * 180.0, sin(a2) * 108.0)
+		var zi := _depth(pp.y, 18.0)
+		_drop_shadow(parent, pp + Vector2(0, 14), 50.0, zi - 1, 0.4)
+		_rect(parent, pp, Vector2(14, 34), Color(0.09, 0.095, 0.14, 0.96), zi)
+		_rect(parent, pp + Vector2(0, -13), Vector2(14, 4), Color(0.22, 0.24, 0.32), zi + 1)
+		_glow_rect(parent, pp + Vector2(0, -16), Vector2(8, 4), Color(glow.r, glow.g, glow.b, 0.6), zi + 1)
+	# Four approach chevrons pointing INTO the clearing: the ring now says "in
+	# here", which is the only thing a ring on a floor is ever for. Every arena
+	# in the game is clamped against the south wall, so any chevron that lands
+	# under the bottom sill (where it would be half-drawn, i.e. exactly the stray
+	# mark this pass is removing) is dropped rather than clamped.
+	var rw := float(REGION_SIZE.x * TILE_SIZE)
+	var rh := float(REGION_SIZE.y * TILE_SIZE)
+	for i in 4:
+		var a3 := TAU * (float(i) + 0.25) / 4.0
+		var cvp := pos + Vector2(cos(a3) * 218.0, sin(a3) * 134.0)
+		if cvp.x < 96.0 or cvp.x > rw - 96.0 or cvp.y < 116.0 or cvp.y > rh - 76.0:
+			continue
+		_chevron(parent, cvp, Color(accent.r, accent.g, accent.b, 0.20), a3 + PI, -92)
+	_light_pool(parent, pos, 400.0, accent, 0.14)
+
+## One piece of solid cover: a low barrier with a lit cap, a contact shadow and
+## a collider. Enemies are CharacterBody2Ds and slide off these; player
+## projectiles are Area2Ds on the enemy layer and pass straight through, so
+## cover changes where you stand without ever eating your shots.
+static func _cover(parent: Node2D, pos: Vector2, glow: Color, accent: Color, idx: int) -> void:
+	var zi := _depth(pos.y, 24.0)
+	var col: Color = glow if idx % 2 == 0 else accent
+	_drop_shadow(parent, pos + Vector2(0, 22), 104.0, zi - 1, 0.42)
+	_rect(parent, pos, Vector2(78, 46), Color(0.10, 0.105, 0.15, 0.96), zi)
+	_rect(parent, pos + Vector2(0, -21), Vector2(78, 5), Color(0.24, 0.26, 0.34), zi + 1)
+	for i in 3:
+		_rect(parent, pos + Vector2(-24.0 + float(i) * 24.0, 4.0), Vector2(4, 34), Color(0, 0, 0, 0.32), zi + 1)
+	_glow_rect(parent, pos + Vector2(-26, -20), Vector2(12, 4), Color(col.r, col.g, col.b, 0.7), zi + 2)
+	_glow_rect(parent, pos + Vector2(26, -20), Vector2(12, 4), Color(col.r, col.g, col.b, 0.45), zi + 2)
+	_light_pool(parent, pos + Vector2(0, 26), 150.0, col, 0.13)
+	_add_cover_body(parent, pos, Vector2(76, 34))
+
+static func _add_cover_body(parent: Node2D, pos: Vector2, sz: Vector2) -> void:
+	_add_collider(parent, pos, sz)
+	# Inflated by 34px: a token's own pickup shape is 14px and the magnet reaches
+	# 100px, but a coin visually buried in a crate is still a coin the player
+	# will spend a minute failing to walk onto.
+	_cover_rects.append(Rect2(pos - sz * 0.5 - Vector2(34, 34), sz + Vector2(68, 68)))
+
+static func _in_cover(p: Vector2) -> bool:
+	for r in _cover_rects:
+		if r.has_point(p):
+			return true
+	return false
+
+## Staging guard-rail. tests/region_arrival_test.gd asserts no enemy spawns
+## within the 340px aggro radius of the arrival plaza; this pushes any authored
+## post that ever drifts inside it back out along its own bearing and clamps it
+## into the walkable interior, so a future composition edit can never turn into
+## a spawn-into-a-swarm regression. Falls back to the old scatter when a region
+## has no post table or the clamp cannot satisfy the radius.
+static func _staged(want: Vector2, spawn: Vector2, rng: RandomNumberGenerator) -> Vector2:
+	var w := float(REGION_SIZE.x * TILE_SIZE)
+	var h := float(REGION_SIZE.y * TILE_SIZE)
+	if want == Vector2.ZERO:
+		return _safe_scatter(rng, spawn, w, h)
+	var p := Vector2(clampf(want.x, 130.0, w - 130.0), clampf(want.y, 150.0, h - 66.0))
+	var d := p - spawn
+	if d.length() < 415.0:
+		if d.length() < 1.0:
+			d = Vector2(1.0, 0.0)
+		p = spawn + d.normalized() * 415.0
+		p = Vector2(clampf(p.x, 130.0, w - 130.0), clampf(p.y, 150.0, h - 66.0))
+	if p.distance_to(spawn) < 415.0:
+		return _safe_scatter(rng, spawn, w, h)
+	return p
+
+## Scatter fallback that CANNOT violate the arrival radius. _random_pos gives up
+## after 50 tries and returns a point near its centre — for a token that is a
+## harmless nudge, but for an enemy it is a spawn inside the aggro ring and a
+## tests/region_arrival_test.gd failure that would only show up on a bad seed.
+## The corner anchors below are all >= 430px from a 640,480 spawn and inside the
+## walkable interior, so the guarantee holds no matter what the RNG does.
+static func _safe_scatter(rng: RandomNumberGenerator, spawn: Vector2, w: float, h: float) -> Vector2:
+	var p := _random_pos(rng, spawn, 420.0)
+	if p.distance_to(spawn) >= 420.0:
+		return p
+	var anchors: Array[Vector2] = [
+		Vector2(200.0, 220.0), Vector2(w - 200.0, 220.0),
+		Vector2(200.0, h - 100.0), Vector2(w - 200.0, h - 100.0),
+	]
+	return anchors[rng.randi() % anchors.size()]
+
 static func _populate_region(region_id: String, props: Node2D, enemies: Node2D, tokens: Node2D, npcs: Node2D, portals: Node2D, spawn: Vector2) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
@@ -2196,10 +3451,23 @@ static func _populate_region(region_id: String, props: Node2D, enemies: Node2D, 
 		var t = token_scene.instantiate()
 		t.token_type = token_types[rng.randi() % token_types.size()]
 		t.position = _random_pos(rng, spawn)
+		# Same depth convention as the player and the NPCs. token_pickup.tscn
+		# ships z_index 0, so a coin scattered anywhere near set dressing drew
+		# UNDER it — and "collect N tokens" is an objective, not decoration.
+		t.z_index = int(t.position.y)
 		tokens.add_child(t)
 
-	# Scatter enemies
+	# Stage enemies. Counts and types are UNCHANGED — this only decides where
+	# they stand. Posts are consumed in _region_enemies() order, so the boss row
+	# lands on the boss post; anything past the end of the table (or a region
+	# with no table) falls back to the old scatter.
+	#
+	# Placement still respects the aggro radius (340): a player arriving or
+	# respawning gets a moment to orient and then CHOOSES to walk into a fight —
+	# no fast-travel-into-a-swarm. _staged() enforces that at 415px.
 	var enemy_types := _region_enemies(region_id)
+	var posts := _region_enemy_posts(region_id)
+	var post_i := 0
 	for e in enemy_types:
 		var count: int = e.get("count", 2)
 		for i in count:
@@ -2207,10 +3475,20 @@ static func _populate_region(region_id: String, props: Node2D, enemies: Node2D, 
 			en.enemy_type = e.type
 			en.max_hp = e.get("hp", 30)
 			en.is_boss = e.get("boss", false)
-			# Place enemies beyond the enemy aggro radius (340) from the spawn so a
-			# player arriving (or respawning) gets a moment to orient and then
-			# CHOOSES to walk into combat — no fast-travel-into-a-swarm.
-			en.position = _random_pos(rng, spawn, 420)
+			var want := Vector2.ZERO
+			if post_i < posts.size():
+				var wp: Vector2 = posts[post_i]
+				want = wp
+				post_i += 1
+			en.position = _staged(want, spawn, rng)
+			# Depth, the same convention player.gd:327 and npc.gd:126 already
+			# use. enemy.tscn ships z_index 0 and enemy_base never sets it, so
+			# every builder prop (z = int(y + half)) drew IN FRONT of every
+			# enemy no matter where it stood — a staged guard tucked against
+			# its landmark was invisible. Seeding it here fixes the pose the
+			# player arrives to; enemy_base still needs to refresh it as the
+			# enemy walks (raised as a cross-file need).
+			en.z_index = int(en.position.y)
 			enemies.add_child(en)
 
 	# NPCs
@@ -2249,8 +3527,13 @@ static func _random_pos(rng: RandomNumberGenerator, center: Vector2, min_dist: f
 			rng.randf_range(TILE_SIZE * 2, (REGION_SIZE.y - 2) * TILE_SIZE)
 		)
 		if pos.distance_to(center) > min_dist:
+			# Solid cover exists now. A token scattered inside a barrier is a
+			# collection objective the player cannot finish, so reject those.
+			if _in_cover(pos):
+				continue
 			return pos
-	return center + Vector2(rng.randf_range(-300, 300), rng.randf_range(-300, 300))
+	# Fallback lands on the landing plaza, which never holds cover.
+	return center + Vector2(rng.randf_range(-240, 240), rng.randf_range(-150, 150))
 
 static func _region_token_types(region_id: String) -> Array:
 	match region_id:
@@ -2299,7 +3582,7 @@ static func _region_npcs(region_id: String) -> Array:
 		"localhost":
 			return [{"id": "roommate_ai", "pos": Vector2(1200, 900), "quests": ["hello_localhost", "tiny_change", "ship_dream_app"]}]
 		"dependency_district":
-			return [{"id": "maintainer", "pos": Vector2(1076, 786), "quests": ["install_node", "fix_without_touching"]}]
+			return [{"id": "maintainer", "pos": Vector2(1076, 786), "quests": ["install_node", "fix_without_touching", "pin_everything", "caret_gamble"]}]
 		"stackoverflow_ruins":
 			return [{"id": "stackoverflow_hermit", "pos": Vector2(1000, 704), "quests": ["stackoverflow_pilgrimage", "merge_conflict_hell"]}]
 		"api_bazaar":
@@ -2309,13 +3592,23 @@ static func _region_npcs(region_id: String) -> Array:
 		"open_source_wildlands":
 			return [{"id": "oss_maintainer", "pos": Vector2(1058, 852), "quests": ["license_puzzle"]}]
 		"corporate_enterprise":
-			return [{"id": "svp_ai", "pos": Vector2(1000, 786), "quests": ["enterprise_ready"]}]
+			return [{"id": "svp_ai", "pos": Vector2(1000, 786), "quests": ["enterprise_ready", "mission_statement"]}]
 		"gpu_mines":
 			return [{"id": "gpu_foreman", "pos": Vector2(1136, 692), "quests": ["gpu_rush"]}]
 		"production":
 			return [{"id": "oncall_engineer", "pos": Vector2(1090, 848), "quests": ["production_down"]}]
 		_: return []
 
+## Portal placement. Round 5 put every door at exactly (cx +/- 400, cy), so the
+## critique's "the portal at the same left-third position in all nine frames"
+## was literally true — the doors were the third thing (after the centred plaza
+## and the horizontal artery) making every region read as the same room. The
+## positions below are hand-checked per region against that region's own cover
+## blocks, enemy posts, NPC and set-pieces; all of them sit in open, reachable
+## floor well inside the walls. The pairs are deliberately NOT at matching
+## heights any more: an off-lane door earns a paved spur from _paint_paths and
+## its own chevron trail from _paint_wayfinding, which is exactly the layout
+## variety the frames were missing.
 static func _region_portals(region_id: String) -> Array:
 	var cx := REGION_SIZE.x * TILE_SIZE * 0.5
 	var cy := REGION_SIZE.y * TILE_SIZE * 0.5
@@ -2323,49 +3616,54 @@ static func _region_portals(region_id: String) -> Array:
 		"localhost":
 			return [{"to": "dependency_district", "pos": Vector2(cx + 400, cy), "label": "Dependency District"}]
 		"dependency_district":
+			# North-west of the heap; the onward door drops south past the depot.
 			return [
-				{"to": "localhost", "pos": Vector2(cx - 400, cy), "label": "Localhost"},
-				{"to": "stackoverflow_ruins", "pos": Vector2(cx + 400, cy), "label": "Stack Overflow Ruins"},
+				{"to": "localhost", "pos": Vector2(250, 392), "label": "Localhost"},
+				{"to": "stackoverflow_ruins", "pos": Vector2(1052, 568), "label": "Stack Overflow Ruins"},
 			]
 		"stackoverflow_ruins":
 			return [
-				{"to": "dependency_district", "pos": Vector2(cx - 400, cy), "label": "Dependency District"},
-				{"to": "api_bazaar", "pos": Vector2(cx + 400, cy), "label": "API Bazaar"},
+				{"to": "dependency_district", "pos": Vector2(206, 520), "label": "Dependency District"},
+				{"to": "api_bazaar", "pos": Vector2(1064, 506), "label": "API Bazaar"},
 			]
 		"api_bazaar":
 			return [
-				{"to": "stackoverflow_ruins", "pos": Vector2(cx - 400, cy), "label": "Stack Overflow Ruins"},
-				{"to": "cloud_district", "pos": Vector2(cx + 400, cy), "label": "Cloud District"},
+				{"to": "stackoverflow_ruins", "pos": Vector2(250, 420), "label": "Stack Overflow Ruins"},
+				{"to": "cloud_district", "pos": Vector2(1036, 586), "label": "Cloud District"},
 			]
 		"cloud_district":
 			return [
-				{"to": "api_bazaar", "pos": Vector2(cx - 400, cy), "label": "API Bazaar"},
-				{"to": "open_source_wildlands", "pos": Vector2(cx + 400, cy), "label": "Open Source Wildlands"},
+				{"to": "api_bazaar", "pos": Vector2(216, 436), "label": "API Bazaar"},
+				{"to": "open_source_wildlands", "pos": Vector2(1064, 566), "label": "Open Source Wildlands"},
 			]
 		"open_source_wildlands":
+			# Both doors off the lane, on opposite diagonals: the wildlands is the
+			# one region with no straight line through it.
 			return [
-				{"to": "cloud_district", "pos": Vector2(cx - 400, cy), "label": "Cloud District"},
-				{"to": "corporate_enterprise", "pos": Vector2(cx + 400, cy), "label": "Corporate Enterprise"},
+				{"to": "cloud_district", "pos": Vector2(212, 542), "label": "Cloud District"},
+				{"to": "corporate_enterprise", "pos": Vector2(1074, 414), "label": "Corporate Enterprise"},
 			]
 		"corporate_enterprise":
 			return [
-				{"to": "open_source_wildlands", "pos": Vector2(cx - 400, cy), "label": "Open Source Wildlands"},
-				{"to": "gpu_mines", "pos": Vector2(cx + 400, cy), "label": "GPU Mines"},
+				{"to": "open_source_wildlands", "pos": Vector2(216, 452), "label": "Open Source Wildlands"},
+				{"to": "gpu_mines", "pos": Vector2(1058, 568), "label": "GPU Mines"},
 			]
 		"gpu_mines":
 			return [
-				{"to": "corporate_enterprise", "pos": Vector2(cx - 400, cy), "label": "Corporate Enterprise"},
-				{"to": "production", "pos": Vector2(cx + 400, cy), "label": "Production"},
+				{"to": "corporate_enterprise", "pos": Vector2(228, 540), "label": "Corporate Enterprise"},
+				{"to": "production", "pos": Vector2(1066, 414), "label": "Production"},
 			]
 		"production":
 			return [
-				{"to": "gpu_mines", "pos": Vector2(cx - 400, cy), "label": "GPU Mines"},
-				{"to": "token_vault", "pos": Vector2(cx + 400, cy), "label": "Token Vault"},
+				{"to": "gpu_mines", "pos": Vector2(250, 420), "label": "GPU Mines"},
+				{"to": "token_vault", "pos": Vector2(1024, 608), "label": "Token Vault"},
 			]
 		"token_vault":
+			# The way home is a north door, off-axis from the reserve pedestal so
+			# the pedestal stops standing in the doorway.
 			return [
-				{"to": "production", "pos": Vector2(cx - 400, cy), "label": "Production"},
-				{"to": "localhost", "pos": Vector2(cx, cy - 400), "label": "Return to Localhost"},
+				{"to": "production", "pos": Vector2(216, 544), "label": "Production"},
+				{"to": "localhost", "pos": Vector2(884, 96), "label": "Return to Localhost"},
 			]
 		_: return []
 

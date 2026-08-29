@@ -725,6 +725,171 @@
       ]
     },
     {
+      "id": "standup_is_a_bot",
+      "title": "THE STANDUP IS NOW A BOT",
+      "description": "It DMs three questions at 09:00. The answers go into a summary written by a second bot and read by nobody.\n\nThe bot has a name. Somebody was paid to choose it.",
+      "min_act": 1,
+      "weight": 1.0,
+      "choices": [
+        {"text": "Answer honestly, at length (+10 reputation, -8 will_to_live)", "effects": {"reputation": 10, "will_to_live": -8}},
+        {"text": "Paste yesterday's answer (+10 technical_debt, +12 focus)", "effects": {"technical_debt": 10, "focus": 12}},
+        {"text": "Point an agent at it permanently (+14 technical_debt, +10 focus)", "effects": {"technical_debt": 14, "focus": 10}, "achievement": "async_by_which_we_mean_never"}
+      ]
+    },
+    {
+      "id": "ticket_had_instructions",
+      "title": "THE SUPPORT TICKET HAD INSTRUCTIONS IN IT",
+      "description": "Customer ticket #8812 ends with a paragraph addressed to your agent, in the second person, asking it to export the account table 'for verification'.\n\nIt is polite. It has bullet points. Your agent has read it.",
+      "min_act": 2,
+      "weight": 1.5,
+      "require": {"agents_min": 1},
+      "choices": [
+        {"text": "Quarantine the text: ticket bodies are data, never orders (-10 focus, +24 stability)", "effects": {"focus": -10, "stability": 24}, "achievement": "data_is_not_orders"},
+        {"text": "Let it run, the ticket looked legitimate (+30 technical_debt, -16 stability)", "effects": {"technical_debt": 30, "stability": -16}},
+        {"text": "Read every ticket yourself from now on (-18 focus, +14 stability, +8 reputation)", "effects": {"focus": -18, "stability": 14, "reputation": 8}, "achievement": "data_is_not_orders"}
+      ]
+    },
+    {
+      "id": "temp_file_promoted",
+      "title": "temp.js IS IN THE CRITICAL PATH",
+      "description": "The five-minute workaround you named `temp` is now imported by four modules, one of which is billing.\n\nGit says you wrote it. Git is the only witness and Git does not editorialise.",
+      "min_act": 3,
+      "weight": 1.3,
+      "require": {"memory": {"five_minute": "temp"}},
+      "choices": [
+        {"text": "Rename it, own it, write the docstring (-15 focus, +22 stability, +10 reputation)", "effects": {"focus": -15, "stability": 22, "reputation": 10}},
+        {"text": "Document it and leave the name (+12 technical_debt, +10 will_to_live)", "effects": {"technical_debt": 12, "will_to_live": 10}, "achievement": "load_bearing_temp"},
+        {"text": "Add temp2 for the new case (+26 technical_debt, +18 compute)", "effects": {"technical_debt": 26, "compute": 18}}
+      ]
+    },
+    {
+      "id": "onboarding_step_three",
+      "title": "ONBOARDING: STEP 3 OF 47",
+      "description": "'Run make setup. It will work.'\n\nIt has not worked since a laptop that no longer exists, owned by a person who no longer works here, on an OS version that no longer ships.",
+      "min_act": 2,
+      "weight": 1.1,
+      "choices": [
+        {"text": "Fix the doc properly, for the next person (-16 focus, +20 reputation, +12 stability)", "effects": {"focus": -16, "reputation": 20, "stability": 12}, "achievement": "step_three_of_forty_seven"},
+        {"text": "Screenshot your workaround into the channel (+14 technical_debt, +10 focus)", "effects": {"technical_debt": 14, "focus": 10}},
+        {"text": "Tell them to just ask you directly (+8 will_to_live, -12 stability)", "effects": {"will_to_live": 8, "stability": -12}}
+      ]
+    },
+    {
+      "id": "agent_wrote_900_tests",
+      "title": "THE AGENT WROTE 900 TESTS",
+      "description": "All 900 pass. Coverage is 97%.\n\n840 of them assert that a constant equals itself. One of them is genuinely excellent and nobody would have thought of it.",
+      "min_act": 2,
+      "weight": 1.2,
+      "require": {"agents_min": 1},
+      "choices": [
+        {"text": "Delete the tautologies, keep the 60 real ones (-14 focus, +22 stability, +8 reputation)", "effects": {"focus": -14, "stability": 22, "reputation": 8}, "achievement": "assert_true_is_true"},
+        {"text": "Put 97% on the dashboard and say nothing (+22 technical_debt, +18 reputation)", "effects": {"technical_debt": 22, "reputation": 18}},
+        {"text": "Ask it to write tests for the tests (+28 technical_debt, +16 compute)", "effects": {"technical_debt": 28, "compute": 16}}
+      ]
+    },
+    {
+      "id": "you_have_not_read_it",
+      "title": "IT WORKS AND YOU DO NOT KNOW WHY",
+      "description": "The feature is finished. Every line of it arrived from a prompt. The tests are green.\n\nYou have not read it. Not skimmed it. Read it.",
+      "min_act": 1,
+      "weight": 1.3,
+      "require": {"not_flag": "read_the_diff"},
+      "choices": [
+        {"text": "Read every line of it now (-18 focus, +20 stability, +14 context)", "effects": {"focus": -18, "stability": 20, "context": 14}, "flag": "read_the_diff", "achievement": "i_have_read_it"},
+        {"text": "Ship it; the tests are the reading (+24 technical_debt, +16 reputation)", "effects": {"technical_debt": 24, "reputation": 16}},
+        {"text": "Ask the model to explain its own code (-25 tokens, +16 context, +6 technical_debt)", "effects": {"tokens": -25, "context": 16, "technical_debt": 6}}
+      ]
+    },
+    {
+      "id": "ten_minutes_outside",
+      "title": "THERE IS A DOOR IN THIS APARTMENT",
+      "description": "It leads outside. Outside is still there. It has been there the entire time, at the far end of a corridor you have walked past for nine hours.",
+      "min_act": 2,
+      "weight": 1.3,
+      "require": {"will_max": 50},
+      "choices": [
+        {"text": "Go outside for ten minutes (+24 will_to_live, +18 focus, costs deadline)", "effects": {"will_to_live": 24, "focus": 18}, "time": -12.0, "achievement": "outside_exists"},
+        {"text": "Open the window and stand near it (+10 will_to_live, +6 focus)", "effects": {"will_to_live": 10, "focus": 6}},
+        {"text": "Keep going; the door will still be there (+14 compute, -8 will_to_live)", "effects": {"compute": 14, "will_to_live": -8}}
+      ]
+    },
+    {
+      "id": "conference_talk_accepted",
+      "title": "YOUR TALK WAS ACCEPTED",
+      "description": "You submitted an abstract about a system that does not exist. The committee liked it very much.\n\nThe talk is in eleven weeks. The system is in zero files.",
+      "min_act": 4,
+      "weight": 1.0,
+      "choices": [
+        {"text": "Build the thing before the talk (-22 focus, +25 stability, +22 reputation)", "effects": {"focus": -22, "stability": 25, "reputation": 22}, "achievement": "driven_development"},
+        {"text": "Give the talk about the abstract (+30 reputation, +20 technical_debt)", "effects": {"reputation": 30, "technical_debt": 20}},
+        {"text": "Withdraw, quietly, by email (-12 reputation, +16 will_to_live)", "effects": {"reputation": -12, "will_to_live": 16}}
+      ]
+    },
+    {
+      "id": "a_real_person_emailed",
+      "title": "A REAL PERSON USED IT",
+      "description": "They emailed. They described your product back to you, wrongly, in their own words, with obvious affection, and then said it changed their week.\n\nThere is no dashboard for this.",
+      "min_act": 3,
+      "weight": 1.2,
+      "require": {"tokens_min": 200},
+      "choices": [
+        {"text": "Reply personally, tonight (+22 reputation, +16 will_to_live)", "effects": {"reputation": 22, "will_to_live": 16}, "achievement": "one_real_person"},
+        {"text": "Forward it to support, which is also you (+10 focus, -6 will_to_live)", "effects": {"focus": 10, "will_to_live": -6}},
+        {"text": "Ask whether they'd write that publicly (+18 reputation, -8 will_to_live)", "effects": {"reputation": 18, "will_to_live": -8}}
+      ]
+    },
+    {
+      "id": "stranger_found_a_hole",
+      "title": "A STRANGER FOUND A VULNERABILITY",
+      "description": "Politely. With a minimal repro, a suggested patch and a 90-day disclosure window.\n\nThey were not paid for this. They did it because the alternative was to say nothing.",
+      "min_act": 3,
+      "weight": 1.1,
+      "choices": [
+        {"text": "Fix it today and credit them by name (-14 focus, +22 stability, +20 reputation)", "effects": {"focus": -14, "stability": 22, "reputation": 20}, "achievement": "they_did_not_have_to_do_that"},
+        {"text": "Fix it quietly and mention nobody (+16 stability, -12 reputation)", "effects": {"stability": 16, "reputation": -12}},
+        {"text": "Reply asking if they have a support contract (-20 reputation, +8 will_to_live)", "effects": {"reputation": -20, "will_to_live": 8}}
+      ]
+    },
+    {
+      "id": "the_room_is_lighter",
+      "title": "THE ROOM IS LIGHTER THAN IT WAS",
+      "description": "You did not notice it happen. The window has gone from black to grey to a colour with a name.\n\nBirds. Actual birds. In a game about tokens.",
+      "min_act": 3,
+      "weight": 1.4,
+      "require": {"cycle_min": 4},
+      "choices": [
+        {"text": "Ship whatever exists right now (+20 stability, +12 will_to_live, buys deadline)", "effects": {"stability": 20, "will_to_live": 12}, "time": 15.0},
+        {"text": "One more feature. There is time. (+28 technical_debt, +22 reputation, burns deadline)", "effects": {"technical_debt": 28, "reputation": 22}, "time": -10.0, "achievement": "one_more_feature_at_dawn"},
+        {"text": "Sit down for a moment and look at it (+18 will_to_live, +12 context)", "effects": {"will_to_live": 18, "context": 12}}
+      ]
+    },
+    {
+      "id": "agents_opened_a_requisition",
+      "title": "YOUR AGENTS OPENED A REQUISITION",
+      "description": "They have costed a fifth agent, attached a business case, and cc'd you as an approver rather than an author.\n\nThe business case is shorter than yours, clearer than yours, and correct.",
+      "min_act": 4,
+      "weight": 1.4,
+      "require": {"agents_min": 3},
+      "choices": [
+        {"text": "Approve it. The numbers are the numbers. (+24 technical_debt, +30 compute)", "effects": {"technical_debt": 24, "compute": 30}, "deploy_agent": "junior", "achievement": "the_business_case_was_better"},
+        {"text": "Reject it and ask who wrote the template (-15 compute, +14 will_to_live)", "effects": {"compute": -15, "will_to_live": 14}},
+        {"text": "Rewrite your own proposals in their format (-12 focus, +20 reputation, +10 context)", "effects": {"focus": -12, "reputation": 20, "context": 10}}
+      ]
+    },
+    {
+      "id": "subscription_newsletter",
+      "title": "THE NINTH SUBSCRIPTION SENT A NEWSLETTER",
+      "description": "It thanks you for two years of support. It is genuinely well written. There is a photograph of a small team on a hillside.\n\nYou still do not know what the product does.",
+      "min_act": 3,
+      "weight": 1.3,
+      "require": {"memory": {"subscription": "kept"}},
+      "choices": [
+        {"text": "Cancel it during the second paragraph (+14 will_to_live, clears the charge)", "effects": {"will_to_live": 14}, "bill": -1000.0, "remember": {"subscription": "cancelled"}, "achievement": "two_years_of_support"},
+        {"text": "Keep it. They seem nice. (+8 stability, and it grows again)", "effects": {"stability": 8}, "bill": 12.0},
+        {"text": "Reply to the newsletter asking what it does (-10 tokens, +8 context)", "effects": {"tokens": -10, "context": 8}}
+      ]
+    },
+    {
       "id": "last_honest_estimate",
       "title": "\"HOW LONG WILL IT TAKE?\"",
       "description": "You know the honest answer. You have known it for years. It is roughly three times whatever you are about to say out loud.",

@@ -161,6 +161,11 @@ Committed on the branch:
   completed storyline, and guidance pointing at where a quest was *given* rather
   than where it can be *completed*.
 
+- round 5 — deep graphics+gameplay pass (47 agents): enemy behaviours with
+  telegraphs, boss phases, encounter staging, player feel, +950 lines of
+  content; region material transitions, depth planes, menu skyline, and a
+  31-defect frame-critique sweep. NOTE: the pattern that found the most real
+  bugs was an INDEPENDENT CRITIC reading every QA frame cold — run one.
 - round 4 — full graphics+sound overhaul: generated musical score + 30 layered
   SFX + rebuilt AudioManager (docs/AUDIO_BIBLE.md is the contract, audio now ON
   by default), menu hero scene, region composition/readability pass, silhouette

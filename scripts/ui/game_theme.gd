@@ -80,18 +80,31 @@ static func clear_texture() -> ImageTexture:
 	return _tex_cache["clear"]
 
 ## Horizontal accent->hot gradient with a 1px WHITE_HOT top edge, for bar fills.
+##
+## Round 5: the fill is also shaded VERTICALLY now — a hot band just under the
+## white edge falling to a darkened base at the bottom. Flat horizontal gradients
+## read as coloured tape at HUD scale; this reads as a lit tube, which is what
+## the bible's "1px WHITE_HOT top edge" was reaching for. Signature unchanged, so
+## every bar in the game (vitals, boss, Dream App, quest log) inherits it.
 static func bar_gradient_texture(accent: Color, hot: Color) -> ImageTexture:
 	var key := "bar:%s:%s" % [accent.to_html(), hot.to_html()]
 	if not _tex_cache.has(key):
 		var w := 64
-		var h := 12
+		var h := 16
 		var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+		var base_dark := accent.lerp(VOID, 0.42)
 		for x in w:
 			var c := accent.lerp(hot, float(x) / float(w - 1))
 			for y in h:
-				img.set_pixel(x, y, c)
+				# 0 at the top row, 1 at the bottom row.
+				var v := float(y) / float(h - 1)
+				# Top third: lift toward the hot core. Bottom half: fall into shadow.
+				var shaded := c.lerp(hot, maxf(0.0, 0.55 - v * 1.8))
+				shaded = shaded.lerp(base_dark, clampf((v - 0.45) * 1.55, 0.0, 1.0))
+				img.set_pixel(x, y, shaded)
 		for x in w:
 			img.set_pixel(x, 0, WHITE_HOT)
+			img.set_pixel(x, h - 1, base_dark.lerp(VOID, 0.45))
 		_tex_cache[key] = ImageTexture.create_from_image(img)
 	return _tex_cache[key]
 
@@ -127,7 +140,10 @@ static func spaced_font(spacing: int = 3) -> FontVariation:
 ## Standard neon panel: BASE 92%, 1px LINE border, radius 6, accent outer glow.
 static func panel_box(accent: Color = CYAN, margin: float = 16.0) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
-	s.bg_color = with_alpha(BASE, 0.92)
+	# Near-opaque on purpose: at 0.92 a bright world caption or neon prop reads
+	# straight through a panel laid over the live world, and the text on both
+	# sides becomes mud. Panels win against the world they cover.
+	s.bg_color = with_alpha(BASE, 0.975)
 	s.border_color = LINE
 	s.set_border_width_all(1)
 	s.set_corner_radius_all(6)
@@ -137,15 +153,23 @@ static func panel_box(accent: Color = CYAN, margin: float = 16.0) -> StyleBoxFla
 	return s
 
 ## HUD "glass" group panel: darker, quieter glow, tighter margins.
+##
+## Round 5: 0.78 alpha over a bright floor (the gold vault slab, the pink bazaar
+## plaza) left HUD text competing with the tiles behind it. 0.88 still reads as
+## glass — the world's light bleeds through the shadow ring — but the numbers on
+## top of it are now legible over ANY background. The drop shadow doubles as a
+## dark halo that separates the panel from whatever it is sitting on.
 static func glass_box(accent: Color = CYAN, margin: float = 10.0) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
-	s.bg_color = with_alpha(BASE, 0.78)
-	s.border_color = with_alpha(LINE, 0.9)
+	s.bg_color = with_alpha(BASE, 0.88)
+	s.border_color = with_alpha(LINE, 0.95)
 	s.set_border_width_all(1)
 	s.set_corner_radius_all(6)
 	s.set_content_margin_all(margin)
-	s.shadow_color = with_alpha(accent, 0.10)
-	s.shadow_size = 8
+	# Dark, accent-TINTED halo: still reads as the panel's own neon, but it is a
+	# shadow first — that is what buys separation from a bright floor.
+	s.shadow_color = with_alpha(accent.lerp(VOID, 0.70), 0.55)
+	s.shadow_size = 10
 	return s
 
 ## Invisible stylebox (turns a PanelContainer into a pure layout node).
@@ -212,6 +236,76 @@ static func bar_fill_box(accent: Color, hot: Color = Color.TRANSPARENT) -> Style
 	return s
 
 # ----------------------------------------------------------- apply helpers ----
+## The near-black the whole UI outlines against. Not pure black — pure black on a
+## neon-lit frame reads as a hole; VOID reads as the world's own shadow.
+const OUTLINE_COL := Color(0.02, 0.024, 0.055, 0.92)
+
+## Readability floor for any text that can end up over the world.
+##
+## A stylebox can be dimmed by an overlay, a bright floor can eat a 92%-alpha
+## panel, but a 3-4px outline survives both — it is the cheapest guarantee in the
+## whole UI that a number stays a number. Additive helper: nothing that already
+## sets its own outline is disturbed unless it calls this.
+static func outline_text(c: Control, size: int = 3, col: Color = OUTLINE_COL) -> void:
+	if c == null:
+		return
+	c.add_theme_color_override("font_outline_color", col)
+	c.add_theme_constant_override("outline_size", size)
+
+## Tier tokens for HUD hierarchy. LOUD = vitals + current objective (the two
+## things that decide your next second), MID = resources, QUIET = flavor/status.
+## Callers get one place to change "how loud is this class of information".
+const TIER_LOUD := 1.0
+const TIER_MID := 0.88
+const TIER_QUIET := 0.62
+
+## Apply a tier to a label: opacity carries the hierarchy, so the same colour
+## token can serve all three tiers without inventing new palette entries.
+static func tier(c: Control, level: float) -> void:
+	if c == null:
+		return
+	c.modulate = Color(1, 1, 1, level)
+
+## One-shot additive flash over a control (damage, spend, "you can't afford it").
+## Reuses a single child ColorRect per host so repeat hits don't leak nodes.
+static func flash_over(host: Control, col: Color, strength: float = 0.35,
+		dur: float = 0.30) -> void:
+	if host == null or not host.is_inside_tree():
+		return
+	var fx := host.get_node_or_null("_ThemeFlash") as ColorRect
+	if fx == null:
+		fx = ColorRect.new()
+		fx.name = "_ThemeFlash"
+		fx.material = additive_material()
+		fx.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		host.add_child(fx)
+		fx.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	fx.color = with_alpha(col, strength)
+	var old: Variant = fx.get_meta("_tw") if fx.has_meta("_tw") else null
+	if old is Tween and (old as Tween).is_valid():
+		(old as Tween).kill()
+	var t := fx.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	t.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	t.tween_property(fx, "color:a", 0.0, dur)
+	fx.set_meta("_tw", t)
+
+## Scale punch on a control the layout owns. Containers drive position and size
+## but never touch `scale`, so this is safe on a child of any container.
+## (Typed Control, not CanvasItem: `scale` and `pivot_offset` are not declared on
+## CanvasItem, and a static type error there would kill every caller.)
+static func punch(node: Control, amount: float = 1.08, dur: float = 0.22) -> void:
+	if node == null or not node.is_inside_tree():
+		return
+	node.pivot_offset = node.size * 0.5
+	var old: Variant = node.get_meta("_punch_tw") if node.has_meta("_punch_tw") else null
+	if old is Tween and (old as Tween).is_valid():
+		(old as Tween).kill()
+	node.scale = Vector2.ONE * amount
+	var t := node.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	t.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	t.tween_property(node, "scale", Vector2.ONE, dur)
+	node.set_meta("_punch_tw", t)
+
 ## Full button treatment: state boxes, font colors, hover scale micro-motion.
 static func style_button(btn: Button, accent: Color = CYAN, font_size: int = 17) -> void:
 	var boxes := button_boxes(accent)
@@ -311,6 +405,11 @@ static func make_vignette(edge: Color) -> TextureRect:
 
 # ------------------------------------------------------------ micro-motion ----
 ## Panel entrance: fade + scale-up, 0.25s TRANS_CUBIC. Pause-proof.
+## CAUTION: this drives `modulate:a` from 0. Any other tween on the SAME node's
+## alpha (a glow pulse, a stagger) will capture 0 as its own start value and the
+## panel will end up riding the slower curve -- this is what left the Dream App
+## console sitting at ~30% opacity. Start such pulses AFTER the entrance, and
+## pin them with .from().
 static func open_panel(ctrl: Control) -> void:
 	ctrl.pivot_offset = ctrl.size * 0.5
 	# Containers may not have a size yet on the _ready frame; keep the pivot
@@ -329,17 +428,36 @@ static func open_panel(ctrl: Control) -> void:
 ## Rows fade in one after another (0.06s apart). Modulate only — containers
 ## own their children's positions, so we don't fight the layout.
 static func stagger_rows(container: Node, step: float = 0.06, base_delay: float = 0.05) -> void:
-	var i := 0
+	# The cascade is BOUNDED: `step` is the ideal per-row delay, but the whole
+	# reveal always finishes inside CASCADE_MAX. An unbounded step * i meant a
+	# 20-row list was still arriving a second later, and a panel captured (or
+	# read) in that window looks like a list fading to nothing over an empty
+	# lower half -- which is exactly how it was reported on the world map.
+	var rows: Array[Control] = []
 	for c in container.get_children():
-		if not (c is Control) or not (c as Control).visible:
-			continue
-		var ctrl := c as Control
+		if c is Control and (c as Control).visible:
+			rows.append(c as Control)
+	if rows.is_empty():
+		return
+	var use_step := step
+	if rows.size() > 1:
+		use_step = minf(step, CASCADE_MAX / float(rows.size() - 1))
+	var i := 0
+	for ctrl: Control in rows:
 		ctrl.modulate.a = 0.0
 		var t := ctrl.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		t.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
-		t.tween_interval(base_delay + step * i)
-		t.tween_property(ctrl, "modulate:a", 1.0, T_STD)
+		t.tween_interval(base_delay + use_step * i)
+		# .from(0.0) pins the start value. Without it a row that another tween
+		# is already driving inherits ITS current alpha and rides the wrong
+		# curve -- the bug class that left the Dream App console at ~30%.
+		t.tween_property(ctrl, "modulate:a", 1.0, T_STD).from(0.0)
 		i += 1
+
+## Longest a staggered reveal may take from first row to last, whatever the
+## row count. Past this the animation stops reading as polish and starts
+## reading as a rendering fault.
+const CASCADE_MAX := 0.30
 
 # ------------------------------------------------------------------- theme ----
 static func create(accent: Color = CYAN) -> Theme:

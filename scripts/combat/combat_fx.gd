@@ -17,6 +17,7 @@ extends RefCounted
 ## See docs/VISUAL_BIBLE.md — overbright modulate (>1.0) is how things bloom.
 
 const HEAT_HAZE_PATH := "res://assets/shaders/heat_haze.gdshader"
+const DISSOLVE_PATH := "res://assets/shaders/dissolve.gdshader"
 
 ## Depth bands. The world y-sorts its props to `int(pos.y + half)`, topping out
 ## near 1050, and WorldLabel plates sit at 1150 — that file's own docs say world
@@ -27,6 +28,28 @@ const HEAT_HAZE_PATH := "res://assets/shaders/heat_haze.gdshader"
 const Z_GROUND := -2    # telegraph markers, scorch — painted ON the floor
 const Z_FX := 1180      # rings, beams, sparks, shields, afterimage bias
 const Z_TEXT := 1220    # damage numbers, callouts, error-text shards
+
+## How many FULL layered impacts may be drawn in one physics frame before the
+## rest fall back to the cheap core. See `impact()`.
+const IMPACT_FULL_PER_FRAME := 4
+static var _impact_frame := -1
+static var _impact_count := 0
+
+## Above this `power`, a NON-crit hit is heavy enough to earn hit-stop.
+##
+## Calibrated against the real weapon table, not against the idea of one.
+## `impact()`'s callers normalise power as damage/18, and the ordinary Prompt
+## Blast is 25 damage before any multiplier — power 1.39. A threshold of 1.3
+## therefore froze the clock on EVERY basic shot that landed, roughly twice a
+## second at BLAST_CADENCE's floor, which reads as the game stuttering rather
+## than as weight. 1.9 means damage >= ~34: a heavily buffed lance, an elite
+## slam, a boss's own blow. Crits are unaffected — they always freeze, and they
+## are 14% of shots, which is the rhythm hit-stop is FOR.
+const HEAVY_HIT_POWER := 1.9
+
+## Meta key marking a corpse whose kill beat has already played. See
+## `kill_pop_once()`.
+const KILL_POP_META := "fx_kill_popped"
 
 static var _ring_cache: Dictionary = {}
 static var _hex_cache: Dictionary = {}
@@ -124,19 +147,35 @@ static func _ok(host: Node) -> bool:
 
 ## Expanding overbright ring. Points are a cached unit circle; the node scales
 ## and the stroke thins so the ring stays a ring instead of a growing donut.
+##
+## `glow` (optional, 0 = off) adds a wide, dim companion ring drawn behind the
+## hot one. Without it a ring is a wireframe circle; with it the ring has a
+## halo, which is the difference between "a circle appeared" and "something
+## detonated". Existing callers are unaffected — the default is off.
 static func ring(host: Node, pos: Vector2, color: Color, r_start: float, r_end: float,
 		duration: float = 0.34, width_start: float = 7.0, width_end: float = 1.5,
-		segments: int = 36) -> void:
+		segments: int = 36, glow: float = 0.0) -> void:
 	if not _ok(host):
 		return
+	if glow > 0.0:
+		_ring_line(host, pos, color, r_start, r_end, duration * 1.15,
+			width_start * 2.8 * glow, width_end * 3.4 * glow,
+			maxi(segments / 2, 12), 0.26, Z_FX - 3)
+	_ring_line(host, pos, color, r_start, r_end, duration, width_start, width_end, segments, 0.95, Z_FX)
+
+## The single stroke behind `ring()`. Split out so a ring can be drawn twice —
+## once wide and dim, once tight and hot — without duplicating the tween setup.
+static func _ring_line(host: Node, pos: Vector2, color: Color, r_start: float, r_end: float,
+		duration: float, width_start: float, width_end: float,
+		segments: int, alpha: float, z: int) -> void:
 	var line := Line2D.new()
 	line.points = ring_points(segments)
 	line.joint_mode = Line2D.LINE_JOINT_ROUND
 	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	line.end_cap_mode = Line2D.LINE_CAP_ROUND
 	line.material = FxLib.additive_material()
-	line.default_color = Color(color.r * 2.1, color.g * 2.1, color.b * 2.1, 0.95)
-	line.z_index = Z_FX
+	line.default_color = Color(color.r * 2.1, color.g * 2.1, color.b * 2.1, alpha)
+	line.z_index = z
 	line.scale = Vector2.ONE * maxf(r_start, 0.01)
 	line.width = width_start / maxf(r_start, 0.01)
 	host.add_child(line)
@@ -148,15 +187,18 @@ static func ring(host: Node, pos: Vector2, color: Color, r_start: float, r_end: 
 	tw.parallel().tween_property(line, "modulate:a", 0.0, duration).set_ease(Tween.EASE_IN)
 	tw.tween_callback(line.queue_free)
 
-## Two nested rings + a white-hot core flash. The default "something important
-## just happened here" punctuation mark.
+## Two nested rings + a white-hot core flash + a light that exists for a quarter
+## of a second. The default "something important just happened here" punctuation
+## mark.
 static func shockwave(host: Node, pos: Vector2, color: Color, radius: float,
 		duration: float = 0.38) -> void:
 	if not _ok(host):
 		return
-	ring(host, pos, color, radius * 0.14, radius, duration, 9.0, 1.5)
+	ring(host, pos, color, radius * 0.14, radius, duration, 9.0, 1.5, 36, 1.0)
 	ring(host, pos, Color(1, 1, 1), radius * 0.10, radius * 0.62, duration * 0.7, 5.0, 1.0, 24)
 	FxLib.flash(host, pos, color, 0.25, radius / 46.0, duration * 0.55, Z_FX)
+	FxLib.flare(host, pos, FxLib.vivid(color), clampf(radius / 130.0, 0.5, 2.4),
+		clampf(radius / 150.0, 0.35, 1.8), duration * 0.9)
 
 ## A squashed ring, oriented along `dir` — the "force ripple" a dash or a punch
 ## leaves behind. Reads as directional force instead of a generic pop.
@@ -181,6 +223,148 @@ static func ripple(host: Node, pos: Vector2, dir: Vector2, color: Color, radius:
 	tw.parallel().tween_property(line, "width", 0.06, duration)
 	tw.parallel().tween_property(line, "modulate:a", 0.0, duration)
 	tw.tween_callback(line.queue_free)
+
+# --------------------------------------------------------------- impact ----
+
+## Short tapered spikes stabbing outward from a point. Assembled under ONE root
+## so the whole star costs a single tween no matter how many spikes it has.
+##
+## Why this exists: a particle spray reads as FUZZ at game zoom on a dark floor,
+## and a ring reads as a boundary. Neither reads as force. Hard-edged spikes
+## that punch out and vanish do, and they survive the bloom pass instead of
+## being eaten by it.
+static func spike_star(host: Node, pos: Vector2, color: Color, count: int = 6,
+		length: float = 42.0, duration: float = 0.20, dir: Vector2 = Vector2.ZERO,
+		spread: float = TAU) -> Node2D:
+	if not _ok(host):
+		return null
+	var n: int = clampi(count, 1, 10)
+	var root := Node2D.new()
+	root.z_index = Z_FX + 2
+	root.material = FxLib.additive_material()
+	host.add_child(root)
+	root.global_position = pos
+	var base_a: float = dir.angle() if dir.length_squared() > 0.0001 else randf() * TAU
+	var hot := Color(color.r * 2.4, color.g * 2.4, color.b * 2.4, 1.0)
+	var w: float = maxf(1.8, length * 0.10)
+	for i in n:
+		var a: float = base_a - spread * 0.5 + spread * (float(i) + randf() * 0.7) / float(n)
+		var len_i: float = length * randf_range(0.58, 1.0)
+		var spike := Polygon2D.new()
+		spike.polygon = PackedVector2Array([
+			Vector2(length * 0.16, -w), Vector2(len_i, 0.0), Vector2(length * 0.16, w)])
+		spike.color = hot
+		spike.rotation = a
+		spike.use_parent_material = true
+		root.add_child(spike)
+	root.scale = Vector2(0.26, 0.26)
+	var tw := root.create_tween()
+	tw.tween_property(root, "scale", Vector2.ONE, duration) \
+		.set_trans(Tween.TRANS_QUINT).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(root, "modulate:a", 0.0, duration).set_ease(Tween.EASE_IN)
+	tw.tween_callback(root.queue_free)
+	return root
+
+## THE hit. Every landed blow in the game should be able to route through this
+## one call, so hits read the same way whoever threw them. Layers, in the order
+## the eye picks them up:
+##   1. a WHITE-HOT core flash with a soft accent bloom behind it (FxLib.flash);
+##   2. a spark cone thrown BACK along the blow — sparks come off the surface
+##      that was struck, not out of the middle of the enemy;
+##   3. a spike star biased into that same cone — force, not fuzz;
+##   4. an expanding haloed ring;
+##   5. a flare light, so the room reacts to the hit;
+##   6. camera trauma, and on heavy hits only, hit-stop.
+##
+## `power` is severity normalised so 1.0 is "a solid hit"; callers can pass
+## damage / a reference chunk. A crit is deliberately not "the same event
+## slightly bigger" — it gets roughly double the geometry, a white inner ring,
+## a directional force ripple, and the only guaranteed freeze.
+static func impact(host: Node, pos: Vector2, dir: Vector2, color: Color,
+		power: float = 1.0, crit: bool = false, allow_hit_stop: bool = true) -> void:
+	if not _ok(host):
+		return
+	var p: float = clampf(power, 0.35, 2.2)
+	var back := Vector2.ZERO
+	if dir.length_squared() > 0.0001:
+		back = -dir.normalized()
+	var big: float = 1.65 if crit else 1.0
+	var aimed: bool = back != Vector2.ZERO
+	# Density governor. One AoE landing on six enemies calls this six times in a
+	# single physics flush; past the fourth, the extra sparks, spikes and lights
+	# are physically on top of each other and nobody can tell them apart, so the
+	# tail of the burst drops to the cheap core (flash + ring) and keeps the
+	# frame. Crits are never demoted — a crit you cannot see is a bug.
+	var frame := Engine.get_physics_frames()
+	if frame != _impact_frame:
+		CombatFx._impact_frame = frame
+		CombatFx._impact_count = 0
+	CombatFx._impact_count += 1
+	var full: bool = crit or _impact_count <= IMPACT_FULL_PER_FRAME
+	FxLib.flash(host, pos, color, 0.26 * big, (1.9 + 1.2 * p) * big, 0.19 + 0.06 * p, Z_FX)
+	ring(host, pos, color, 3.0, (24.0 + 15.0 * p) * big, 0.22 + 0.06 * p, 6.0, 1.0, 24, 1.0)
+	if full:
+		FxLib.burst(host, pos, Color(color.r * 2.1, color.g * 2.1, color.b * 2.1),
+			int((8.0 + 8.0 * p) * (2.0 if crit else 1.0)),
+			(190.0 + 110.0 * p) * (1.35 if crit else 1.0),
+			FxLib.spark(), Vector2(0, 70.0), Z_FX,
+			back, (54.0 if aimed else 180.0), 0.34, (1.25 if crit else 1.0))
+		spike_star(host, pos, color, (7 if crit else 4), (26.0 + 16.0 * p) * big,
+			(0.24 if crit else 0.17), back, (PI * 1.25 if aimed else TAU))
+		FxLib.flare(host, pos, FxLib.vivid(color), (1.0 + 0.6 * p) * big, 0.5 * p * big, 0.22)
+	if crit:
+		ring(host, pos, Color(1, 1, 1), 2.0, 18.0 + 30.0 * p, 0.19, 4.0, 0.8, 20)
+		if aimed:
+			ripple(host, pos, -back, color, 58.0 + 30.0 * p, 0.28)
+	var tree := host.get_tree()
+	FxLib.add_trauma(tree, clampf(0.10 * p, 0.05, 0.30) * (1.9 if crit else 1.0))
+	if allow_hit_stop and (crit or p >= HEAVY_HIT_POWER):
+		FxLib.hit_stop(tree, (0.07 if crit else 0.15), (0.055 if crit else 0.030))
+
+## The payoff for a KILL, as opposed to a hit. The world implodes toward the
+## corpse for one beat, then detonates outward — cause and effect, ~90ms apart,
+## which is long enough to read and short enough to still feel like one event.
+## Nothing here touches the corpse, so the dying thing can leave on its own
+## schedule while this plays out on the region.
+static func kill_pop(host: Node, pos: Vector2, color: Color, power: float = 1.0) -> void:
+	if not _ok(host):
+		return
+	var p: float = clampf(power, 0.5, 2.5)
+	# In: a ring collapsing onto the corpse, plus motes dragged inward.
+	ring(host, pos, Color(1, 1, 1), 62.0 * p, 5.0, 0.13, 1.0, 5.0, 20)
+	var t := host.create_tween()
+	t.tween_interval(0.09)
+	# Every call inside the lambda is qualified with the class name. A lambda in a
+	# static function has no `self` to hang an unqualified member call on, and a
+	# resolution failure in THIS file takes the whole game down without failing a
+	# single test (HANDOVER gotcha 6b). CombatFx.x costs nothing and cannot fail.
+	t.tween_callback(func() -> void:
+		if not CombatFx._ok(host):
+			return
+		CombatFx.shockwave(host, pos, color, 86.0 * p, 0.40)
+		CombatFx.spike_star(host, pos, color, 8, 50.0 * p, 0.26)
+		FxLib.burst(host, pos, Color(color.r * 2.3, color.g * 2.3, color.b * 2.3),
+			int(14.0 * p), 280.0 * p, FxLib.spark(), Vector2(0, 240.0), Z_FX,
+			Vector2.ZERO, 180.0, 0.5, 1.15))
+
+## `kill_pop`, but at most ONCE for `victim`. A single enemy can be reported dead
+## by more than one caller: the bolt's own area callback and the enemy's hitbox
+## callback both fire in the same physics flush, a second bolt can reach a corpse
+## before it finishes its 0.45s teardown (the hitbox stays live), and enemy_base
+## may one day fire its own beat for kills no bolt caused. Two implosions and two
+## detonations 16ms apart read as a rendering glitch, not as a bigger kill.
+##
+## The flag rides on the corpse itself rather than in a static table, so it costs
+## nothing, needs no pruning, and is freed with the thing it describes — it
+## cannot become state that survives a new game.
+static func kill_pop_once(victim: Object, host: Node, pos: Vector2, color: Color,
+		power: float = 1.0) -> void:
+	if victim == null or not is_instance_valid(victim):
+		return
+	if victim.has_meta(KILL_POP_META):
+		return
+	victim.set_meta(KILL_POP_META, true)
+	kill_pop(host, pos, color, power)
 
 # ---------------------------------------------------------------- beams ----
 
@@ -432,6 +616,24 @@ static func strike_arc(host: Node, pos: Vector2, dir: Vector2, color: Color,
 
 # ---------------------------------------------------------- afterimages ----
 
+## The texture a sprite is showing RIGHT NOW — Sprite2D or AnimatedSprite2D.
+## Null for anything else, for a frameless animation, or for a freed node, so
+## every caller must tolerate null. This is what lets a death animation be built
+## out of copies parented to the ROOM: the corpse can leave on its own 0.45s
+## budget while its remains keep moving.
+static func frame_texture(src: Node2D) -> Texture2D:
+	if src == null or not is_instance_valid(src):
+		return null
+	if src is AnimatedSprite2D:
+		var a := src as AnimatedSprite2D
+		if a.sprite_frames == null or not a.sprite_frames.has_animation(a.animation):
+			return null
+		return a.sprite_frames.get_frame_texture(a.animation, a.frame)
+	if src is Sprite2D:
+		return (src as Sprite2D).texture
+	return null
+
+
 ## A frozen, overbright copy of a sprite — the smear a fast thing leaves behind.
 ## Handles both Sprite2D and AnimatedSprite2D sources; silently no-ops for
 ## anything else (or a frameless animation).
@@ -442,20 +644,10 @@ static func afterimage(host: Node, src: Node2D, color: Color, duration: float = 
 		offset: Vector2 = Vector2.ZERO, z_bias: int = -1) -> Sprite2D:
 	if not _ok(host) or src == null or not is_instance_valid(src):
 		return null
-	var tex: Texture2D = null
-	var flip := false
-	if src is AnimatedSprite2D:
-		var a := src as AnimatedSprite2D
-		if a.sprite_frames == null or not a.sprite_frames.has_animation(a.animation):
-			return null
-		tex = a.sprite_frames.get_frame_texture(a.animation, a.frame)
-		flip = a.flip_h
-	elif src is Sprite2D:
-		var s := src as Sprite2D
-		tex = s.texture
-		flip = s.flip_h
+	var tex := frame_texture(src)
 	if tex == null:
 		return null
+	var flip: bool = src.get("flip_h") == true
 	var ghost := Sprite2D.new()
 	ghost.texture = tex
 	ghost.flip_h = flip
@@ -491,6 +683,230 @@ static func speed_lines(host: Node, pos: Vector2, dir: Vector2, color: Color, co
 		var tw := line.create_tween()
 		tw.tween_property(line, "modulate:a", 0.0, randf_range(0.14, 0.26))
 		tw.tween_callback(line.queue_free)
+
+# --------------------------------------------------------------- deaths ----
+## Per-type death treatments. The enemies in this game are bugs, rate limiters,
+## merge conflicts and scope creep, and a generic dissolve throws away the whole
+## joke — a merge conflict should come apart into two halves that disagree, and
+## scope creep should let out all the air it spent the fight taking in.
+##
+## Every treatment builds host-parented COPIES of the sprite (see
+## `frame_texture`), so it is completely independent of the corpse's own
+## teardown: enemy_base can keep freeing itself inside its 0.45s budget and
+## these keep playing on the region afterwards. Nothing here touches `src`.
+
+## Which flourish each enemy type gets. Unknown types fall through to the
+## dissolve, so a new enemy is never worse off than it is today.
+const DEATH_STYLES := {
+	"bug": "shatter",
+	"merge_conflict": "split",
+	"scope_creep": "deflate",
+	"memory_leak": "deflate",
+	"rate_limiter": "shatter",
+	"hallucination": "glitch",
+	"cloud_bill": "deflate",
+	"dependency_demon": "shatter",
+	"enterprise_architect": "shatter",
+	"legacy_monolith": "shatter",
+	"legacy_system": "shatter",
+	"null_reference": "glitch",
+	"infinite_context": "glitch",
+}
+
+## RGB-split tints for `glitch_out`. Const so the loop below can annotate the
+## element type and keep inference alive (untyped literals make Variants).
+const GLITCH_TINTS := [
+	Color(2.4, 0.35, 0.55, 0.7),
+	Color(0.35, 2.3, 0.95, 0.7),
+	Color(0.45, 0.70, 2.5, 0.7),
+]
+
+## One host-parented copy of `src`'s current frame, at its current transform.
+## Plain blending (not additive), because a corpse coming apart is matter, not
+## light. Returns null when there is nothing to copy.
+static func _corpse_ghost(host: Node, src: Node2D, z_bias: int = 0) -> Sprite2D:
+	var tex := frame_texture(src)
+	if not _ok(host) or tex == null:
+		return null
+	var g := Sprite2D.new()
+	g.texture = tex
+	g.flip_h = src.get("flip_h") == true
+	host.add_child(g)
+	g.global_position = src.global_position
+	g.scale = src.global_scale
+	g.rotation = src.global_rotation
+	g.z_index = int(g.global_position.y) + z_bias
+	return g
+
+## Dispatch the treatment for `kind` (an enemy_type). Safe to call for anything;
+## unknown types dissolve. This is the single entry point callers need.
+static func death_treatment(host: Node, src: Node2D, kind: String, color: Color,
+		duration: float = 0.5) -> void:
+	if not _ok(host) or src == null or not is_instance_valid(src):
+		return
+	var style: String = str(DEATH_STYLES.get(kind, "dissolve"))
+	match style:
+		"shatter":
+			shatter(host, src, color, 3, duration + 0.12)
+		"deflate":
+			deflate(host, src, color, duration + 0.06)
+		"split":
+			split_ghosts(host, src, color, duration)
+		"glitch":
+			glitch_out(host, src, color, duration * 0.8)
+		_:
+			dissolve_ghost(host, src, color, duration)
+
+## Comes apart into a grid of cells that fly out and fall. The cells are real
+## regions of the enemy's own texture, so what hits the floor is recognisably
+## the thing you just killed. Used for anything that should read as BREAKING
+## (bugs, rate limiters, monoliths).
+static func shatter(host: Node, src: Node2D, color: Color, pieces: int = 3,
+		duration: float = 0.6) -> void:
+	var tex := frame_texture(src)
+	if not _ok(host) or tex == null:
+		return
+	var size: Vector2 = tex.get_size()
+	if size.x < 6.0 or size.y < 6.0:
+		return
+	var n: int = clampi(pieces, 2, 4)
+	var cw: float = size.x / float(n)
+	var ch: float = size.y / float(n)
+	var origin: Vector2 = src.global_position
+	var sc: Vector2 = src.global_scale
+	# A flipped source is reproduced by mirroring BOTH the cell's draw scale and
+	# its offset. `flip_h` per shard would mirror each cell inside itself, which
+	# scrambles the sprite instead of flipping it.
+	var mirror: float = -1.0 if src.get("flip_h") == true else 1.0
+	for gy in n:
+		for gx in n:
+			var shard := Sprite2D.new()
+			shard.texture = tex
+			shard.region_enabled = true
+			shard.region_rect = Rect2(cw * float(gx), ch * float(gy), cw, ch)
+			shard.scale = Vector2(sc.x * mirror, sc.y)
+			shard.z_index = Z_FX - 8
+			host.add_child(shard)
+			# Where this cell sat inside the sprite, converted to world space.
+			var local := Vector2(
+				((float(gx) + 0.5) * cw - size.x * 0.5) * mirror,
+				(float(gy) + 0.5) * ch - size.y * 0.5)
+			shard.global_position = origin + Vector2(local.x * sc.x, local.y * sc.y)
+			var away := Vector2(randf_range(-1.0, 1.0), -1.0)
+			if local.length_squared() > 0.01:
+				away = local.normalized()
+			var land: Vector2 = shard.global_position \
+				+ away * randf_range(22.0, 58.0) + Vector2(0.0, randf_range(18.0, 50.0))
+			var tw := shard.create_tween()
+			tw.tween_property(shard, "global_position", land, duration) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			tw.parallel().tween_property(shard, "rotation", randf_range(-2.6, 2.6), duration)
+			tw.parallel().tween_property(shard, "modulate:a", 0.0, duration).set_ease(Tween.EASE_IN)
+			tw.tween_callback(shard.queue_free)
+	ring(host, origin, color, 4.0, 46.0, 0.26, 5.0, 1.0, 20, 0.8)
+
+## Lets out all the air it spent the fight taking in: the body squashes flat and
+## spreads sideways while a jet of debris fires out of it. Scope Creep, Memory
+## Leak and the Cloud Bill all die of the same thing — being over-inflated.
+static func deflate(host: Node, src: Node2D, color: Color, duration: float = 0.55) -> void:
+	var g := _corpse_ghost(host, src, 2)
+	if g == null:
+		return
+	var base: Vector2 = g.scale
+	var pos: Vector2 = g.global_position
+	var tw := g.create_tween()
+	# One last indignant swell, then all the way down.
+	tw.tween_property(g, "scale", Vector2(base.x * 1.22, base.y * 1.12), duration * 0.18) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(g, "scale", Vector2(base.x * 1.9, base.y * 0.10), duration * 0.82) \
+		.set_trans(Tween.TRANS_QUINT).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(g, "global_position", pos + Vector2(0.0, 12.0), duration * 0.82)
+	tw.parallel().tween_property(g, "rotation", randf_range(-0.22, 0.22), duration * 0.82)
+	tw.parallel().tween_property(g, "modulate:a", 0.0, duration * 0.82).set_ease(Tween.EASE_IN)
+	tw.tween_callback(g.queue_free)
+	# The air going out, both ways, along the floor.
+	for k: float in [1.0, -1.0]:
+		FxLib.burst(host, pos + Vector2(k * 6.0, 4.0),
+			Color(color.r * 1.8, color.g * 1.8, color.b * 1.8), 7, 210.0,
+			FxLib.glow_dot(), Vector2(0.0, 40.0), Z_FX - 4,
+			Vector2(k, -0.15), 26.0, 0.5, 0.85)
+
+## Resolves into two halves that immediately disagree about which one was right.
+## The merge conflict's whole personality, played back at the moment of death.
+static func split_ghosts(host: Node, src: Node2D, color: Color, duration: float = 0.55) -> void:
+	var other := color.lerp(Color("#3D9BFF"), 0.65)
+	for k: float in [-1.0, 1.0]:
+		var g := _corpse_ghost(host, src, 1)
+		if g == null:
+			return
+		var tint: Color = color if k < 0.0 else other
+		g.modulate = Color(tint.r * 1.5 + 0.35, tint.g * 1.5 + 0.35, tint.b * 1.5 + 0.35, 0.92)
+		var pos: Vector2 = g.global_position
+		var tw := g.create_tween()
+		tw.tween_property(g, "global_position", pos + Vector2(k * 44.0, -10.0), duration) \
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(g, "rotation", k * 0.55, duration)
+		tw.parallel().tween_property(g, "scale", g.scale * 0.72, duration)
+		tw.parallel().tween_property(g, "modulate:a", 0.0, duration).set_ease(Tween.EASE_IN)
+		tw.tween_callback(g.queue_free)
+
+## Stops having ever existed: three RGB-split copies jitter apart and blink out.
+## For the things whose death is an epistemics problem — hallucinations, null
+## references, infinite context.
+static func glitch_out(host: Node, src: Node2D, color: Color, duration: float = 0.42) -> void:
+	for k in 3:
+		var g := _corpse_ghost(host, src, int(k) - 1)
+		if g == null:
+			return
+		var tint: Color = GLITCH_TINTS[k]
+		g.material = FxLib.additive_material()
+		g.modulate = tint
+		var pos: Vector2 = g.global_position
+		var base: Vector2 = g.scale
+		var tw := g.create_tween()
+		# Three hard jumps, not a slide — a glitch has no in-between frames.
+		for step in 3:
+			tw.tween_property(g, "global_position",
+				pos + Vector2(randf_range(-16.0, 16.0), randf_range(-9.0, 9.0)),
+				duration / 3.0).set_trans(Tween.TRANS_LINEAR)
+			tw.parallel().tween_property(g, "scale",
+				base * Vector2(randf_range(0.86, 1.2), randf_range(0.8, 1.14)), duration / 3.0)
+		tw.tween_callback(g.queue_free)
+		# The fade is its own tween so it spans all three jumps instead of only
+		# the last one (a `parallel()` after the loop attaches to that step).
+		var fade := g.create_tween()
+		fade.tween_property(g, "modulate:a", 0.0, duration).set_ease(Tween.EASE_IN)
+	# A single accent ring so the glitch still reads as belonging to this enemy.
+	# No caption here on purpose: enemy_base owns every word a death says
+	# (`_death_comedy`), and stacking a second line on top of "undefined" would
+	# make both unreadable. This file supplies the treatment, not the joke.
+	ring(host, src.global_position, color, 3.0, 40.0, 0.22, 4.0, 1.0, 20, 0.7)
+
+## The default: burns away through the dissolve shader, on a host-parented copy.
+## The uniform is SEEDED before the tween — a shader uniform that was never set
+## does not exist on the material and cannot be tweened (HANDOVER gotcha 2).
+## Degrades to a bright pop-fade when the shader library is absent.
+static func dissolve_ghost(host: Node, src: Node2D, color: Color, duration: float = 0.5) -> void:
+	var g := _corpse_ghost(host, src, 1)
+	if g == null:
+		return
+	var tw := g.create_tween()
+	if ResourceLoader.exists(DISSOLVE_PATH):
+		var mat := ShaderMaterial.new()
+		mat.shader = load(DISSOLVE_PATH)
+		mat.set_shader_parameter("progress", 0.0)
+		mat.set_shader_parameter("edge_color", color)
+		mat.set_shader_parameter("pixel_size", 2.0)
+		mat.set_shader_parameter("edge_width", 0.16)
+		g.material = mat
+		g.modulate = Color(1.3, 1.3, 1.3, 1.0)
+		tw.tween_property(mat, "shader_parameter/progress", 1.0, duration)
+	else:
+		g.modulate = Color(2.2, 2.2, 2.2, 1.0)
+		tw.tween_property(g, "modulate:a", 0.0, duration)
+	tw.parallel().tween_property(g, "global_position",
+		g.global_position + Vector2(0.0, -12.0), duration)
+	tw.tween_callback(g.queue_free)
 
 # ---------------------------------------------------------------- text ----
 
@@ -543,11 +959,17 @@ static func text_shards(host: Node, pos: Vector2, color: Color, words: Array, co
 		var ang := randf() * TAU
 		var dist := randf_range(38.0, 96.0)
 		var land: Vector2 = pos + Vector2(cos(ang), sin(ang) * 0.6) * dist + Vector2(0, 18)
+		# Two stages, so the shards ARC instead of sliding along a straight line
+		# to where they land: thrown up and out, then dropped. Rotation and fade
+		# run on their own tweens across the whole flight.
+		var apex: Vector2 = pos.lerp(land, 0.55) + Vector2(0, -randf_range(22.0, 44.0))
 		var tw := lbl.create_tween()
-		tw.tween_property(lbl, "global_position", land, 0.55).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
-		tw.parallel().tween_property(lbl, "rotation", randf_range(-1.1, 1.1), 0.55)
-		tw.parallel().tween_property(lbl, "modulate:a", 0.0, 0.55).set_ease(Tween.EASE_IN)
+		tw.tween_property(lbl, "global_position", apex, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(lbl, "global_position", land, 0.36).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		tw.tween_callback(lbl.queue_free)
+		var spin := lbl.create_tween()
+		spin.tween_property(lbl, "rotation", randf_range(-1.1, 1.1), 0.58)
+		spin.parallel().tween_property(lbl, "modulate:a", 0.0, 0.58).set_ease(Tween.EASE_IN)
 
 # ----------------------------------------------------------- the duck ----
 

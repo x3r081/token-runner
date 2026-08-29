@@ -5,8 +5,10 @@ class_name NPC
 ## Three layers of "this thing noticed you":
 ##   1. Presence  — breathing, a lean toward the player, a notice-pop when you
 ##                  first walk into their bubble, a rim highlight in talk range.
-##   2. Nameplate — legible above the head (never over the sprite), fading up as
-##                  you approach so distant NPCs stay silhouettes with a marker.
+##   2. Nameplate — legible above the head (never over the sprite) at ANY
+##                  distance, with a leader tying it to the character it names.
+##                  It gains a little presence as you approach; it never fades
+##                  to decoration, because a name you cannot read is not a name.
 ##   3. Barks     — short, dry, state-aware floating lines that fire when you
 ##                  walk past. Heavily throttled: one per approach, a long
 ##                  per-NPC cooldown, and a global gap so a crowd never chatters.
@@ -47,13 +49,90 @@ var _bark_gate := 0.0
 var _passes := 0
 var _accent := Color("#24F0DC")
 
+## Nameplate furniture built in code: the leader that ties the plate to the head,
+## and the deliberate lift that keeps the plate off the objective waypoint's
+## distance readout when this NPC is the one the waypoint is pointing at.
+var _name_tail: Node2D = null
+var _tail_stem: Line2D = null
+var _lift := 0.0
+var _lift_want := 0.0
+var _lift_poll := 0.0
+
 const HIGHLIGHT_RADIUS := 100.0
-## Nameplates fade up as you approach: a room full of NPCs shouldn't read like a
-## spreadsheet from across the map.
+## Nameplates gain a little presence as you approach — but the floor is a LEGIBLE
+## alpha, not a decorative one. This constant used to be 0.3, and because
+## `label.modulate` scales the whole Control it took the plate, the border, the
+## text AND its outline down with it: every quest-giver more than NAME_RADIUS
+## away was a ghost of accent-coloured text on a dark floor ("Shady API
+## Reseller", "GPU Mine Foreman", "SVP of AI Transformation Excellence" — all of
+## them unreadable in the QA frames, and all of them mistaken for props drawing
+## over the plate, which is not what was happening). A nameplate is UI. It reads
+## first and stylises second.
 const NAME_RADIUS := 340.0
-const NAME_MIN_ALPHA := 0.3
+const NAME_MIN_ALPHA := 0.88
 ## Bottom edge of the nameplate in world space — clear of the sprite's head.
 const NAME_BOTTOM_Y := -86.0
+## Where the leader line has to stop so it never draws across a character.
+##
+## Measured off the QA frames, not derived from the texture box: the 64px sprite
+## (scale 2.2, origin y -18) has transparent padding above the art, and the art
+## itself varies. In region_localhost.png Claude's hair tops out around world
+## -80; in region_api_bazaar.png the Junior Agent's antenna reaches about -82 and
+## his hair only -68. -78 therefore TOUCHES every sprite in the cast — 2 to 4
+## world px of overlap, which is what makes it read as a leader landing on a
+## character rather than a line floating near one — without reaching the face on
+## any of them. The nameplate, the notch and the stem all sit on absolute z
+## (Z_NAME band) and so paint OVER the sprite: an overshoot here is not a leader,
+## it is a scratch down somebody's portrait. The first pass used -72, which is
+## 8-10px into Claude's hair.
+const NAME_HEAD_Y := -78.0
+## Leader geometry: a bubble notch under the plate plus a hairline stem down to
+## the head, so the plate is owned by ONE npc no matter what the floor behind it
+## is doing. Without it, "The Junior Agent" reads as a caption belonging to the
+## bazaar plaza it happens to be sitting on.
+const NAME_TAIL_HALF_W := 6.0
+const NAME_TAIL_H := 7.0
+## Any accent, on a near-black plate, has to land at least this bright.
+##
+## Honest accounting, because the numbers matter: hot_of() already carries every
+## accent in NPC_ACCENT to 0.71-0.94 luma, so for today's cast this floor is a
+## no-op on eight of eleven and a 15%-toward-white nudge on the three darkest
+## (#FF2D95 reseller pink 0.707, #FF4757 on-call red 0.732, #8B5CF6 junior
+## violet 0.735). It is a guard rail for the NEXT accent somebody adds, not the
+## thing that fixed the unreadable plates — NAME_MIN_ALPHA and the plate
+## background did that.
+const NAME_MIN_LUMA := 0.74
+## objective_waypoint.gd hangs its "<name> · <n>m" readout directly above
+## whatever it is pointing at, which for an NPC objective is the same band this
+## nameplate lives in — the two-plates-on-Claude collision in
+## region_localhost.png. That plate is opaque and it is on a CanvasLayer, so it
+## wins; the only move available from here is to get out from under it.
+##
+## Derived against the CURRENT waypoint code, screen px, camera zoom 1.35:
+##
+##   target       O
+##   sp           O - 14*1.35            = O - 18.9   (its world nudge)
+##   marker       sp - BEACON_LIFT 52 - 6 = O - 76.9  (top of its +/-6 bob)
+##   plate top    marker - MARKER_CLEAR 44 - plate height (~31 at font 14
+##                plus PLATE_PAD_Y 6 twice)           = O - 151.9
+##
+## The nameplate's own bottom edge sits at (NAME_BOTTOM_Y + lift) * 1.35 above O,
+## so clearing O - 151.9 with ~15px to spare needs a lift of 38, not the 24 a
+## first pass arrived at from the OLD waypoint layout (a bare Label offset a flat
+## 40px from the marker centre — that node was rewritten this same round and its
+## readout now sits ~40px higher than it did in the QA frames).
+##
+## The whole attention stack moves as one unit and the leader stem grows to cover
+## the distance, so nothing about the plate's ownership of this NPC weakens.
+const NAME_TARGET_LIFT := 38.0
+## How often an NPC re-asks whether it is the current objective. get_current_
+## objective() builds a Dictionary, so this is deliberately not per-frame.
+const LIFT_POLL := 0.45
+## World px/sec the stack travels when the objective moves on. The step is a
+## discrete event but a 51-screen-px teleport reads as a glitch, so it eases —
+## with move_toward rather than a Tween, because tweens freeze under pause and
+## this one would freeze mid-flight (HANDOVER gotcha 4).
+const LIFT_RATE := 190.0
 ## Leaning/noticing starts a little outside bark range.
 const NOTICE_RADIUS := 250.0
 ## Walk this close and they say something. Leave past BARK_RESET to re-arm.
@@ -66,8 +145,11 @@ const BARK_AFTER_TALK := 11.0
 const BARK_GLOBAL_GAP := 3.2
 const BARK_HOLD := 3.4
 ## World-space y of the bark bubble's bottom edge (sprite tops out near -80,
-## nameplate occupies -108..-86, so the bubble stacks cleanly above both).
-const BARK_BOTTOM_Y := -114.0
+## nameplate occupies roughly -110..-86, so the bubble stacks cleanly above both).
+const BARK_BOTTOM_Y := -118.0
+## Resting y of the quest marker, above the nameplate. Lifted with the rest of
+## the stack when this NPC is the tracked objective.
+const INDICATOR_Y := -140.0
 
 ## Depth. The world y-sorts by z_index (props take int(y + half), the player
 ## takes int(y)), so anything left at the scene default z=0 is painted over by
@@ -136,6 +218,12 @@ func _ready() -> void:
 	_build_bark_bubble()
 	_ind_base_y = indicator.position.y if indicator else 0.0
 	_update_indicator()
+	# Resolve the waypoint offset once at spawn so an NPC that is ALREADY the
+	# tracked objective (Claude, every single new run) never renders one frame
+	# with its plate sitting on the waypoint's distance readout. Instant here:
+	# there is nothing to ease FROM on the first frame.
+	_refresh_lift(true)
+	_lift_poll = randf_range(0.1, LIFT_POLL)  # desync a room's worth of polls
 
 ## The nameplate used to sit at -50..-30 in a fixed 120px box, i.e. directly
 ## across the NPC's chest AND too narrow for "SVP of AI Transformation
@@ -153,45 +241,130 @@ func _setup_nameplate() -> void:
 	label.z_as_relative = false
 	label.z_index = Z_NAME
 	label.add_theme_stylebox_override("normal", _nameplate_box())
-	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_font_size_override("font_size", 13)
 	label.add_theme_font_override("font", _GameTheme.spaced_font(1))
-	label.add_theme_color_override("font_color", _GameTheme.hot_of(_accent))
+	label.add_theme_color_override("font_color", _plate_text_color())
 	label.add_theme_color_override("font_outline_color", Color(0.02, 0.024, 0.055, 0.95))
-	label.add_theme_constant_override("outline_size", 5)
+	# The plate carries the contrast now, so the outline only has to crisp the
+	# glyph edges. A 5px outline at 13px type reads as a smudge, not as weight.
+	label.add_theme_constant_override("outline_size", 3)
 	label.modulate.a = NAME_MIN_ALPHA
+	_build_name_tail()
 	# Measured, not guessed: reset_size() takes the font's real extents plus the
 	# plate margins, which is the only way a nameplate can never clip.
 	label.reset_size()
 	label.resized.connect(_place_nameplate)
 	_place_nameplate()
 
+## Accent hue, forced up to a legible luminance. Linear in the lerp parameter, so
+## the exact blend is solved rather than searched.
+func _plate_text_color() -> Color:
+	var c := _GameTheme.hot_of(_accent)
+	var w := _GameTheme.WHITE_HOT
+	var lc := _luma(c)
+	if lc >= NAME_MIN_LUMA:
+		return c
+	var lw := _luma(w)
+	if lw <= lc:
+		return c
+	return c.lerp(w, clampf((NAME_MIN_LUMA - lc) / (lw - lc), 0.0, 1.0))
+
+func _luma(c: Color) -> float:
+	return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+
 ## Compact dark plate, 1px accent hairline. Deliberately quieter than the bark
 ## bubble: a name is a label, a bark is a statement.
+##
+## The plate is near-opaque and carries its own dark drop halo. That halo is what
+## lets the plate survive being drawn against the brightest things in the game —
+## the bazaar's lit plaza tiles, cloud_district's white satellite dishes,
+## dependency_district's overbright node_modules crystals — instead of dissolving
+## into them.
 func _nameplate_box() -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
-	s.bg_color = _GameTheme.with_alpha(_GameTheme.BASE, 0.74)
-	s.border_color = _GameTheme.with_alpha(_accent, 0.5)
+	s.bg_color = _GameTheme.with_alpha(_GameTheme.BASE, 0.93)
+	s.border_color = _GameTheme.with_alpha(_accent, 0.85)
 	s.set_border_width_all(1)
 	s.set_corner_radius_all(4)
 	s.content_margin_left = 9.0
 	s.content_margin_right = 9.0
-	s.content_margin_top = 2.0
-	s.content_margin_bottom = 2.0
+	s.content_margin_top = 3.0
+	s.content_margin_bottom = 3.0
+	s.shadow_color = _GameTheme.with_alpha(_GameTheme.VOID, 0.62)
+	s.shadow_size = 6
 	return s
 
-func _place_nameplate() -> void:
-	if not is_instance_valid(label):
+## The leader: a bubble notch bolted to the plate's bottom edge and a hairline
+## stem running down to the top of the head. Built once, resized only when the
+## plate moves.
+func _build_name_tail() -> void:
+	if is_instance_valid(_name_tail):
 		return
-	var sz: Vector2 = label.size
-	label.position = Vector2(-sz.x * 0.5, NAME_BOTTOM_Y - sz.y)
+	_name_tail = Node2D.new()
+	_name_tail.name = "NameTail"
+	_name_tail.z_as_relative = false
+	_name_tail.z_index = Z_NAME - 1
+	_name_tail.modulate.a = NAME_MIN_ALPHA
+	add_child(_name_tail)
+
+	_tail_stem = Line2D.new()
+	_tail_stem.name = "TailStem"
+	_tail_stem.width = 2.0
+	# 0.45 was fine for the 7px stub the stem is at rest. Lifted it spans ~39
+	# world px and is the only thing saying which character the floating plate
+	# belongs to, so it has to survive a neon floor behind it.
+	_tail_stem.default_color = _GameTheme.with_alpha(_accent, 0.62)
+	_tail_stem.points = PackedVector2Array([Vector2(0, NAME_TAIL_H), Vector2(0, NAME_TAIL_H)])
+	_name_tail.add_child(_tail_stem)
+
+	var notch := Polygon2D.new()
+	notch.name = "TailNotch"
+	notch.polygon = PackedVector2Array([
+		Vector2(-NAME_TAIL_HALF_W, 0.0),
+		Vector2(NAME_TAIL_HALF_W, 0.0),
+		Vector2(0.0, NAME_TAIL_H)])
+	notch.color = _GameTheme.with_alpha(_accent, 0.85)
+	_name_tail.add_child(notch)
+
+## Bottom edge of the plate right now — the default height, or lifted clear of
+## the objective waypoint's readout while this NPC is the tracked objective.
+func _name_bottom() -> float:
+	return NAME_BOTTOM_Y - _lift
+
+func _place_nameplate() -> void:
+	if is_instance_valid(label):
+		var sz: Vector2 = label.size
+		label.position = Vector2(-sz.x * 0.5, _name_bottom() - sz.y)
+	if is_instance_valid(_name_tail):
+		_name_tail.position = Vector2(0.0, _name_bottom())
+		# The stem stretches to absorb the lift, so the plate never floats free of
+		# the character it names. Whole-array assignment rather than
+		# set_point_position(): `points` is the form the rest of this codebase
+		# uses (combat_fx.gd, enemy_base.gd, projectile.gd) and a member that
+		# turns out not to exist here would silently kill every NPC.
+		if is_instance_valid(_tail_stem):
+			var tip := maxf(NAME_TAIL_H, NAME_HEAD_Y - _name_bottom())
+			_tail_stem.points = PackedVector2Array([
+				Vector2(0.0, NAME_TAIL_H), Vector2(0.0, tip)])
+
+## One deliberate offset for the whole attention stack — plate, leader, quest
+## marker and bark all move together, so their spacing is preserved exactly.
+func _set_lift(v: float) -> void:
+	if is_equal_approx(_lift, v):
+		return
+	_lift = v
+	_place_nameplate()
+	_place_bark()
+	if is_instance_valid(indicator):
+		_ind_base_y = INDICATOR_Y - _lift
 
 ## The quest indicator used to be a textureless (invisible) sprite. Give it an
 ## actual "!" over an overbright gold halo, so open quests advertise themselves.
 func _build_indicator_glow() -> void:
 	if not is_instance_valid(indicator):
 		return
-	# Clear of the nameplate, which now owns -108..-86.
-	indicator.position = Vector2(0, -134)
+	# Clear of the nameplate, which owns roughly -110..-86 at rest.
+	indicator.position = Vector2(0, INDICATOR_Y - _lift)
 	indicator.z_as_relative = false
 	indicator.z_index = Z_MARKER
 	var dot := FxLib.glow_dot()
@@ -241,7 +414,7 @@ func _place_bark() -> void:
 		return
 	var sz: Vector2 = _bark_panel.size
 	_bark_panel.pivot_offset = Vector2(sz.x * 0.5, sz.y)
-	_bark_panel.position = Vector2(-sz.x * 0.5, BARK_BOTTOM_Y - sz.y)
+	_bark_panel.position = Vector2(-sz.x * 0.5, BARK_BOTTOM_Y - _lift - sz.y)
 
 func _setup_sprite() -> void:
 	var kind: String = NPC_KIND.get(npc_id, "maintainer")
@@ -306,11 +479,30 @@ func _animate_sprite(delta: float, dist: float, dx: float) -> void:
 		sprite.self_modulate = Color.WHITE
 
 func _animate_nameplate(delta: float, dist: float) -> void:
+	# The waypoint can retarget without any quest signal firing (objective steps
+	# advance inside a quest), so the offset is re-checked on a slow timer rather
+	# than trusted to _on_quest_changed alone.
+	_lift_poll -= delta
+	if _lift_poll <= 0.0:
+		_lift_poll = LIFT_POLL
+		_refresh_lift()
+	if not is_equal_approx(_lift, _lift_want):
+		_set_lift(move_toward(_lift, _lift_want, delta * LIFT_RATE))
 	if not is_instance_valid(label):
 		return
 	var want := 1.0 if dist < NAME_RADIUS else 0.0
 	_name_gate = move_toward(_name_gate, want, delta * 3.0)
-	label.modulate.a = lerpf(NAME_MIN_ALPHA, 1.0, _name_gate)
+	var a := lerpf(NAME_MIN_ALPHA, 1.0, _name_gate)
+	label.modulate.a = a
+	if is_instance_valid(_name_tail):
+		_name_tail.modulate.a = a
+
+## The plate steps up only while the objective waypoint is parked on this NPC —
+## which is the one and only case where a second plate shares its band.
+func _refresh_lift(instant: bool = false) -> void:
+	_lift_want = NAME_TARGET_LIFT if _is_objective_target() else 0.0
+	if instant:
+		_set_lift(_lift_want)
 
 func _animate_indicator(delta: float) -> void:
 	if not is_instance_valid(indicator):
@@ -337,6 +529,7 @@ func _on_interact(_player: Node) -> void:
 ## indicators went stale after turn-ins.
 func _on_quest_changed(_a = null, _b = null) -> void:
 	_update_indicator()
+	_refresh_lift()
 
 ## Gold "!" = this NPC is holding a quest you have not taken.
 ## Cyan "▸" = this NPC is literally the current objective. Either way the marker

@@ -13,6 +13,12 @@ const ROOM_W := 25   # tiles -> 1600 px
 const ROOM_H := 16   # tiles -> 1024 px
 const WALL_LAYER := 32
 
+## Where a cable run sits in the depth stack: above the boards, their grime and
+## the light pools (-100..-86), below the walls (-60..-55) and below every prop
+## (props sort to positive depth-z). Cables are what the room was built ON, so
+## nothing in the room is ever drawn behind them.
+const CABLE_Z := -80
+
 ## One-time caches, mirroring RegionBuilder's (duplicated on purpose: this file
 ## is preloaded BY region_builder.gd, so leaning on its class_name from here
 ## would be a cyclic reference for two functions' worth of code).
@@ -315,9 +321,23 @@ static func _reserve_labels() -> void:
 	# sign anywhere in that box would be spoken over.
 	WorldLabel.reserve(Rect2(Vector2(820, 560) + Vector2(-170, -200), Vector2(340, 140)))
 	# Claude's actual silhouette (npc sprite is 2.2x a 32px texture, drawn 18px
-	# high of centre) — deliberately tight, because "talk to Claude first →" has
+	# high of centre) — deliberately tight, because "← talk to Claude first" has
 	# to stay right next to him to mean anything.
 	WorldLabel.reserve(Rect2(Vector2(820, 560) + Vector2(-42, -62), Vector2(84, 86)))
+	# The player himself: his spawn footprint at (720,640) and the lane he walks
+	# up to reach Claude. This is the one box in the room a caption may never
+	# have, and it had one — see the note on the "talk to Claude first" sign in
+	# _build_signs.
+	#
+	# The footprint is world_label.gd's own PLAYER_BODY, Rect2(-46,-84,92,110),
+	# which puts the character at 674..766 x 556..666 when he spawns at
+	# (720,640); this box adds a margin and the strip of floor between him and
+	# Claude. It stops at y 500 on purpose, so it does not also swallow the band
+	# the battlestation captions live in — the "↑ Dream App terminal" sign is
+	# already fighting Claude's bark column for that air and must not lose the
+	# rest of it. Verified against the ladder: no apartment sign's HOME slot
+	# touches this box, so nothing is displaced by adding it and nothing hides.
+	WorldLabel.reserve(Rect2(Vector2(672, 500), Vector2(194, 186)))
 	for m: Vector2 in [Vector2(430, 300), Vector2(540, 296), Vector2(650, 300), Vector2(1060, 318), Vector2(1170, 320)]:
 		WorldLabel.reserve(Rect2(m - Vector2(44, 34), Vector2(108, 64)))
 
@@ -781,15 +801,116 @@ static func _couch(parent: Node2D, pos: Vector2) -> void:
 	bl.z_index = z + 2
 	parent.add_child(bl)
 
-static func _cable(parent: Node2D, points: Array, color: Color) -> void:
+## Resample an authored polyline into a SLACK cable: Catmull-Rom through the
+## anchors so the corners round off instead of kinking, plus a gravity droop that
+## is zero at every anchor and peaks mid-span — a cable is pinned where it is
+## clipped and lazy everywhere else.
+##
+## The round-5 frames are the reason this exists. The runs were 4px pure-black
+## straight polylines: no sag, no highlight, no endpoints, uniform width. At game
+## zoom they did not read as cable at all, they read as stray primitives ruled
+## across the floor. `sag` is the droop at a 180px span and scales with the span,
+## so a short jumper between two desks stays taut and a haul to the server corner
+## dips.
+static func _cable_path(points: Array, sag: float) -> PackedVector2Array:
+	var src: Array[Vector2] = []
+	for p: Vector2 in points:
+		src.append(p)
+	var out := PackedVector2Array()
+	if src.size() < 2:
+		for q: Vector2 in src:
+			out.append(q)
+		return out
+	var steps := 7
+	for i in src.size() - 1:
+		var p0: Vector2 = src[maxi(i - 1, 0)]
+		var p1: Vector2 = src[i]
+		var p2: Vector2 = src[i + 1]
+		var p3: Vector2 = src[mini(i + 2, src.size() - 1)]
+		var droop := sag * clampf(p1.distance_to(p2) / 180.0, 0.30, 1.35)
+		for s in steps:
+			var t := float(s) / float(steps)
+			var pt: Vector2 = p1.cubic_interpolate(p2, p0, p3, t)
+			out.append(pt + Vector2(0.0, sin(PI * t) * droop))
+	out.append(src[src.size() - 1])
+	return out
+
+## One pass of a cable run. Rounded caps as well as rounded joints: a square cap
+## on a 4px line is a visible chisel end, and half of what made these read as
+## drawn-on rather than laid-down.
+static func _cable_line(parent: Node2D, path: PackedVector2Array, width: float, col: Color, z: int, offset: Vector2 = Vector2.ZERO) -> void:
+	if path.size() < 2:
+		return
 	var line := Line2D.new()
-	line.width = 4.0
-	line.default_color = color
-	line.z_index = -80
+	line.width = width
+	line.default_color = col
+	line.z_index = z
 	line.joint_mode = Line2D.LINE_JOINT_ROUND
-	for p in points:
-		line.add_point(p)
+	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	for p: Vector2 in path:
+		line.add_point(p + offset)
 	parent.add_child(line)
+
+## The fixture a run is actually screwed down to: a shadowed plate, a lit top
+## edge and two screw heads. Every cable now ENDS in one, so a bundle terminates
+## at hardware instead of simply stopping in mid-floor with no explanation.
+static func _cable_clip(parent: Node2D, pos: Vector2, z: int) -> void:
+	_rect(parent, pos + Vector2(1.0, 2.0), Vector2(14.0, 9.0), Color(0.0, 0.0, 0.0, 0.30), z - 1)
+	_rect(parent, pos, Vector2(13.0, 8.0), Color(0.06, 0.06, 0.09, 0.96), z)
+	_rect(parent, pos - Vector2(0.0, 3.5), Vector2(13.0, 1.0), Color(1.0, 0.80, 0.52, 0.30), z + 1)
+	for k: float in [-1.0, 1.0]:
+		_rect(parent, pos + Vector2(k * 4.5, 0.5), Vector2(2.0, 2.0), Color(0.58, 0.62, 0.74, 0.68), z + 1)
+
+## A tie-wrap at an interior anchor — the reason the run turns there. Drawn
+## ACROSS the bundle, on the bearing of the two anchors either side of it, with
+## the same top-left key light as the clips.
+##
+## Two things went wrong in the round-5 frames and the sag curve only fixes one
+## of them. The other is that a run held the same 4px stroke for seven hundred
+## units and changed direction for no visible reason: nothing in the picture said
+## why the bundle bent at (360,420). A tie is the cheapest possible answer, and
+## it breaks the uniform stroke at exactly the places the eye already stops.
+static func _cable_tie(parent: Node2D, pos: Vector2, ang: float) -> void:
+	# _rect's long axis is its local +Y, which rotation carries to
+	# (-sin r, cos r); that is perpendicular to a run bearing `ang` exactly when
+	# r == ang. (Adding a right angle here — the obvious-looking thing — lays the
+	# tie ALONG the bundle instead of across it, which just reads as a bright
+	# dash in the middle of the cable.)
+	_rect(parent, pos, Vector2(3.0, 9.0), Color(0.05, 0.05, 0.08, 0.92), CABLE_Z + 1, ang)
+	_rect(parent, pos - Vector2(0.6, 0.9), Vector2(1.0, 9.0), Color(1.0, 0.82, 0.55, 0.26), CABLE_Z + 1, ang)
+
+## A cable run with the craft the frames were missing: a contact shadow beneath
+## it, the bundle itself, a warm specular along the top-left edge (the bible's
+## light direction, consistent with every other surface in the room), a tie at
+## every corner and a screwed-down clip at each end — all drawn as one slack
+## curve.
+##
+## The specular is doing most of the work. A black line with a warm rim reads as
+## vinyl sheathing catching the lamp; the same line without one reads as a hole.
+## It is 1.6 units wide rather than 1: the room is played at ~1.16x zoom, and a
+## 1-unit rim at 0.5 alpha over near-black is a sub-pixel that the capture proved
+## invisible — which is the same as not having drawn it. It is still dimmer than
+## the floorboards it lies on, so the cables gain craft without gaining weight
+## they have not earned; set dressing must never out-shout the wayfinding.
+static func _cable(parent: Node2D, points: Array, color: Color, sag: float = 9.0) -> void:
+	var path := _cable_path(points, sag)
+	if path.size() < 2:
+		return
+	# Contact shadow, offset down-and-right because the key light is up-and-left.
+	_cable_line(parent, path, 6.0, Color(0.0, 0.0, 0.0, 0.32), CABLE_Z - 2, Vector2(2.0, 3.0))
+	_cable_line(parent, path, 4.0, Color(color.r, color.g, color.b, 1.0), CABLE_Z)
+	var lit := color.lerp(Color(1.0, 0.82, 0.55), 0.46)
+	_cable_line(parent, path, 1.6, Color(lit.r, lit.g, lit.b, 0.6), CABLE_Z + 1, Vector2(-1.0, -1.5))
+	_cable_clip(parent, path[0], CABLE_Z)
+	_cable_clip(parent, path[path.size() - 1], CABLE_Z)
+	# Interior AUTHORED anchors only: the spline's resampled points are not
+	# corners, and the two endpoints already carry a clip.
+	for i in maxi(points.size() - 2, 0):
+		var before: Vector2 = points[i]
+		var corner: Vector2 = points[i + 1]
+		var after: Vector2 = points[i + 2]
+		_cable_tie(parent, corner, (after - before).angle())
 
 static func _poster(parent: Node2D, pos: Vector2, color: Color, text: String, glow_col: Color = Color(0.5, 0.7, 1.0)) -> void:
 	# Additive halo behind the frame: the poster's ideology, radiating gently.
@@ -918,18 +1039,27 @@ static func _build_framing(parent: Node2D) -> void:
 		var bx := 180.0 + float(i) * (w - 360.0) / 4.0
 		_rect(z, Vector2(bx, 34.0), Vector2(12, 40), Color(0.02, 0.02, 0.04, 0.9), 500)
 	# Slack cable looping down out of the ceiling. This flat has opinions about
-	# cable management, and they are all wrong.
+	# cable management, and they are all wrong. Same treatment as the floor runs —
+	# smoothed curve, warm specular along the lit edge, a mount plate at each end
+	# — because at 3px of flat black with bare ends these read as scratches on
+	# the lens rather than as something hanging off a ceiling. (The plates sit
+	# where the cable ends, NOT on the joists above: the beams land on 180/490/
+	# 800/1110/1420 and only one of the four ends is near one. A surface-mounted
+	# clip between joists is what a flat like this actually has, and claiming
+	# otherwise in a comment is how the next agent moves the wrong thing.)
+	# No contact shadow: they are in mid-air, with nothing under them to cast on.
 	for i in 2:
-		var line := Line2D.new()
 		var x0 := 420.0 + float(i) * 640.0
-		line.width = 3.0
-		line.default_color = Color(0.02, 0.02, 0.03, 0.85)
-		line.z_index = 502
-		line.joint_mode = Line2D.LINE_JOINT_ROUND
-		line.add_point(Vector2(x0 - 110.0, 38.0))
-		line.add_point(Vector2(x0 - 30.0, 92.0 + float(i) * 22.0))
-		line.add_point(Vector2(x0 + 70.0, 44.0))
-		z.add_child(line)
+		var head := Vector2(x0 - 110.0, 38.0)
+		var tail := Vector2(x0 + 70.0, 44.0)
+		var drop := _cable_path([head, Vector2(x0 - 30.0, 92.0 + float(i) * 22.0), tail], 4.0)
+		_cable_line(z, drop, 3.0, Color(0.02, 0.02, 0.03, 0.9), 502)
+		# 1.4, not 1.0, for the reason spelled out in _cable: at this zoom a
+		# 1-unit rim is a sub-pixel and does not survive the capture.
+		_cable_line(z, drop, 1.4, Color(0.40, 0.34, 0.26, 0.5), 503, Vector2(-1.0, -1.0))
+		for e: Vector2 in [head, tail]:
+			_rect(z, e, Vector2(11.0, 5.0), Color(0.015, 0.015, 0.03, 0.95), 503)
+			_rect(z, e - Vector2(0.0, 2.0), Vector2(11.0, 1.0), Color(1.0, 0.80, 0.50, 0.22), 504)
 	# In-world vignette: darkness pooled into the corners IN FRONT of the
 	# furniture, so the flat closes in around the desk instead of ending at a
 	# wall. Four sprites; the single cheapest "this is a photograph" trick there
@@ -1019,7 +1149,28 @@ static func _build_signs(parent: Node2D) -> void:
 	# it is now mounted well clear of the doorway, up the wall where an exit sign
 	# actually lives, and it is the only headline-weight sign on this side.
 	_sign(z, Vector2(1276, 356), "EXIT \u2192", Color(0.5, 0.95, 0.8), 3, "headline")
-	_sign(z, Vector2(636, 598), "talk to Claude first \u2192", Color(1.0, 0.85, 0.55), 3, "headline")
+	# The opening caption, and the one the QA frame caught being drawn through the
+	# player's chest.
+	#
+	# The trap: a WorldLabel anchor is the plate's TOP-LEFT, not its centre. This
+	# sign was authored at (636,598), which measures out — checked against the
+	# capture, where the accent bar lands at world x 636 to the pixel — as a
+	# ~190x36 plate occupying 636..826 x 598..634, straight across the player,
+	# who occupies 674..766 x 556..666 at the (720,640) spawn. And because a
+	# headline is _bolted, world_label's player-clearance pass has no slide
+	# available and fades it to nothing instead: the one caption that answers
+	# "what do I do next" was being DELETED at the exact moment it was needed.
+	# Silence, not merely clutter.
+	#
+	# It now sits on Claude's FAR side, clear of the spawn footprint, the walk
+	# lane, Claude's silhouette and his bark column (all reserved in
+	# _reserve_labels; every margin >= 14 units against the 6-unit collider
+	# grow), so it takes its home slot and stays lit while the player reads it.
+	# The arrow turns round to keep pointing at its subject: Claude is the next
+	# thing to the left, about thirty units from the plate edge, under his own
+	# name plate and his own quest marker. Further right it would still be clear,
+	# and would stop reading as HIS caption.
+	_sign(z, Vector2(886, 520), "\u2190 talk to Claude first", Color(1.0, 0.85, 0.55), 3, "headline")
 	_sign(z, Vector2(1090, 585), "'FREE' TOKENS \u2192", Color(0.4, 0.95, 0.5), 3)
 	_sign(z, Vector2(250, 525), "\u2190 deploy an AI agent\n(what could go wrong)", Color(0.7, 0.6, 0.95), 3)
 	_sign(z, Vector2(1050, 690), "/checkout is DOWN \u2192", Color(1.0, 0.4, 0.35), 3)

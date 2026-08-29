@@ -30,8 +30,94 @@ const LEASH_MULT := 1.8
 ## Every attack is readable a beat before it lands: the enemy plants, squashes,
 ## shifts colour and paints a wedge on the floor for WINDUP_TIME, and only then
 ## strikes. Fair difficulty is a visual feature, not a difficulty slider.
-const WINDUP_TIME := 0.34
+const WINDUP_TIME := 0.42
 const STRIKE_RANGE := 56.0
+## The swing only connects inside the wedge that was painted on the floor. This
+## is the difference between "I got hit" and "I got hit because I stood there":
+## sidestepping a telegraph is now a real dodge, not a coin flip on distance.
+## THE NUMBER IS NOT FREE: CombatFx.strike_arc paints a wedge 1.5 rad wide, so
+## the hitbox test has to be cos(1.5 / 2) = 0.7317. At the old 0.42 the hitbox
+## was 2.27 rad — half a radian WIDER than the picture — so a player who read
+## the telegraph and stepped out of the lit wedge still got hit, which is the
+## exact defect the wedge was drawn to remove. Keep these two in lockstep.
+const STRIKE_ARC_DOT := 0.7317
+## An enemy may only START a wind-up from inside this range.
+const STRIKE_START_RANGE := 48.0
+
+# ------------------------------------------------------------ combat roles ----
+## "Walk up and touch the player" is now only one of six things an enemy can be
+## doing. The role drives spacing, approach arc and which specials the type may
+## use; the fiction of each type picks the role.
+const ROLE_BRAWLER := 0     # closes, plants, swings
+const ROLE_SKIRMISHER := 1  # darts in, hits, hops back out
+const ROLE_ARTILLERY := 2   # holds range, lobs telegraphed shots at your feet
+const ROLE_GUARDIAN := 3    # carries a front plate; flank it or break it
+const ROLE_SUMMONER := 4    # brawls, and calls in exactly one friend too many
+const ROLE_CHARGER := 5     # telegraphed committed dash, punishable on a miss
+
+const ROLES := {
+	"bug": ROLE_SKIRMISHER,
+	"null_reference": ROLE_SKIRMISHER,
+	"merge_conflict": ROLE_CHARGER,
+	"scope_creep": ROLE_BRAWLER,
+	"memory_leak": ROLE_ARTILLERY,
+	"rate_limiter": ROLE_ARTILLERY,
+	"hallucination": ROLE_ARTILLERY,
+	"dependency_demon": ROLE_SUMMONER,
+	"legacy_system": ROLE_GUARDIAN,
+	"legacy_monolith": ROLE_GUARDIAN,
+	"enterprise_architect": ROLE_SUMMONER,
+	"cloud_bill": ROLE_ARTILLERY,
+	"infinite_context": ROLE_ARTILLERY,
+}
+
+## Preferred fighting distance per role. Every melee role sits inside
+## STRIKE_START_RANGE — an enemy that holds a distance it can never attack from
+## is not a design, it's a bug.
+static func _standoff_for(role: int) -> float:
+	match role:
+		ROLE_SKIRMISHER:
+			return 38.0
+		ROLE_ARTILLERY:
+			return 200.0
+		ROLE_GUARDIAN:
+			return 36.0
+		ROLE_SUMMONER:
+			return 40.0
+		ROLE_CHARGER:
+			return 44.0
+	return ENGAGE_DISTANCE
+
+## At most this many NON-BOSS enemies anywhere may be committed to an attack at
+## the same time. A pack therefore takes turns instead of landing four hits in
+## one frame — the single biggest reason the old fights read as unfair rather
+## than hard. Bosses ignore it; a boss owns its room.
+const MAX_COMMITTED := 2
+
+## Committed dash: telegraph (a lane you can step out of) -> commit -> recover.
+## The recovery is the point. Every big attack in this file opens a window.
+const CHARGE_TELE := 0.62
+const CHARGE_SPEED := 560.0
+const CHARGE_TIME := 0.36
+const CHARGE_RECOVER := 1.05
+
+## Directional guard plate. GUARD_SLEW is deliberately slower than a player can
+## circle at melee range, so flanking is always available as an answer.
+const GUARD_ARC := 1.9
+const GUARD_SLEW := 1.7
+const GUARD_MITIGATION := 0.28
+
+## Boss move ids. Phases ADD patterns; they do not merely speed the old one up.
+const BOSS_SLAM := 0
+const BOSS_BARRAGE := 1
+const BOSS_CHARGE := 2
+const BOSS_SIGNATURE := 3
+
+## Elites never appear in the two teaching regions. The first rooms teach; they
+## do not test. (This also keeps every regression suite off the elite path,
+## since they all run in localhost / dependency_district.)
+const ELITE_FREE_REGIONS := ["localhost", "dependency_district"]
+const ELITE_CHANCE := 0.16
 
 var hp: int
 var target: Node2D = null
@@ -86,6 +172,53 @@ var _intro_done := false
 var _intro_lock := 0.0
 var _boss_marker: Node2D
 
+# --------------------------------------------------------- behaviour state ----
+var _role := ROLE_BRAWLER
+var _standoff := ENGAGE_DISTANCE
+## Every enemy approaches on its OWN arc and strafes its OWN way, so a pack
+## fans out around the player instead of converging into one queue.
+var _flank := 0.0
+var _orbit := 1.0
+## Staggered aggro: the pack notices you raggedly, over about three quarters of
+## a second, so a fight opens as a trickle rather than a wall.
+var _wake_delay := 0.0
+var _wake_t := 0.0
+var _elite := false
+var _grow_announced := false
+## Committed dash state: 0 idle, 1 telegraph, 2 dashing, 3 recovering.
+var _charge_state := 0
+var _charge_t := 0.0
+var _charge_dir := Vector2.RIGHT
+var _charge_hit := false
+var _charge_cd := 0.0
+## Vulnerability window. Anything that over-commits (a whiffed dash, a landed
+## special, a broken plate, an interrupted telegraph) is EXPOSED for a moment
+## and takes extra damage. This is where the player is meant to punish.
+var _vuln_t := 0.0
+var _vuln_mult := 1.0
+## Directional guard plate (guardians).
+var _guard: Node2D
+var _guard_dir := Vector2.RIGHT
+var _guard_hits := 0
+var _guard_max := 3
+var _guard_down := 0.0
+var _guard_frame := -1
+## Ranged cadence, and how many friends this one may still call in.
+var _lob_cd := 0.0
+var _summons_left := 0
+## Shots currently in the air. Ticked BY HAND (not by tweens) so a caster that
+## dies mid-flight simply cancels its own incoming shot — no callback can ever
+## fire from a freed enemy, which is the classic way this kind of thing crashes.
+var _shots: Array = []
+## Presence rig: enemies used to read as small dark smudges at game zoom.
+var _halo: Sprite2D
+var _backing: Sprite2D
+var _alert_ring: Line2D
+var _body_light: PointLight2D
+## Boss move set.
+var _boss_move := BOSS_SLAM
+var _boss_recover := 0.0
+
 ## Per-type death accents (VISUAL_BIBLE palette) for the dissolve burn edge.
 const DEATH_ACCENTS := {
 	"bug": Color("#A8FF3E"),
@@ -139,6 +272,31 @@ const DEATH_QUIPS := {
 	"infinite_context": "context window closed",
 }
 
+## What it says a beat before a BIG move lands. The ground marker carries the
+## information (where it hurts, and when); the line is the joke riding alongside
+## it (COMEDY_BIBLE). Deliberately short — a telegraph you have to read is not a
+## telegraph. Only the big commitments speak; ordinary swings stay quiet.
+const TELLS := {
+	"bug": "cannot reproduce",
+	"null_reference": "undefined",
+	"merge_conflict": "both modified",
+	"scope_creep": "one tiny thing",
+	"memory_leak": "still reachable",
+	"rate_limiter": "retry-after: ?",
+	"hallucination": "as we all know",
+	"dependency_demon": "peer dep missing",
+	"legacy_system": "do not touch",
+	"legacy_monolith": "load-bearing",
+	"enterprise_architect": "circling back",
+	"cloud_bill": "line item",
+	"infinite_context": "as previously stated",
+}
+
+## The elite tag. Same enemy; it has simply been in the codebase longer than
+## anyone still working here.
+const ELITE_TAGS := ["load-bearing", "since 2009", "do not remove", "unowned",
+	"marked @deprecated", "still in prod"]
+
 func _accent() -> Color:
 	return DEATH_ACCENTS.get(enemy_type, Color("#FF4757"))
 
@@ -151,6 +309,7 @@ func _ready() -> void:
 		damage *= 2
 		token_drop *= 5
 		scale = Vector2(2, 2)
+	_roll_elite()
 	_base_speed = speed
 	_base_scale = scale
 	_special_cd = randf_range(2.5, 4.5)
@@ -159,17 +318,63 @@ func _ready() -> void:
 	_spr_base_x = sprite.position.x
 	_spr_base_scale = sprite.scale
 	_anim_t = randf() * TAU  # desync the herd so they don't bob in lockstep
+	# Behaviour identity. Everything downstream (spacing, specials, telegraphs)
+	# reads off these four lines.
+	_role = int(ROLES.get(enemy_type, ROLE_BRAWLER))
+	_standoff = _standoff_for(_role)
+	_flank = randf_range(-0.85, 0.85)
+	_orbit = 1.0 if randf() < 0.5 else -1.0
+	_lob_cd = randf_range(1.4, 3.0)
+	_charge_cd = randf_range(1.6, 3.4)
+	# Ragged aggro + a slightly different sight radius each, so a room does not
+	# wake up as one organism. Capped at 1.10x: region_builder spawns enemies
+	# 420px from the region spawn, and 340 * 1.10 must stay under that or a
+	# respawning player would be re-engaged the instant they land.
+	_wake_delay = randf_range(0.05, 0.75)
+	_wake_t = _wake_delay
+	aggro_radius *= randf_range(0.86, 1.10)
 	# Bosses own their arena — they always engage once you're in the room.
 	if is_boss:
 		aggro_radius = 900.0
+		_wake_delay = 0.0
+		_wake_t = 0.0
+		_summons_left = 6
+		_guard_max = 6
+	elif _role == ROLE_SUMMONER:
+		# Exactly one friend, and a small one. The joke is the package count,
+		# not the difficulty.
+		_summons_left = 1
 	var tex_path := "res://assets/textures/generated/enemy_%s.png" % enemy_type
+	# Bosses prefer their own richer variant when one was baked for this type.
+	if is_boss:
+		var boss_tex := "res://assets/textures/generated/enemy_%s_boss.png" % enemy_type
+		if ResourceLoader.exists(boss_tex):
+			tex_path = boss_tex
 	if ResourceLoader.exists(tex_path):
 		sprite.texture = load(tex_path)
 	attack_timer.timeout.connect(_attack)
 	attack_timer.start(randf_range(1.0, 2.0))
 	_build_hp_bar()
+	_build_presence()
+	if _role == ROLE_GUARDIAN:
+		_build_guard()
 	if is_boss:
 		_build_boss_presence()
+
+## Elites: an occasional buffed variant, visibly marked and worth more. A longer
+## fight, never a bigger number — an elite must not spike the damage a player is
+## budgeting for. Skipped entirely in the teaching regions.
+func _roll_elite() -> void:
+	if is_boss or GameManager.current_region in ELITE_FREE_REGIONS:
+		return
+	if randf() >= ELITE_CHANCE:
+		return
+	_elite = true
+	max_hp = int(round(float(max_hp) * 1.8))
+	hp = max_hp
+	speed *= 1.12
+	token_drop = int(round(float(token_drop) * 2.5))
+	_guard_max += 1
 
 ## A small health bar above the enemy (hidden until damaged) so the player can
 ## read at a glance whether they're winning a fight.
@@ -204,13 +409,201 @@ func _update_hp_bar() -> void:
 	if _boss_hud and is_instance_valid(_boss_hud):
 		_boss_hud.set_health(hp, max_hp)
 
+# ------------------------------------------------------------- presence ----
+
+## The round-4 QA frames showed the same defect in every region: enemies read as
+## small dark smudges pasted on a busy floor. Nothing here changes a hitbox or a
+## behaviour — it makes the thing you are fighting VISIBLE:
+##   * a contact shadow, so it stands ON the floor instead of hovering over it;
+##   * an accent silhouette halo behind the sprite (overbright additive, so HDR
+##     bloom picks it up) that separates it from any background;
+##   * its own small light, because in this game everything alive glows;
+##   * a floor ring that lights up only while it is actually hunting you, so
+##     threat state is legible in a one-second glance at a static frame.
+func _build_presence() -> void:
+	var col := FxLib.vivid(_accent())
+	var shadow := Polygon2D.new()
+	shadow.polygon = CombatFx.ring_points(16)
+	shadow.scale = Vector2(15.0, 7.0)
+	shadow.position = Vector2(0, 13)
+	shadow.color = Color(0.02, 0.02, 0.05, 0.42)
+	shadow.z_index = -2
+	add_child(shadow)
+	# Both silhouette layers are parented to the SPRITE, so they inherit every
+	# pose the animator applies (coil, lunge, stagger, hop) for free and can
+	# never drift out of register. TWO layers, not one: an additive accent halo
+	# only separates an enemy from a DARK background, and the regions that hid
+	# them worst (GPU Mines' red wash, the Wildlands' green) are the bright ones.
+	# The dark backing is the layer that works everywhere — it is the "3 value
+	# steps + contact shadow" the VISUAL_BIBLE silhouette law asks for.
+	if sprite.texture:
+		_backing = Sprite2D.new()
+		_backing.texture = sprite.texture
+		_backing.modulate = Color(0.015, 0.015, 0.035, 0.62)
+		_backing.scale = Vector2(1.30, 1.30)
+		_backing.z_index = -2
+		sprite.add_child(_backing)
+		_halo = Sprite2D.new()
+		_halo.texture = sprite.texture
+		_halo.material = FxLib.additive_material()
+		_halo.modulate = Color(col.r * 1.5, col.g * 1.5, col.b * 1.5, 0.55 if _elite else 0.42)
+		_halo.scale = Vector2(1.18, 1.18)
+		_halo.z_index = -1
+		sprite.add_child(_halo)
+	_alert_ring = Line2D.new()
+	# Baked as a flattened ellipse instead of a scaled circle: a non-uniform
+	# scale on a Line2D stretches the STROKE with it, so the old ring drew twice
+	# as thick at the sides as at the top.
+	var ring_pts := PackedVector2Array()
+	for i in 23:
+		var a: float = TAU * float(i) / 22.0
+		ring_pts.append(Vector2(cos(a) * 23.0, sin(a) * 11.0))
+	_alert_ring.points = ring_pts
+	_alert_ring.material = FxLib.additive_material()
+	# Hostile red, NOT the enemy's own accent. "This one is hunting you" has to
+	# read identically in every room, and the accent version was invisible in
+	# exactly the rooms that share the enemy's hue (a lime Dependency Demon on a
+	# lime floor). Red is already the game's telegraph colour — wind-up wedges,
+	# charge lanes and boss markers all use #FF4757, so this joins that language.
+	_alert_ring.default_color = Color(2.4, 0.62, 0.74, 0.62)
+	_alert_ring.width = 2.4
+	_alert_ring.position = Vector2(0, 13)
+	_alert_ring.z_index = -2
+	_alert_ring.visible = false
+	add_child(_alert_ring)
+	# VISUAL_BIBLE lighting rule: PointLight2D energy 0.5–1.4. 0.42 sat under the
+	# floor of the contract and was the dimmest part of the presence rig.
+	_body_light = FxLib.point_light(self, col, 0.8 if _elite else 0.55, 1.15, Vector2(0, -8))
+	if _elite:
+		_build_elite_marker(col)
+
+## `flip_h` is a DRAW FLAG, not a transform: children of a flipped Sprite2D are
+## not flipped with it. The silhouette layers are children of the sprite, so they
+## have to be told, or an asymmetric enemy walking left wears its own halo facing
+## right. Called from both places that write `sprite.flip_h`.
+func _sync_silhouette() -> void:
+	if is_instance_valid(_halo):
+		_halo.flip_h = sprite.flip_h
+	if is_instance_valid(_backing):
+		_backing.flip_h = sprite.flip_h
+
+## An elite wears its promotion: a slowly spinning bracket over its head and a
+## hotter light, so you know before the first shot why this one is taking longer.
+func _build_elite_marker(col: Color) -> void:
+	var root := Node2D.new()
+	root.position = Vector2(0, -30)
+	# Absolute: the marker must not change depth as the enemy walks up the room.
+	root.z_as_relative = false
+	root.z_index = CombatFx.Z_TEXT - 12
+	add_child(root)
+	var mark := Line2D.new()
+	mark.points = PackedVector2Array([
+		Vector2(0, -7), Vector2(6, 0), Vector2(0, 7), Vector2(-6, 0), Vector2(0, -7)])
+	mark.width = 2.0
+	mark.joint_mode = Line2D.LINE_JOINT_ROUND
+	mark.material = FxLib.additive_material()
+	mark.default_color = Color(col.r * 2.4, col.g * 2.4, col.b * 2.4, 0.95)
+	root.add_child(mark)
+	var spin := mark.create_tween().set_loops()
+	spin.tween_property(mark, "rotation", TAU, 3.4).from(0.0)
+
+## The guard plate: a lit arc bolted to the front of a guardian. It slews toward
+## the player, but slowly — walking around it is always an option, and so is
+## breaking it. Purely a drawing; the mitigation lives in take_damage().
+func _build_guard() -> void:
+	var col := FxLib.vivid(_accent())
+	_guard = Node2D.new()
+	_guard.z_index = 1
+	add_child(_guard)
+	var fill := Polygon2D.new()
+	fill.polygon = CombatFx.wedge_points(0.0, GUARD_ARC, 14)
+	fill.scale = Vector2(30.0, 30.0)
+	fill.color = Color(col.r, col.g, col.b, 0.15)
+	fill.material = FxLib.additive_material()
+	_guard.add_child(fill)
+	var edge := Line2D.new()
+	var pts := PackedVector2Array()
+	for i in 13:
+		var a: float = -GUARD_ARC * 0.5 + GUARD_ARC * float(i) / 12.0
+		pts.append(Vector2(cos(a), sin(a)) * 30.0)
+	edge.points = pts
+	edge.width = 3.0
+	edge.joint_mode = Line2D.LINE_JOINT_ROUND
+	edge.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	edge.end_cap_mode = Line2D.LINE_CAP_ROUND
+	edge.material = FxLib.additive_material()
+	edge.default_color = Color(col.r * 2.2, col.g * 2.2, col.b * 2.2, 0.9)
+	_guard.add_child(edge)
+	_guard_hits = 0
+	_guard_down = 0.0
+
+func _guard_up() -> bool:
+	return _guard != null and is_instance_valid(_guard) and _guard_down <= 0.0
+
+## Turn the plate toward the player at GUARD_SLEW. A player circling at melee
+## range moves faster than this, which is exactly the point.
+func _tick_guard(delta: float) -> void:
+	if _guard_down > 0.0:
+		_guard_down -= delta
+		if _guard_down <= 0.0 and is_boss and not _dying:
+			_build_guard()
+		return
+	if not _guard_up():
+		return
+	if target and is_instance_valid(target):
+		var want: Vector2 = target.global_position - global_position
+		if want.length_squared() > 1.0:
+			var w := want.normalized()
+			var step: float = clampf(_guard_dir.angle_to(w), -GUARD_SLEW * delta, GUARD_SLEW * delta)
+			_guard_dir = _guard_dir.rotated(step)
+	if is_instance_valid(_guard):
+		_guard.rotation = _guard_dir.angle()
+
+## Enough shots into the plate and it comes off. The window that follows is the
+## reward for choosing to break it instead of walking around it.
+func _break_guard() -> void:
+	var host := get_parent()
+	var col := FxLib.vivid(_accent())
+	if _guard and is_instance_valid(_guard):
+		CombatFx.shield_break(_guard, host, global_position + _guard_dir * 26.0, col, 34.0)
+	_guard = null
+	_guard_hits = 0
+	_guard_down = 6.0
+	_open_vuln(2.2, 1.6)
+	if host:
+		CombatFx.glyph(host, global_position + Vector2(0, -54), "plate deprecated",
+			Color("#FFD34D"), 15, 1.0, 26.0)
+	FxLib.add_trauma(get_tree(), 0.25)
+	AudioManager.play_sfx("ability")
+
+## Open (or extend) the punish window. Never shortens an existing one.
+func _open_vuln(seconds: float, mult: float) -> void:
+	_vuln_t = maxf(_vuln_t, seconds)
+	_vuln_mult = maxf(_vuln_mult, mult)
+
+func _tick_vuln(delta: float) -> void:
+	if _vuln_t <= 0.0:
+		return
+	_vuln_t -= delta
+	if _vuln_t <= 0.0:
+		_vuln_t = 0.0
+		_vuln_mult = 1.0
+
+## Orbiting question marks, guarded so only one set exists at a time.
+func _dazed_mark(duration: float) -> void:
+	if _dying or duration <= 0.0:
+		return
+	if _dazed != null and is_instance_valid(_dazed):
+		return
+	_dazed = CombatFx.dazed(self, 40.0, Color("#FFD34D"), duration, "?")
+
 func stun(duration: float) -> void:
 	_stun_time = maxf(_stun_time, duration)
 	_cancel_windup()
+	_cancel_charge()
 	# Visibly dazed: orbiting question marks, so a stunned enemy is obviously
 	# stunned and not just standing there being blue.
-	if (_dazed == null or not is_instance_valid(_dazed)) and not _dying:
-		_dazed = CombatFx.dazed(self, 40.0, Color("#FFD34D"), duration, "?")
+	_dazed_mark(duration)
 
 ## Procedural liveliness: idle enemies breathe; moving enemies scuttle-hop and
 ## waddle; winding-up enemies plant, coil and lean away from the swing. Runs
@@ -220,6 +613,15 @@ func _process(delta: float) -> void:
 	if not is_instance_valid(sprite) or _dying:
 		return  # while dying, the death-pop tween owns the sprite's scale/modulate
 	_anim_t += delta
+	if _charge_state != 0:
+		_pose_charge()
+		return
+	if is_boss and _boss_recover > 0.0:
+		# The punish window has to LOOK like one: slumped, wide open, wobbling.
+		sprite.position = Vector2(_spr_base_x, _spr_base_y + 4.0)
+		sprite.rotation = sin(_anim_t * 9.0) * 0.09
+		sprite.scale = Vector2(_spr_base_scale.x * 1.10, _spr_base_scale.y * 0.88)
+		return
 	if _windup > 0.0:
 		# Coil: pull back away from the strike, squash wide, heat up.
 		var t: float = 1.0 - clampf(_windup / WINDUP_TIME, 0.0, 1.0)
@@ -252,6 +654,29 @@ func _process(delta: float) -> void:
 		sprite.position = Vector2(_spr_base_x, _spr_base_y + b * 2.4)
 		sprite.rotation = lerp_angle(sprite.rotation, 0.0, delta * 8.0)
 		sprite.scale = Vector2(_spr_base_scale.x * (1.0 + b * 0.05), _spr_base_scale.y * (1.0 - b * 0.05))
+
+## The three frames of a committed dash, drawn instead of animated: coil back
+## along the lane, stretch flat through the run, slump open on the recovery.
+## The slump is deliberately unmistakable — it is the "hit me now" pose.
+func _pose_charge() -> void:
+	match _charge_state:
+		1:
+			var t: float = 1.0 - clampf(_charge_t / CHARGE_TELE, 0.0, 1.0)
+			sprite.position = Vector2(_spr_base_x - _charge_dir.x * 8.0 * t, _spr_base_y - 3.0 * t)
+			sprite.rotation = -_charge_dir.x * 0.20 * t
+			sprite.scale = Vector2(
+				_spr_base_scale.x * (1.0 + 0.22 * t),
+				_spr_base_scale.y * (1.0 - 0.16 * t))
+			var hot := FxLib.vivid(_accent())
+			sprite.modulate = Color.WHITE.lerp(Color(hot.r * 2.4 + 0.4, hot.g * 1.4, hot.b * 1.4), t)
+		2:
+			sprite.position = Vector2(_spr_base_x + _charge_dir.x * 5.0, _spr_base_y - 4.0)
+			sprite.rotation = _charge_dir.x * 0.24
+			sprite.scale = Vector2(_spr_base_scale.x * 1.24, _spr_base_scale.y * 0.84)
+		_:
+			sprite.position = Vector2(_spr_base_x, _spr_base_y + 3.0)
+			sprite.rotation = sin(_anim_t * 16.0) * 0.10
+			sprite.scale = Vector2(_spr_base_scale.x * 1.08, _spr_base_scale.y * 0.90)
 
 ## Start a scripted pose. Overrides the idle/scuttle animation for `dur`.
 func _set_pose(kind: int, dir: Vector2, magnitude: float, dur: float) -> void:
@@ -297,10 +722,31 @@ func reset_to_home() -> void:
 	_aggroed = false
 	_knockback = Vector2.ZERO
 	_cancel_windup()
+	# Everything mid-commitment is torn down too, or a respawning player would
+	# land in front of a dash that started before they died.
+	_cancel_charge()
+	_cancel_shots()
+	_boss_tele = 0.0
+	_boss_recover = 0.0
+	_vuln_t = 0.0
+	_vuln_mult = 1.0
+	_wake_t = _wake_delay
+	if is_instance_valid(_alert_ring):
+		_alert_ring.visible = false
 	if _home != Vector2.ZERO:
 		global_position = _home
 
 func _physics_process(delta: float) -> void:
+	# Depth-sort against the world the same way player.gd does. Without this an
+	# enemy sits at z 0 while every builder prop sets z_index = _depth(y), so
+	# cover and landmarks draw in front of enemies at any Y.
+	z_index = int(global_position.y)
+	# Lobbed shots live on this enemy's own clock (deliberately not on a tween),
+	# so they keep travelling through knockback and stun, and stop dead when the
+	# room does.
+	if not _combat_paused():
+		_tick_shots(delta)
+		_tick_vuln(delta)
 	# Knockback (e.g. from the player's Force Push dash) always resolves, even
 	# while combat is paused, so the player can always shove enemies away.
 	if _knockback.length() > 5.0:
@@ -311,6 +757,7 @@ func _physics_process(delta: float) -> void:
 	if _combat_paused():
 		velocity = Vector2.ZERO
 		_cancel_windup()
+		_cancel_charge()
 		return
 	# Stunned (e.g. by Rubber Duck): frozen but still shoveable via knockback.
 	if _stun_time > 0.0:
@@ -334,26 +781,41 @@ func _physics_process(delta: float) -> void:
 		_tick_windup(delta)
 		return
 	_update_special(delta)
+	# A committed dash owns the body outright — it steers nothing, it just goes.
+	if _charge_state != 0:
+		_tick_charge(delta)
+		return
+	# A telegraphing or recovering boss PLANTS. This is not decoration: the slam
+	# marker is painted at the position the wind-up started from, so a boss that
+	# kept walking during its own telegraph was drawing the player a kill zone in
+	# the wrong place.
+	if is_boss and (_boss_tele > 0.0 or _boss_recover > 0.0):
+		velocity = Vector2.ZERO
+		return
 	var to_player := target.global_position - global_position
 	var dist := to_player.length()
 
 	# Aggro gating: wake when the player comes near, sleep (return home) if they
 	# leave. Special behaviours still tick, but a dormant enemy won't chase.
+	# The wake timer staggers the pack so a room notices you raggedly.
 	if not _aggroed:
 		if dist <= aggro_radius:
-			_aggroed = true
-			_on_aggro()
+			_wake_t -= delta
+			if _wake_t <= 0.0:
+				_aggroed = true
+				_on_aggro()
+		else:
+			_wake_t = _wake_delay
 	elif dist > aggro_radius * LEASH_MULT:
 		_aggroed = false
+		_wake_t = _wake_delay
+		if is_instance_valid(_alert_ring):
+			_alert_ring.visible = false
 		_music_calm_check()
 
 	var desired := Vector2.ZERO
 	if _aggroed:
-		if dist > ENGAGE_DISTANCE:
-			desired = to_player.normalized() * speed
-		else:
-			# Hold at engage range and orbit slightly rather than piling on.
-			desired = to_player.normalized() * speed * 0.12
+		desired = _role_steering(to_player, dist)
 	else:
 		# Dormant: drift back toward home so enemies don't wander into the spawn.
 		var to_home := _home - global_position
@@ -364,16 +826,51 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	if absf(velocity.x) > 1.0:
 		sprite.flip_h = velocity.x < 0
+		_sync_silhouette()
+
+## Where this enemy wants to be, by role. Nobody walks the straight line to the
+## player any more: brawlers fan out along their own approach arc, skirmishers
+## pulse in and out, artillery holds its range, and anyone sitting in the pocket
+## strafes rather than standing. A pack breathes instead of queueing.
+func _role_steering(to_player: Vector2, dist: float) -> Vector2:
+	var dir: Vector2 = to_player.normalized() if dist > 0.001 else Vector2.RIGHT
+	var want := _standoff
+	if _role == ROLE_SKIRMISHER:
+		# Dart cycle: press, then think better of it. Reads as nerves, plays as
+		# spacing the player can work with.
+		want = _standoff + (58.0 if sin(_anim_t * 1.3) > 0.35 else 0.0)
+	elif _role == ROLE_CHARGER and not is_boss and _charge_state == 0 and _charge_cd <= 0.0:
+		# A charger with a run off cooldown backs up to a distance it can
+		# actually run FROM. Without this it parks at its 44px melee standoff,
+		# permanently inside `_tick_role`'s 76px charge floor, and the lane
+		# telegraph — the entire point of the archetype — is never drawn outside
+		# a boss fight. Bosses are excluded: their move choice comes from
+		# `_boss_moves()`, not `_charge_cd`, so this would just walk them away.
+		want = 150.0
+	if dist > want * 1.12:
+		# Approach on this one's own arc — the offset straightens out as it
+		# closes, so the pack converges late instead of walking in a fan.
+		return dir.rotated(_flank * clampf(dist / 260.0, 0.0, 1.0)) * speed
+	if dist < want * 0.78:
+		return -dir * speed * 0.55
+	return dir.orthogonal() * _orbit * speed * 0.42
 
 ## "It has seen you." A classic exclamation tell plus a startle hop, so the
 ## moment a fight starts is never ambiguous.
 func _on_aggro() -> void:
+	if is_instance_valid(_alert_ring):
+		_alert_ring.visible = true
 	if _dying or is_boss:
 		return
 	AudioManager.play_music("combat_music")
 	var host := get_parent()
 	if host:
 		CombatFx.glyph(host, global_position + Vector2(0, -46), "!", Color("#FF4757"), 22, 0.6, 18.0)
+		if _elite:
+			# Say why this one is different BEFORE the player wastes a clip on it.
+			CombatFx.glyph(host, global_position + Vector2(0, -68),
+				"ELITE · %s" % ComedyLines.pick("enemy_elite", ELITE_TAGS),
+				Color("#FFD34D"), 14, 1.1, 24.0)
 	_set_pose(POSE_HOP, Vector2.UP, 9.0, 0.24)
 
 ## Back to the explore track, but only when NOTHING in the room is still
@@ -399,7 +896,7 @@ func _begin_windup() -> bool:
 	var host := get_parent()
 	if host:
 		_wind_marker = CombatFx.strike_arc(host, global_position, _wind_dir,
-			Color("#FF4757"), STRIKE_RANGE + 14.0, WINDUP_TIME)
+			Color("#FF4757"), _reach() + 14.0, WINDUP_TIME)
 	return true
 
 func _tick_windup(delta: float) -> void:
@@ -429,17 +926,24 @@ func _cancel_windup(resume: bool = true) -> void:
 	if resume and is_instance_valid(attack_timer) and attack_timer.is_stopped():
 		attack_timer.start(randf_range(0.9, 1.6))
 
-## The swing lands. Slightly more generous than the wind-up range, so stepping
-## out of the wedge is a real dodge rather than a coin flip.
+## The swing lands — but ONLY inside the wedge that was painted on the floor.
+## Distance alone used to be enough, which meant a telegraph you read correctly
+## and sidestepped still hit you. Now stepping out of the arc is a real dodge,
+## and a swing that finds nothing leaves the swinger briefly open.
 func _strike() -> void:
 	_cancel_windup(false)
 	if _dying:
 		return
 	var connected := false
-	if target and is_instance_valid(target) and global_position.distance_to(target.global_position) <= STRIKE_RANGE:
-		connected = true
-		if target.has_method("take_damage"):
-			target.take_damage(damage, enemy_type)
+	if target and is_instance_valid(target):
+		var to_t: Vector2 = target.global_position - global_position
+		var d := to_t.length()
+		# Point blank always connects — the arc test is about sidestepping, and
+		# standing directly on top of something is not a sidestep.
+		if d <= _reach() and (d < 14.0 or to_t.normalized().dot(_wind_dir) >= STRIKE_ARC_DOT):
+			connected = true
+			if target.has_method("take_damage"):
+				target.take_damage(damage, enemy_type)
 	_set_pose(POSE_STRIKE, _wind_dir, 13.0, 0.22)
 	var host := get_parent()
 	if host:
@@ -447,17 +951,71 @@ func _strike() -> void:
 		CombatFx.ripple(host, impact, _wind_dir, Color("#FF4757"), 46.0, 0.2)
 		if connected:
 			FxLib.burst(host, impact, Color(2.4, 0.8, 0.9), 7, 180.0, FxLib.spark(), Vector2.ZERO, CombatFx.Z_FX)
+		else:
+			# A miss is information: the recovery frames are yours. In dev
+			# register, not fighting-game register — "whiffed" was the only
+			# player-facing line in this file that isn't something a tired
+			# engineer would say (COMEDY_BIBLE: dry, technically literate).
+			CombatFx.glyph(host, global_position + Vector2(0, -50), "no-op",
+				Color("#7C8BB0"), 12, 0.5, 16.0)
+	if not connected:
+		_open_vuln(0.55, 1.35)
+	elif _role == ROLE_SKIRMISHER:
+		# Hit and run: a skirmisher never stands in the place it just struck.
+		_knockback = -_wind_dir * 240.0
 	if is_instance_valid(attack_timer):
 		attack_timer.start(randf_range(1.2, 2.5))
 
+## How far this one's swing actually reaches. Bigger things reach further — a
+## fully-grown Scope Creep can hit you from where it could not five seconds ago,
+## which is the entire joke — and the wedge painted on the floor is drawn from
+## the same number, so the picture never lies about the hitbox.
+func _reach() -> float:
+	return STRIKE_RANGE * (1.0 + (maxf(scale.x, 0.5) - 1.0) * 0.5)
+
+## An enemy commits to a swing from slightly inside its own reach, so the wedge
+## it paints is a threat rather than an announcement it has already missed.
+func _start_reach() -> float:
+	return _reach() - (STRIKE_RANGE - STRIKE_START_RANGE)
+
+## Is this enemy currently locked into something the player must react to?
+## Used by the pack to take turns; public so siblings can ask cheaply.
+func is_committed() -> bool:
+	return _windup > 0.0 or _charge_state == 1 or _charge_state == 2 \
+		or _boss_tele > 0.0 or _telegraph > 0.0
+
+## Fewer than MAX_COMMITTED others mid-attack? Bosses never wait their turn.
+func _attack_slot_free() -> bool:
+	if is_boss or not is_inside_tree():
+		return true
+	var busy := 0
+	for other in get_tree().get_nodes_in_group("enemy"):
+		if other == self or not is_instance_valid(other):
+			continue
+		if other.has_method("is_committed") and other.is_committed():
+			busy += 1
+			if busy >= MAX_COMMITTED:
+				return false
+	return true
+
 ## Per-type signature behaviours + telegraphs. Never traps the player.
 func _update_special(delta: float) -> void:
+	_charge_cd = maxf(0.0, _charge_cd - delta)
+	_lob_cd = maxf(0.0, _lob_cd - delta)
+	_tick_guard(delta)
 	match enemy_type:
 		"scope_creep":
-			# Requirements never stop growing. It gets bigger and faster.
+			# Requirements never stop growing. It gets bigger, faster, and — via
+			# _reach() — able to hit you from where it could not a moment ago.
 			_grow = minf(_grow + delta * 0.09, 1.0)
 			scale = _base_scale * (1.0 + _grow * 0.7)
 			speed = _base_speed * (1.0 + _grow * 0.9)
+			if _grow >= 1.0 and not _grow_announced:
+				_grow_announced = true
+				var host := get_parent()
+				if host:
+					CombatFx.glyph(host, global_position + Vector2(0, -62),
+						"v2 · out of scope for v1", Color("#8B5CF6"), 14, 1.2, 26.0)
 		"memory_leak":
 			# Slowly bloats as it leaks.
 			_grow = minf(_grow + delta * 0.05, 0.6)
@@ -469,8 +1027,300 @@ func _update_special(delta: float) -> void:
 			if _special_cd <= 0.0:
 				_blink()
 				_special_cd = randf_range(2.2, 3.6)
+		"null_reference":
+			# It is here. It is not here. It cannot read properties of itself.
+			_special_cd -= delta
+			if _special_cd <= 0.0 and _aggroed:
+				_dereference()
+				_special_cd = randf_range(3.4, 5.2)
 	if is_boss:
 		_tick_boss(delta)
+		return
+	_tick_role(delta)
+
+## The non-boss role clock: when does this archetype get to do its thing.
+func _tick_role(delta: float) -> void:
+	if _dying or not _aggroed or target == null or not is_instance_valid(target):
+		return
+	var dist := global_position.distance_to(target.global_position)
+	match _role:
+		ROLE_CHARGER:
+			if _charge_state == 0 and _charge_cd <= 0.0 and dist > 76.0 and dist < 330.0 \
+					and _attack_slot_free():
+				_start_charge()
+		ROLE_ARTILLERY:
+			if _lob_cd <= 0.0 and dist > 84.0 and dist < 430.0 and _attack_slot_free():
+				_fire_ranged()
+		ROLE_SUMMONER:
+			if _summons_left > 0 and _special_cd <= 0.0 and dist < 340.0:
+				_special_cd = randf_range(6.0, 9.0)
+				_summons_left -= 1
+				_call_in_help()
+			else:
+				_special_cd -= delta
+
+# --------------------------------------------------------- committed dash ----
+
+## Telegraph the lane, then commit to it. The dash is a straight line that was
+## drawn on the floor before it started: sidestep it and the dasher over-runs,
+## lands in its recovery pose and takes 70% more damage until it recovers.
+func _start_charge() -> void:
+	if _dying or target == null or not is_instance_valid(target):
+		return
+	var d: Vector2 = target.global_position - global_position
+	if d.length_squared() < 1.0:
+		return
+	_cancel_windup(false)
+	_charge_dir = d.normalized()
+	_charge_state = 1
+	_charge_t = CHARGE_TELE
+	_charge_hit = false
+	var host := get_parent()
+	if host:
+		var to: Vector2 = global_position + _charge_dir * (CHARGE_SPEED * CHARGE_TIME + 40.0)
+		CombatFx.beam(host, global_position, to, Color("#FF4757"), 7.0, CHARGE_TELE)
+		CombatFx.scorch(host, global_position, to, Color("#FF4757"), CHARGE_TELE)
+		CombatFx.glyph(host, global_position + Vector2(0, -54),
+			str(TELLS.get(enemy_type, "committing")), Color("#FF4757"), 15, CHARGE_TELE + 0.2, 16.0)
+	AudioManager.play_sfx("ability")
+
+func _tick_charge(delta: float) -> void:
+	_charge_t -= delta
+	match _charge_state:
+		1:
+			velocity = Vector2.ZERO
+			if _charge_t <= 0.0:
+				_charge_state = 2
+				_charge_t = CHARGE_TIME
+				if is_instance_valid(sprite):
+					sprite.modulate = Color.WHITE
+				var host := get_parent()
+				if host:
+					CombatFx.speed_lines(host, global_position, _charge_dir, FxLib.vivid(_accent()), 6)
+		2:
+			velocity = _charge_dir * CHARGE_SPEED
+			move_and_slide()
+			if absf(velocity.x) > 1.0 and is_instance_valid(sprite):
+				sprite.flip_h = velocity.x < 0
+				_sync_silhouette()
+			if Engine.get_physics_frames() % 3 == 0:
+				var host := get_parent()
+				if host:
+					CombatFx.afterimage(host, sprite, Color(1.6, 1.1, 1.1, 0.5), 0.22)
+			_charge_contact()
+			if get_slide_collision_count() > 0:
+				_end_charge(true)
+			elif _charge_t <= 0.0:
+				_end_charge(false)
+		_:
+			velocity = Vector2.ZERO
+			if _charge_t <= 0.0:
+				_charge_state = 0
+				_charge_cd = randf_range(3.4, 5.2)
+
+## One hit per dash, at contact range. It shoves rather than pins.
+func _charge_contact() -> void:
+	if _charge_hit or target == null or not is_instance_valid(target):
+		return
+	if global_position.distance_to(target.global_position) > 42.0:
+		return
+	_charge_hit = true
+	if target.has_method("take_damage"):
+		target.take_damage(damage, enemy_type)
+	if target.has_method("apply_external_knockback"):
+		target.apply_external_knockback(_charge_dir * 360.0)
+	var host := get_parent()
+	if host:
+		CombatFx.ripple(host, target.global_position, _charge_dir, Color("#FF4757"), 60.0, 0.22)
+	FxLib.add_trauma(get_tree(), 0.2)
+
+## Over-run. Running into a wall costs it more, because that is funnier and
+## because a room's geometry should be a weapon the player can aim things into.
+func _end_charge(hit_wall: bool) -> void:
+	_charge_state = 3
+	_charge_t = CHARGE_RECOVER * (1.35 if hit_wall else 1.0)
+	_open_vuln(_charge_t, 1.7)
+	velocity = Vector2.ZERO
+	if is_instance_valid(sprite):
+		sprite.modulate = Color.WHITE
+	var host := get_parent()
+	if host:
+		if hit_wall:
+			CombatFx.shockwave(host, global_position, Color("#FF4757"), 120.0, 0.35)
+			FxLib.add_trauma(get_tree(), 0.22)
+		CombatFx.glyph(host, global_position + Vector2(0, -50),
+			"reverted" if hit_wall else "over-committed", Color("#FFD34D"), 14, 0.9, 24.0)
+	_dazed_mark(_charge_t)
+
+## Tear down a dash at any stage and put it back on cooldown. Safe to call every
+## frame and safe to call on an enemy that was never a charger.
+func _cancel_charge() -> void:
+	if _charge_state == 0:
+		return
+	_charge_state = 0
+	_charge_t = 0.0
+	_charge_hit = false
+	_charge_cd = maxf(_charge_cd, 1.2)
+	if is_instance_valid(sprite):
+		sprite.modulate = Color.WHITE
+		sprite.position = Vector2(_spr_base_x, _spr_base_y)
+		sprite.rotation = 0.0
+		sprite.scale = _spr_base_scale
+
+# ------------------------------------------------------------ lobbed shots ----
+
+## A telegraphed lobbed shot. The ground marker fills for the WHOLE flight and
+## the hit lands exactly inside it, so "why did that hit me" always has the same
+## answer: you were still standing in the circle when it finished filling.
+## `real = false` draws a decoy — the hallucination's other, equally confident
+## answer — in dead grey, so it is always distinguishable at a glance.
+func _lob(at: Vector2, radius: float, dmg: int, flight: float, tag: String = "", real: bool = true) -> void:
+	var host := get_parent()
+	if host == null or not host.is_inside_tree() or _dying:
+		return
+	var col: Color = FxLib.vivid(_accent()) if real else Color("#7C8BB0")
+	var mk := CombatFx.marker(host, at, col, radius, flight)
+	if not tag.is_empty():
+		CombatFx.glyph(host, at + Vector2(0, -16), tag, col, 12, flight, 8.0)
+	var from: Vector2 = global_position + Vector2(0, -16)
+	var shot := Sprite2D.new()
+	var dot := FxLib.glow_dot()
+	var scl := 1.7
+	if dot:
+		shot.texture = dot
+	else:
+		shot.texture = FxLib.white_square(8)
+		scl = 0.7
+	shot.material = FxLib.additive_material()
+	shot.modulate = Color(col.r * 2.2, col.g * 2.2, col.b * 2.2, 0.95 if real else 0.45)
+	shot.z_index = CombatFx.Z_FX
+	shot.scale = Vector2.ONE * scl
+	host.add_child(shot)
+	shot.global_position = from
+	var apex: Vector2 = from.lerp(at, 0.5) + Vector2(0, -maxf(56.0, from.distance_to(at) * 0.38))
+	_shots.append({
+		"node": shot, "marker": mk, "from": from, "apex": apex, "at": at,
+		"t": 0.0, "dur": maxf(flight, 0.1), "radius": radius, "dmg": dmg,
+		"col": col, "real": real, "scl": scl,
+	})
+
+## Quadratic arc, stepped by hand. No allocations beyond the Vector2 values.
+func _tick_shots(delta: float) -> void:
+	if _shots.is_empty():
+		return
+	var i := _shots.size() - 1
+	while i >= 0:
+		var s: Dictionary = _shots[i]
+		s["t"] = float(s["t"]) + delta
+		var u: float = clampf(float(s["t"]) / float(s["dur"]), 0.0, 1.0)
+		var node: Node2D = s["node"]
+		if is_instance_valid(node):
+			var p_from: Vector2 = s["from"]
+			var p_apex: Vector2 = s["apex"]
+			var p_at: Vector2 = s["at"]
+			var a: Vector2 = p_from.lerp(p_apex, u)
+			var b: Vector2 = p_apex.lerp(p_at, u)
+			node.global_position = a.lerp(b, u)
+			node.scale = Vector2.ONE * float(s["scl"]) * (1.0 + 0.45 * sin(u * PI))
+		if u >= 1.0:
+			_land_shot(s)
+			_shots.remove_at(i)
+		i -= 1
+
+func _land_shot(s: Dictionary) -> void:
+	var node: Node2D = s["node"]
+	if is_instance_valid(node):
+		node.queue_free()
+	var host := get_parent()
+	if host == null or not host.is_inside_tree():
+		return
+	var at: Vector2 = s["at"]
+	var col: Color = s["col"]
+	var radius: float = float(s["radius"])
+	if not bool(s["real"]):
+		# It was never sourced. It was, however, extremely confident.
+		CombatFx.glyph(host, at + Vector2(0, -10), "[citation needed]",
+			Color("#7C8BB0"), 12, 0.8, 22.0)
+		return
+	CombatFx.shockwave(host, at, col, radius, 0.34)
+	FxLib.burst(host, at, Color(col.r * 2.0, col.g * 2.0, col.b * 2.0), 10, 200.0,
+		FxLib.spark(), Vector2(0, 120), CombatFx.Z_FX)
+	if _combat_paused() or target == null or not is_instance_valid(target):
+		return
+	var miss: float = target.global_position.distance_to(at)
+	# Only shake the camera for impacts the player could actually feel — five
+	# memory leaks lobbing across a room must not turn into a permanent rumble.
+	if miss < 220.0:
+		FxLib.add_trauma(get_tree(), 0.12)
+	if miss <= radius and target.has_method("take_damage"):
+		target.take_damage(int(s["dmg"]), enemy_type)
+
+## Killing the caster cancels its incoming shot. Also the only teardown path,
+## so nothing in flight can outlive the room.
+func _cancel_shots() -> void:
+	for entry in _shots:
+		var s: Dictionary = entry
+		var node: Node2D = s["node"]
+		if is_instance_valid(node):
+			node.queue_free()
+		var mk: Node2D = s["marker"]
+		if mk != null and is_instance_valid(mk):
+			mk.queue_free()
+	_shots.clear()
+
+## What each artillery type actually throws. All of them aim at where you ARE:
+## a lob is a question about whether you intend to keep standing there.
+func _fire_ranged() -> void:
+	if target == null or not is_instance_valid(target):
+		return
+	var at: Vector2 = target.global_position
+	match enemy_type:
+		"memory_leak":
+			_lob_cd = randf_range(5.5, 8.0)
+			_lob(at, 52.0, maxi(3, int(damage * 0.6)), 1.0, "still reachable")
+		"rate_limiter":
+			_lob_cd = randf_range(4.2, 6.4)
+			_lob(at, 46.0, maxi(3, int(damage * 0.7)), 0.9, "retry-after: ?")
+		"hallucination":
+			# Two answers. One of them is sourced. The grey one is the confident
+			# one, and it has never hurt anybody.
+			_lob_cd = randf_range(4.0, 6.0)
+			_lob(at, 48.0, maxi(3, int(damage * 0.7)), 1.0, "as we all know")
+			var off := Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0))
+			if off.length_squared() > 0.001:
+				_lob(at + off.normalized() * randf_range(90.0, 150.0), 48.0, 0, 1.0, "", false)
+		_:
+			_lob_cd = randf_range(3.4, 5.0)
+			_lob(at, 54.0, maxi(4, int(damage * 0.55)), 1.0, str(TELLS.get(enemy_type, "")))
+	AudioManager.play_sfx("projectile_shoot")
+
+## The transitive dependency. Small, weak, and it brought nothing with it.
+func _call_in_help() -> void:
+	var host := get_parent()
+	if host == null:
+		return
+	var e := _spawn_add("null_reference", 10, maxi(3, int(damage * 0.5)), 3)
+	if e == null:
+		return
+	CombatFx.glyph(host, global_position + Vector2(0, -52), "peer dep missing",
+		Color("#A8FF3E"), 14, 1.0, 24.0)
+	CombatFx.ring(host, e.global_position, Color("#A8FF3E"), 2.0, 40.0, 0.3, 5.0, 1.0, 22)
+	AudioManager.play_sfx("ability")
+
+## Blink one step sideways, leaving the shape of where it was. Not an escape —
+## it stays inside the fight, it just stops being where you aimed.
+func _dereference() -> void:
+	var host := get_parent()
+	var from: Vector2 = global_position
+	var toward: Vector2 = Vector2.RIGHT
+	if target and is_instance_valid(target):
+		toward = (target.global_position - global_position).normalized()
+	# Sidestep around the player rather than a random jump, so it never blinks
+	# itself into scenery on the far side of the room.
+	global_position += toward.orthogonal() * (54.0 * _orbit) + toward * 18.0
+	if host:
+		CombatFx.afterimage(host, sprite, Color(1.0, 1.0, 1.4, 0.6), 0.35, from - global_position, -1)
+		CombatFx.glyph(host, from + Vector2(0, -34), "undefined", Color("#7C8BB0"), 12, 0.5, 18.0)
 
 # ------------------------------------------------------------ boss rig ----
 
@@ -530,6 +1380,18 @@ func _check_boss_phase() -> void:
 		_boss_hud.announce_phase(_boss_phase)
 	speed = _base_speed * (1.0 + 0.14 * float(_boss_phase - 1))
 	_special_cd = minf(_special_cd, 1.2)
+	# A phase change resets the board: whatever it was mid-way through is
+	# abandoned, and a guardian's plate is re-approved for the new quarter.
+	_boss_tele = 0.0
+	_boss_recover = 0.0
+	_charge_cd = 0.0
+	_cancel_charge()
+	if _boss_marker and is_instance_valid(_boss_marker):
+		_boss_marker.queue_free()
+		_boss_marker = null
+	if _role == ROLE_GUARDIAN and not _guard_up():
+		_guard_down = 0.0
+		_build_guard()
 	var host := get_parent()
 	var col := FxLib.vivid(_accent())
 	if host:
@@ -543,28 +1405,160 @@ func _check_boss_phase() -> void:
 	FxLib.add_trauma(get_tree(), 0.4)
 	AudioManager.play_sfx("ability")
 
-## Bosses telegraph a big AoE shockwave, then slam. The Enterprise Architect
-## also convenes a governance council (summons adds). Knockback is temporary,
-## so a boss can never trap the player.
+## Which patterns a boss may use, by phase. Each phase ADDS a move rather than
+## only speeding up the last one, so phase 4 of a fight does not play like a
+## faster phase 1. Artillery bosses lead with the barrage from the first phase —
+## a $700 cloud bill has never walked up to anybody.
+func _boss_moves() -> Array:
+	var moves: Array = [BOSS_SLAM] if _role != ROLE_ARTILLERY else [BOSS_BARRAGE, BOSS_SLAM]
+	if _boss_phase >= 2:
+		moves.append(BOSS_BARRAGE)
+	if _boss_phase >= 3:
+		moves.append(BOSS_CHARGE)
+	if _boss_phase >= 4:
+		moves.append(BOSS_SIGNATURE)
+		moves.append(BOSS_CHARGE)
+	return moves
+
+## Bosses cycle: pick a move for the phase, telegraph it, commit, then STAND
+## THERE. The recovery is not a gap in the design, it is the design — every
+## boss commitment ends in a window the player is meant to punish.
 func _tick_boss(delta: float) -> void:
 	if _intro_lock > 0.0:
+		return
+	if _charge_state != 0:
+		return  # the dash state machine owns this boss right now
+	if _boss_recover > 0.0:
+		_boss_recover -= delta
+		if _boss_recover <= 0.0 and is_instance_valid(sprite):
+			sprite.modulate = Color.WHITE
 		return
 	if _boss_tele > 0.0:
 		_boss_tele -= delta
 		sprite.modulate = Color(1.5, 0.6, 0.6) if fmod(_boss_tele, 0.2) < 0.1 else Color.WHITE
 		if _boss_tele <= 0.0:
 			sprite.modulate = Color.WHITE
-			_boss_slam()
+			_boss_execute()
 		return
 	_special_cd -= delta
-	if _special_cd <= 0.0 and target and global_position.distance_to(target.global_position) < 320.0:
-		_boss_tele = 0.7
-		_special_cd = randf_range(4.0, 6.5)
-		# Paint the kill zone on the floor for the whole wind-up. The slam
-		# reaches 260px; so does the marker. No hidden information.
-		var host := get_parent()
-		if host:
-			_boss_marker = CombatFx.marker(host, global_position, Color("#FF4757"), 260.0, 0.7)
+	if _special_cd > 0.0 or target == null or not is_instance_valid(target):
+		return
+	var dist := global_position.distance_to(target.global_position)
+	if dist > 460.0:
+		return
+	var moves := _boss_moves()
+	_boss_move = int(moves[randi() % moves.size()])
+	# A dash needs room to be dodgeable; up close it becomes a slam instead.
+	if _boss_move == BOSS_CHARGE:
+		if dist > 96.0:
+			_special_cd = randf_range(3.6, 5.4)
+			_start_charge()
+			return
+		_boss_move = BOSS_SLAM
+	_boss_tele = 0.7 if _boss_move == BOSS_SLAM else 0.9
+	_special_cd = maxf(2.6, randf_range(3.6, 5.8) - 0.3 * float(_boss_phase - 1))
+	_telegraph_boss_move()
+
+## Paint the move before it happens. No hidden information, ever.
+func _telegraph_boss_move() -> void:
+	var host := get_parent()
+	if host == null:
+		return
+	var col := FxLib.vivid(_accent())
+	match _boss_move:
+		BOSS_BARRAGE:
+			CombatFx.glyph(host, global_position + Vector2(0, -72),
+				str(TELLS.get(enemy_type, "incoming")), col, 16, _boss_tele + 0.2, 18.0)
+			CombatFx.ring(host, global_position, col, 20.0, 150.0, _boss_tele, 3.0, 7.0, 28)
+		BOSS_SIGNATURE:
+			CombatFx.glyph(host, global_position + Vector2(0, -72), _signature_tell(),
+				col, 16, _boss_tele + 0.3, 18.0)
+			CombatFx.ring(host, global_position, col, 220.0, 30.0, _boss_tele, 3.0, 8.0, 28)
+		_:
+			# The slam reaches 260px; so does the marker.
+			_boss_marker = CombatFx.marker(host, global_position, Color("#FF4757"), 260.0, _boss_tele)
+
+func _boss_execute() -> void:
+	match _boss_move:
+		BOSS_BARRAGE:
+			_boss_barrage()
+		BOSS_SIGNATURE:
+			_boss_signature()
+		_:
+			_boss_slam()
+
+## Telegraphed impacts fanned around where the player is standing, one under
+## their feet and the rest ringing it. Standing still is the only wrong answer;
+## walking out of the ring is always possible.
+func _boss_barrage() -> void:
+	if target == null or not is_instance_valid(target):
+		_open_window(0.7)
+		return
+	var here: Vector2 = target.global_position
+	var count: int = 3 + mini(2, _boss_phase - 1)
+	var base: float = randf() * TAU
+	var dmg: int = maxi(4, int(damage * 0.45))
+	_lob(here, 60.0, dmg, 1.05, str(TELLS.get(enemy_type, "")))
+	for i in count:
+		var a: float = base + TAU * float(i) / float(count)
+		var at: Vector2 = here + Vector2(cos(a), sin(a)) * randf_range(90.0, 150.0)
+		_lob(at, 56.0, dmg, 1.05 + 0.12 * float(i))
+	AudioManager.play_sfx("ability")
+	_open_window(0.9)
+
+## The phase-4 move, one per boss. It is the thing that boss is ABOUT.
+func _boss_signature() -> void:
+	match enemy_type:
+		"enterprise_architect":
+			# The governance council convenes. Capped, because the joke is the
+			# meeting, not the wipe.
+			for i in mini(2, _summons_left):
+				_summons_left -= 1
+				_summon("scope_creep")
+		"merge_conflict":
+			for i in mini(2, _summons_left):
+				_summons_left -= 1
+				var e := _spawn_add("merge_conflict", 18, maxi(4, int(damage * 0.4)), 3)
+				if e:
+					e.set("generation", 1)  # these ones do not get to split again
+		"legacy_monolith":
+			_guard_down = 0.0
+			if not _guard_up():
+				_build_guard()
+		"cloud_bill", "infinite_context":
+			_boss_barrage()
+			return
+		_:
+			_boss_slam()
+			return
+	_open_window(1.0)
+
+func _signature_tell() -> String:
+	match enemy_type:
+		"enterprise_architect":
+			return "convening a working group"
+		"merge_conflict":
+			return "conflicted copy (2)"
+		"legacy_monolith":
+			return "re-approving the plate"
+		"cloud_bill":
+			return "annual true-up"
+		"infinite_context":
+			return "summarising the summary"
+	return "escalating"
+
+## Every boss commitment ends in an opening. This is where the fight is won: it
+## stands still, wears the question marks, and takes 75% more damage.
+func _open_window(seconds: float) -> void:
+	_boss_recover = seconds
+	_open_vuln(seconds, 1.75)
+	if _dying:
+		return
+	var host := get_parent()
+	if host:
+		CombatFx.glyph(host, global_position + Vector2(0, -76), "EXPOSED",
+			Color("#FFD34D"), 17, minf(seconds, 1.0), 20.0)
+	_dazed_mark(seconds)
 
 func _boss_slam() -> void:
 	if _boss_marker and is_instance_valid(_boss_marker):
@@ -581,6 +1575,7 @@ func _boss_slam() -> void:
 	if enemy_type == "enterprise_architect":
 		_summon("scope_creep")
 	AudioManager.play_sfx("ability")
+	_open_window(0.85)
 
 ## Give the slam physical weight: a camera kick, an expanding dust ring and a
 ## hard shockwave at the point of impact. All cosmetic and self-cleaning.
@@ -611,17 +1606,42 @@ func _slam_impact() -> void:
 	dust.finished.connect(dust.queue_free)
 
 func _summon(type: String) -> void:
-	var scene := preload("res://scenes/combat/enemy.tscn")
-	var e = scene.instantiate()
-	e.enemy_type = type
-	e.max_hp = 16
-	get_parent().add_child(e)
-	e.global_position = global_position + Vector2(randf_range(-44, 44), randf_range(-44, 44))
+	var e := _spawn_add(type, 16)
+	if e == null:
+		return
 	# Adds arrive through a rift, not by appearing out of nothing.
 	var host := get_parent()
 	if host:
 		CombatFx.ring(host, e.global_position, Color("#8B5CF6"), 2.0, 44.0, 0.3, 5.0, 1.0, 24)
 		CombatFx.glyph(host, e.global_position + Vector2(0, -50), "added to the invite", Color("#8B5CF6"), 12, 0.9, 22.0)
+
+## Shared add-spawning. `dmg` / `drop` below zero leave the scene defaults alone,
+## which is what `_summon()` has always relied on. Returns null when this enemy
+## has no tree to spawn into. Exported fields are written through `set()` so the
+## statically-typed handle never has to pretend it knows the enemy script.
+func _spawn_add(type: String, hp_val: int, dmg: int = -1, drop: int = -1) -> Node2D:
+	var host := get_parent()
+	if host == null or not host.is_inside_tree():
+		return null
+	var scene := preload("res://scenes/combat/enemy.tscn")
+	var e: Node2D = scene.instantiate()
+	e.set("enemy_type", type)
+	e.set("max_hp", hp_val)
+	if dmg >= 0:
+		e.set("damage", dmg)
+	if drop >= 0:
+		e.set("token_drop", drop)
+	host.add_child(e)
+	# Adds arrive on the far side of the summoner, never on top of the player. A
+	# body that materialises inside your hitbox is a free hit, not a threat, and
+	# it is the one way a summon could feel unfair.
+	var offset := Vector2(randf_range(-30, 30), randf_range(-30, 30))
+	if target and is_instance_valid(target):
+		var back: Vector2 = global_position - target.global_position
+		if back.length_squared() > 1.0:
+			offset += back.normalized() * randf_range(40.0, 62.0)
+	e.global_position = global_position + offset
+	return e
 
 func _tick_rate_limiter(delta: float) -> void:
 	if _telegraph > 0.0:
@@ -683,9 +1703,47 @@ func _separation() -> Vector2:
 
 func apply_knockback(impulse: Vector2) -> void:
 	_knockback = impulse
+	var was_winding: bool = _windup > 0.0
 	# Being shoved interrupts a committed swing. That is the whole point of the
 	# dash, and it must read on screen the frame it happens.
 	_cancel_windup()
+	# The DASH — and only the dash — also breaks a charge telegraph or a boss
+	# wind-up. Ordinary bolts deliberately cannot: if a bolt cancelled a
+	# telegraph, no enemy that stands still to wind up would ever get an attack
+	# off, and the whole read-the-tell loop would collapse into "shoot faster".
+	# Force Push and a bolt overlap in raw impulse, so the tell is the player's
+	# own dash state; if that ever stops being readable this degrades to "no
+	# interrupt", never to an error.
+	var hard: bool = impulse.length() >= 360.0 and _player_is_dashing()
+	var broke_commit: bool = hard and (_charge_state == 1 or _boss_tele > 0.0)
+	if broke_commit:
+		_cancel_charge()
+		if _boss_tele > 0.0:
+			_boss_tele = 0.0
+			if _boss_marker and is_instance_valid(_boss_marker):
+				_boss_marker.queue_free()
+				_boss_marker = null
+			if is_instance_valid(sprite):
+				sprite.modulate = Color.WHITE
+	if _dying or not (broke_commit or (hard and was_winding)):
+		return
+	# Reading a telegraph and dashing into it is supposed to PAY.
+	_open_vuln(1.1, 1.6)
+	var host := get_parent()
+	if host:
+		CombatFx.glyph(host, global_position + Vector2(0, -56), "interrupted",
+			Color("#7DFFF0"), 15, 0.8, 24.0)
+
+## Is the player mid-dash right now? Used to tell a Force Push apart from a
+## bolt, which carry overlapping impulses. Property-probed rather than
+## hard-referenced so a missing field degrades to `false`.
+func _player_is_dashing() -> bool:
+	if not is_inside_tree():
+		return false
+	var p := get_tree().get_first_node_in_group("player")
+	if p == null or not is_instance_valid(p):
+		return false
+	return "_dash_timer" in p and p._dash_timer > 0.0
 
 func _combat_paused() -> bool:
 	if GameManager.state != GameManager.GameState.PLAYING:
@@ -706,6 +1764,7 @@ func take_damage(amount: int, is_crit: bool = false, from_dir: Vector2 = Vector2
 	# the card plays and the health bar appears, so the fight is never anonymous.
 	if is_boss and not _intro_done:
 		_play_boss_intro()
+	amount = _resolve_damage(amount, from_dir)
 	hp -= amount
 	_flash_damage()
 	_spawn_damage_number(amount, is_crit)
@@ -721,10 +1780,45 @@ func take_damage(amount: int, is_crit: bool = false, from_dir: Vector2 = Vector2
 		_dying = true
 		_die.call_deferred()
 
+## Two modifiers sit between a shot and an enemy's HP, and both are things the
+## player controls:
+##   * the guard plate — shots into a guardian's front are mostly absorbed and
+##     chip the plate; from anywhere else they land in full;
+##   * the vulnerability window — anything that over-committed takes more.
+## Both announce themselves on screen, so the number is never a mystery.
+func _resolve_damage(amount: int, from_dir: Vector2) -> int:
+	var host := get_parent()
+	# One bolt registers on BOTH the projectile's area and this enemy's hitbox in
+	# the same physics flush (see _spawn_damage_number). Everything that must
+	# happen once per SHOT — chipping the plate, printing a callout — is gated on
+	# the frame rather than on the callback.
+	var frame := Engine.get_physics_frames()
+	var first_this_frame: bool = frame != _guard_frame
+	if _guard_up() and from_dir.length_squared() > 0.0001:
+		_guard_frame = frame
+		if from_dir.dot(_guard_dir) < -cos(GUARD_ARC * 0.5):
+			amount = maxi(1, int(round(float(amount) * GUARD_MITIGATION)))
+			if first_this_frame:
+				_guard_hits += 1
+				if host:
+					CombatFx.ring(host, global_position + _guard_dir * 30.0,
+						FxLib.vivid(_accent()), 4.0, 26.0, 0.22, 5.0, 1.0, 18)
+					CombatFx.glyph(host, global_position + _guard_dir * 36.0 + Vector2(0, -10),
+						"blocked", Color("#C9D6F2"), 12, 0.45, 12.0)
+				if _guard_hits >= _guard_max:
+					_break_guard()
+			return amount
+		if first_this_frame and host and randf() < 0.4:
+			CombatFx.glyph(host, global_position + Vector2(0, -46), "flanked",
+				Color("#7DFFF0"), 13, 0.55, 18.0)
+	if _vuln_t > 0.0 and _vuln_mult > 1.0:
+		amount = int(round(float(amount) * _vuln_mult))
+	return amount
+
 ## Knocked off its feet for a moment: the sprite kicks away from the hit and
 ## springs back. Never touches the body, so it can't affect collision.
 func _stagger(from_dir: Vector2, is_crit: bool) -> void:
-	if not is_instance_valid(sprite) or _windup > 0.0:
+	if not is_instance_valid(sprite) or _windup > 0.0 or _charge_state != 0:
 		return
 	var d := from_dir
 	if d.length_squared() < 0.0001:
@@ -830,8 +1924,27 @@ func _attack() -> void:
 	if _combat_paused() or _dying or _stun_time > 0.0 or _intro_lock > 0.0:
 		attack_timer.start(1.0)
 		return
-	if not target or not is_instance_valid(target) or global_position.distance_to(target.global_position) > 40:
+	# A boss must not swing during its own punish window; the whole point of the
+	# recovery is that it is defenceless for a beat.
+	#
+	# Nor during ANY big-move telegraph (a boss slam/barrage, or a rate limiter's
+	# 429): a melee wind-up returns out of `_physics_process` BEFORE
+	# `_update_special` runs, which freezes `_boss_tele` / `_telegraph` in place
+	# while the ground marker — a tween, which does not freeze — runs out and
+	# frees itself. The big move then landed with nothing painted under it, which
+	# is the same "the marker lies about the kill zone" defect the planting was
+	# added to fix, arriving through the other door.
+	if _charge_state != 0 or _telegraph > 0.0 \
+			or (is_boss and (_boss_recover > 0.0 or _boss_tele > 0.0)):
+		attack_timer.start(0.8)
+		return
+	if not target or not is_instance_valid(target) or global_position.distance_to(target.global_position) > _start_reach():
 		attack_timer.start(1.0)
+		return
+	# Take turns. Four enemies landing a swing in the same frame is the thing
+	# that made packs read as unfair rather than hard.
+	if not _attack_slot_free():
+		attack_timer.start(randf_range(0.45, 0.9))
 		return
 	# Telegraph first, damage second. `_strike()` restarts the clock; if the
 	# wind-up can't start, put the clock back ourselves so this enemy never
@@ -843,6 +1956,20 @@ func _die() -> void:
 	if is_instance_valid(_hp_bar):
 		_hp_bar.visible = false
 	_cancel_windup(false)
+	_cancel_charge()
+	# Anything this one still had in the air is cancelled with it, and the
+	# presence rig comes off so the dissolve is the only thing left to look at.
+	_cancel_shots()
+	if is_instance_valid(_halo):
+		_halo.visible = false
+	if is_instance_valid(_backing):
+		_backing.visible = false
+	if is_instance_valid(_alert_ring):
+		_alert_ring.visible = false
+	if is_instance_valid(_guard):
+		_guard.visible = false
+	if is_instance_valid(_body_light):
+		_body_light.queue_free()
 	# A merge conflict resolves into two smaller, incompatible conflicts.
 	if enemy_type == "merge_conflict" and generation < 1 and not is_boss:
 		_split()
@@ -909,6 +2036,11 @@ func _death_comedy() -> void:
 	var col := _accent()
 	CombatFx.text_shards(host, global_position + Vector2(0, -12), col,
 		DEATH_SHARDS.get(enemy_type, ["exit 1"]), 5 if is_boss else 4)
+	if _elite:
+		# Elites are worth saying goodbye to; the payout is the point.
+		CombatFx.glyph(host, global_position + Vector2(0, -72), "deprecated at last",
+			Color("#FFD34D"), 15, 1.2, 30.0)
+		CombatFx.ring(host, global_position, Color("#FFD34D"), 6.0, 110.0, 0.45, 8.0, 1.4)
 	# The obituary: always for bosses, sometimes for the rank and file, so it
 	# stays a joke instead of turning into a subtitle track.
 	if is_boss or randf() < 0.35:

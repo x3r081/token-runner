@@ -73,6 +73,34 @@
     "the_honest_estimate": {"name": "The Honest Estimate", "description": "Said the real number out loud, in a meeting, and held it. Estimates are a genre of fiction and you published non-fiction."},
     "supply_chain_scholar": {"name": "Eleven Lines, Four Hospitals", "description": "Read the lockfile, the abandoned package and left-pad's ghost, and understood exactly how much of modern software is one stranger's weekend."},
     "scope_is_a_verb": {"name": "Scope Is A Verb Now", "description": "Cleared four Scope Creeps off the office floor. They were harmless individually. There is no individually."},
-    "thermal_headroom": {"name": "Thermal Headroom", "description": "Worked a full shift at the mine face. The room is 94 degrees. Corporate calls that headroom. The cards call it goodbye."}
+    "thermal_headroom": {"name": "Thermal Headroom", "description": "Worked a full shift at the mine face. The room is 94 degrees. Corporate calls that headroom. The cards call it goodbye."},
+
+    "the_ritual_is_the_work": {"name": "The Ritual Is The Work", "description": "Completed the full pre-coding ceremony: machine, fridge, plant. No code was written. The ceremony has a running order, which makes it a process, which makes it work."},
+    "only_supported_platform": {"name": "The Only Supported Platform", "description": "Confirmed the outage is real for everyone except you. Your machine is now the reference implementation and nobody else can have one."},
+    "pinned_to_the_floor": {"name": "Pinned To The Floor", "description": "Pinned every dependency to an exact version. The build is perfectly reproducible and will be perfectly reproducible right up until it is perfectly unpatchable."},
+    "surprise_me": {"name": "The Caret Means Surprise Me", "description": "Took every upgrade the moment it landed. First to the features, first to the incident. Both of those count as being first."},
+    "cited_by_yourself": {"name": "Cited By Yourself", "description": "Found the accepted answer to your own error, with your own name on it, from 2019, wrong. Somebody had commented 'this saved me'."},
+    "most_users_will_not_need_to_change": {"name": "Most Users Will Not Need To Change", "description": "Read a migration guide that opened by promising the migration did not apply to you. It applied to you. It always applies to you."},
+    "the_line_item_called_other": {"name": "The Line Item Called Other", "description": "Reconciled the invoice against the dashboard. The largest charge is called 'Other'. Nobody at either company can say what 'Other' is."},
+    "the_funding_model": {"name": "One Man Called Dave", "description": "Read the sponsor count and the issue tracker in the same evening. Eleven million downloads, one recurring card, four hospitals, and a thumbs-down from a stranger."},
+    "the_font_nobody_chose": {"name": "The Font Nobody Chose", "description": "Read the mission statement aloud. It was written by a committee, approved by a second committee, and set in a typeface that was never selected by any person."},
+    "the_fans_have_a_fan": {"name": "The Fans Have A Fan", "description": "Signed a thermal report on a room where the fans have a fan and that fan is under-specced. You wrote 'within tolerance'. Tolerance of what was not specified."},
+    "dont_restart_three": {"name": "Don't Restart 3", "description": "Read the whole handover before touching anything and found the two incidents that 'all quiet' was covering. You still do not know why not 3. You still did not restart 3."},
+    "the_subtraction": {"name": "The Vault Does The Subtraction", "description": "Stood in front of the reserves while a machine calculated, out loud, the distance between your balance and the cheapest thing you still need."},
+    "action_items_three": {"name": "Action Items: 3", "description": "Wrote the postmortem before the incident. Euphemism intact, truth in brackets. Completed: 0. Reopened next quarter: 3."},
+
+    "async_by_which_we_mean_never": {"name": "Async, By Which We Mean Never", "description": "Replaced the standup with a bot that asks three questions, and the summary of the answers is written by a second bot and read by nobody."},
+    "data_is_not_orders": {"name": "Data Is Not Orders", "description": "Found instructions addressed to your agent inside a customer ticket, and quarantined the text instead of running it. Anything you read is data. You are the only one who gives orders."},
+    "load_bearing_temp": {"name": "temp.js, Critical Path", "description": "Documented the load-bearing workaround instead of removing it. It now has a docstring, an owner, and tenure."},
+    "step_three_of_forty_seven": {"name": "Step 3 Of 47", "description": "Fixed the onboarding doc for the next person instead of routing around it. 'Run make setup, it will work' had not worked since a laptop that no longer exists."},
+    "assert_true_is_true": {"name": "assertTrue(true)", "description": "Deleted 840 generated tests that asserted nothing, and kept the 60 that did. Coverage fell. Confidence rose. Only one of those numbers is on a dashboard."},
+    "i_have_read_it": {"name": "I Have Read It", "description": "Read every line of the feature you shipped without reading. It was fine. Knowing it was fine turned out to be a different feeling from it being fine."},
+    "outside_exists": {"name": "There Is A Door", "description": "Went outside for ten minutes in the middle of the run. It cost you deadline. It was the only thing all night that gave anything back."},
+    "driven_development": {"name": "Conference-Driven Development", "description": "Submitted an abstract about a system that did not exist, got accepted, and then built the system. The deadline worked. That is the horrifying part."},
+    "one_real_person": {"name": "One Real Person", "description": "A stranger described your product back to you, wrongly, and said it changed their week. You replied personally. Nobody measures this."},
+    "they_did_not_have_to_do_that": {"name": "They Did Not Have To Do That", "description": "Someone reported a vulnerability politely, with a repro, for free. You fixed it the same day and put their name on it."},
+    "one_more_feature_at_dawn": {"name": "One More Feature, At Dawn", "description": "Watched the room get lighter and started something new anyway. The reset does not negotiate and you knew that when you opened the file."},
+    "the_business_case_was_better": {"name": "The Business Case Was Better", "description": "Your agents costed a fifth agent and attached a justification. It was clearer than yours, shorter than yours, and correct."},
+    "two_years_of_support": {"name": "Two Years Of Support", "description": "The subscription you never signed up for sent a warm, well-written newsletter thanking you for two years of loyalty. You cancelled it during the second paragraph."}
   }
 }

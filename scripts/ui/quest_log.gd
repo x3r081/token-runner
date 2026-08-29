@@ -5,6 +5,7 @@ extends PanelContainer
 ## Each quest gets one dry line of flavour — riding along, never in the way.
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
+const _Modal = preload("res://scripts/ui/modal_panel.gd")
 
 const REGION_NAMES := {
 	"localhost": "Localhost",
@@ -80,12 +81,41 @@ const QUEST_FLAVOUR := {
 	"thermal_shift": "94 degrees, held together with zip ties and a cone in the asset register.",
 }
 
+## Quest names that are jokes instead of names.
+##
+## "TODO: Everything" is funny in body copy and useless as the HEADLINE of the
+## thing you are currently doing — the one line in the log whose entire job is to
+## tell you what you are working on, and it told you nothing. So the informative
+## half leads and the gag keeps its seat, which is COMEDY_BIBLE's "Real Name —
+## quip" pattern verbatim. quests.json is untouched: ids and prose stay the
+## source of truth, and any quest not listed here keeps the name it ships with.
+##
+## These MUST stay identical to hud.gd's QUEST_HEADLINE_NAMES. The objective
+## panel and the quest log are one keypress apart; two different names for the
+## same quest is worse than the joke name was.
+const TITLE_OVERRIDES := {
+	"hello_localhost": "First Sprint — TODO: Everything",
+}
+
 func _ready() -> void:
 	theme = _GameTheme.create()
-	add_theme_stylebox_override("panel", _GameTheme.panel_box(_GameTheme.CYAN, 4.0))
+	# Full modal treatment. At 0.92 alpha with no scrim, the world caption "You
+	# could sleep. Hypothetically. Academically." bled through the panel and sat
+	# beside the "Quest Log" title as if it were part of the header.
+	add_theme_stylebox_override("panel", _Modal.modal_box(_GameTheme.CYAN, 4.0))
+	_Modal.attach_scrim(self)
+	# Wider and taller: this panel is nothing but body copy, and the copy had to
+	# get bigger to be readable. Placement comes from the modal kit so the Close
+	# button can never land in the HUD's ability-bar band.
+	offset_left = -440.0
+	offset_right = 440.0
+	_Modal.place_centred(self, 720.0)
+	($Margin/VBox/Scroll as ScrollContainer).custom_minimum_size = Vector2(0, 420)
 	_GameTheme.style_heading($Margin/VBox/Title, _GameTheme.CYAN, 22)
 	$Margin/VBox/Subtitle.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
+	$Margin/VBox/Subtitle.add_theme_font_size_override("font_size", 14)
 	$Margin/VBox/Footer.add_theme_color_override("font_color", _GameTheme.AMBER)
+	$Margin/VBox/Footer.add_theme_font_size_override("font_size", 14)
 	_GameTheme.style_button($Margin/VBox/CloseBtn, _GameTheme.CYAN, 15)
 	_populate()
 	_GameTheme.open_panel(self)
@@ -128,17 +158,20 @@ func _populate() -> void:
 	for info: Dictionary in done:
 		_done_card(vbox, info)
 
-	_GameTheme.stagger_rows(vbox, 0.03, 0.06)
+	_Modal.reveal_rows(vbox)
 
 # ------------------------------------------------------------------- cards ----
 
 func _active_card(parent: Node, info: Dictionary) -> void:
 	var vb := _card(parent, _GameTheme.CYAN)
-	_row(vb, "▸  %s" % str(info.get("name", "?")), 17, _GameTheme.WHITE_HOT, true)
-	_row(vb, str(info.get("description", "")), 13, _GameTheme.TEXT_DIM)
+	_row(vb, "▸  %s" % _headline(info), 18, _GameTheme.WHITE_HOT, true)
+	var ticket := _ticket_name(info)
+	if ticket != "":
+		_row(vb, '   ticket: "%s"' % ticket, 12, _GameTheme.with_alpha(_GameTheme.TEXT_DIM, 0.9))
+	_row(vb, str(info.get("description", "")), 14, _GameTheme.TEXT)
 	var flavour := str(QUEST_FLAVOUR.get(str(info.get("id", "")), ""))
 	if flavour != "":
-		_row(vb, flavour, 12, _GameTheme.with_alpha(_GameTheme.VIOLET, 0.85))
+		_row(vb, flavour, 13, _GameTheme.with_alpha(_GameTheme.VIOLET, 1.0))
 	var progress: Dictionary = info.get("progress", {})
 	for obj in info.get("objectives", []):
 		if not (obj is Dictionary):
@@ -151,21 +184,24 @@ func _active_card(parent: Node, info: Dictionary) -> void:
 		var count_txt := "" if need <= 1 else ("   %d / %d" % [prog, need])
 		var body := str(od.get("text", od.get("id", "?")))
 		_row(vb, "   %s %s%s" % [mark, body, count_txt],
-			14, _GameTheme.ACID if checked else _GameTheme.TEXT)
-	_row(vb, "NEXT:  %s" % _next_step(info), 14, _GameTheme.AMBER)
+			15, _GameTheme.ACID if checked else _GameTheme.TEXT)
+	_row(vb, "NEXT:  %s" % _next_step(info), 15, _GameTheme.AMBER)
 
 func _available_card(parent: Node, info: Dictionary) -> void:
 	var vb := _card(parent, _GameTheme.AMBER)
-	_row(vb, "◆  %s" % str(info.get("name", "?")), 16, _GameTheme.TEXT, true)
-	_row(vb, str(info.get("description", "")), 13, _GameTheme.TEXT_DIM)
-	_row(vb, "FROM:  %s" % _giver_line(info), 14, _GameTheme.AMBER)
+	# TEXT, not WHITE_HOT: on an opaque body TEXT is already high-contrast, and the
+	# hottest headline in the log has to stay the one quest you are actually on.
+	# Two WHITE_HOT headlines a card apart is how "what am I doing" gets lost.
+	_row(vb, "◆  %s" % _headline(info), 17, _GameTheme.TEXT, true)
+	_row(vb, str(info.get("description", "")), 14, _GameTheme.TEXT_DIM)
+	_row(vb, "FROM:  %s" % _giver_line(info), 15, _GameTheme.AMBER)
 
 func _done_card(parent: Node, info: Dictionary) -> void:
 	var vb := _card(parent, _GameTheme.ACID)
-	_row(vb, "✔  %s" % str(info.get("name", "?")), 15, _GameTheme.with_alpha(_GameTheme.ACID, 0.75), true)
+	_row(vb, "✔  %s" % _headline(info), 15, _GameTheme.with_alpha(_GameTheme.ACID, 0.9), true)
 	var flavour := str(QUEST_FLAVOUR.get(str(info.get("id", "")), ""))
 	if flavour != "":
-		_row(vb, flavour, 12, _GameTheme.with_alpha(_GameTheme.TEXT_DIM, 0.7))
+		_row(vb, flavour, 12, _GameTheme.with_alpha(_GameTheme.TEXT_DIM, 0.85))
 
 func _card(parent: Node, accent: Color) -> VBoxContainer:
 	var card := PanelContainer.new()
@@ -189,21 +225,49 @@ func _empty(parent: Node, text: String) -> void:
 	var l := Label.new()
 	l.text = text
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.custom_minimum_size = Vector2(700, 0)
-	l.add_theme_font_size_override("font_size", 13)
-	l.add_theme_color_override("font_color", _GameTheme.with_alpha(_GameTheme.TEXT_DIM, 0.8))
+	l.custom_minimum_size = Vector2(740, 0)
+	l.add_theme_font_size_override("font_size", 14)
+	l.add_theme_color_override("font_color", _GameTheme.with_alpha(_GameTheme.TEXT_DIM, 0.95))
 	parent.add_child(l)
 
 func _row(parent: Node, text: String, size: int, col: Color, heading := false) -> void:
 	var l := Label.new()
 	l.text = text
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.custom_minimum_size = Vector2(690, 0)
+	l.custom_minimum_size = Vector2(740, 0)
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", col)
 	if heading:
 		l.add_theme_font_override("font", _GameTheme.spaced_font(2))
+		# Headings carry the quest name — give them the outline floor so they stay
+		# names even if something ever draws behind this panel again.
+		_GameTheme.outline_text(l, 2)
 	parent.add_child(l)
+
+# ------------------------------------------------------------ quest naming ----
+
+## The name shown as the card's headline: the override where one exists,
+## otherwise whatever the quest JSON calls itself.
+func _headline(info: Dictionary) -> String:
+	var qid := str(info.get("id", ""))
+	var over := str(TITLE_OVERRIDES.get(qid, ""))
+	if over != "":
+		return over
+	return str(info.get("name", "?"))
+
+## The authored JSON name, printed as a ticket line under the headline so the gag
+## survives being demoted — but only when the override actually dropped it. The
+## current override keeps it inline ("Real Name — quip"), so this returns "" and
+## nothing is said twice; a future override that replaces the name outright will
+## get the ticket line automatically.
+func _ticket_name(info: Dictionary) -> String:
+	var qid := str(info.get("id", ""))
+	if not TITLE_OVERRIDES.has(qid):
+		return ""
+	var authored := str(info.get("name", ""))
+	if authored == "" or _headline(info).findn(authored) != -1:
+		return ""
+	return authored
 
 # ------------------------------------------------------------ teaching bits ----
 

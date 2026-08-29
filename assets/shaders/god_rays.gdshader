@@ -61,6 +61,20 @@ void fragment() {
 	// Gentler, slower amplitude wander — the old 0.55..1.15 swing chopped the
 	// shafts into flickering segments; a beam should breathe, not strobe.
 	shafts *= 0.70 + 0.40 * vnoise(vec2(across * 4.0, t * 0.4));
+	// Round 5. The three combs beat against each other, and their valleys never
+	// line up — which left a low, even FILL between the shafts. That fill is
+	// what turned the wildlands and api_bazaar QA frames into a single wash of
+	// green and pink: a shader that was supposed to carve light out of the dark
+	// was quietly adding a flat 10-20% to every pixel it covered. The gate cuts
+	// the fill and leaves the peaks alone, so what survives is beams.
+	shafts *= smoothstep(0.06, 0.42, shafts);
+	// A hot core inside each beam, which only exists where the beam already is.
+	// One brightest thing per shaft: value hierarchy instead of even glow.
+	float core = clamp(shafts * 0.62, 0.0, 1.0);
+	shafts += core * core * core * 0.55;
+	// Fine drifting motes IN the light — the reason a shaft reads as air with
+	// dust in it rather than as a painted gradient.
+	shafts *= 0.86 + 0.28 * vnoise(vec2(across * 22.0, along * 9.0 - t * 0.9));
 
 	// Longer throw: shafts hold ~35% deeper into the room before the falloff
 	// takes them, so each one reads as a beam with a body rather than a stub.
