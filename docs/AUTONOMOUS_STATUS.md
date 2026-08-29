@@ -9,8 +9,24 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 52 — live "increasingly ridiculous" Dream App architecture diagram.
-Next: more quest variety; keep playtesting toward 8-9/10.
+Iteration 53 — P0: respawn blockable by a lingering overlay (found via broad
+playtest). Next: live re-confirmation; more quest variety.
+
+### Iteration 53 — Broad playtest + respawn P0 fix
+- A broad mid-game playtest confirmed the game is cohesive and competitive (7.5/10:
+  "excellent systems design", diagram "hilarious", humor "sharp", core loop works,
+  systems connected) BUT reported "respawn does nothing" + "died pressing E on the
+  terminal prop."
+- Root-caused (not a logic regression — `death_respawn_test` still passed): the
+  FlavorPopup is a full-rect `process_mode=ALWAYS` overlay whose `_input` consumes
+  any click to close itself, so a flavor popup open at the moment of death sat over
+  the death screen and **ate the respawn click**; and flavor popups didn't pause,
+  so a nearby aggro'd enemy could kill you while you read a joke.
+- Fixes: FlavorPopup now **pauses** the game while open; `world._on_player_died`
+  **clears** any FlavorPopup/IntroHint before showing the death screen; the death
+  screen **grabs focus + supports keyboard respawn** (Enter/Space and Ctrl+Z) so
+  respawn is never click-only. Tests: `death_respawn_test` +blocking-overlay-cleared
+  (12), `flavor_test` +pause/unpause (12). Full suite: **28 suites green**.
 
 ### Iteration 52 — Ridiculous architecture diagram (a requested-but-missing feature)
 - The brief explicitly asked that "the architecture view must visually become
