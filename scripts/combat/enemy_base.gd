@@ -44,6 +44,9 @@ var _aggroed := false
 var _anim_t := 0.0
 var _spr_base_y := 0.0
 var _spr_base_scale := Vector2.ONE
+var _hp_bar: Node2D
+var _hp_fill: ColorRect
+const HP_BAR_W := 30.0
 
 func _ready() -> void:
 	add_to_group("enemy")
@@ -69,6 +72,34 @@ func _ready() -> void:
 		sprite.texture = load(tex_path)
 	attack_timer.timeout.connect(_attack)
 	attack_timer.start(randf_range(1.0, 2.0))
+	_build_hp_bar()
+
+## A small health bar above the enemy (hidden until damaged) so the player can
+## read at a glance whether they're winning a fight.
+func _build_hp_bar() -> void:
+	_hp_bar = Node2D.new()
+	_hp_bar.position = Vector2(0, -32)
+	_hp_bar.z_index = 600
+	_hp_bar.visible = false
+	add_child(_hp_bar)
+	var bg := ColorRect.new()
+	bg.size = Vector2(HP_BAR_W + 2, 5)
+	bg.position = Vector2(-(HP_BAR_W + 2) * 0.5, 0)
+	bg.color = Color(0, 0, 0, 0.75)
+	_hp_bar.add_child(bg)
+	_hp_fill = ColorRect.new()
+	_hp_fill.size = Vector2(HP_BAR_W, 3)
+	_hp_fill.position = Vector2(-HP_BAR_W * 0.5, 1)
+	_hp_fill.color = Color(0.45, 0.9, 0.45)
+	_hp_bar.add_child(_hp_fill)
+
+func _update_hp_bar() -> void:
+	if not is_instance_valid(_hp_bar):
+		return
+	var frac := clampf(float(hp) / float(maxi(1, max_hp)), 0.0, 1.0)
+	_hp_bar.visible = hp < max_hp and hp > 0
+	_hp_fill.size.x = HP_BAR_W * frac
+	_hp_fill.color = Color(0.45, 0.9, 0.45).lerp(Color(0.95, 0.3, 0.3), 1.0 - frac)
 
 func stun(duration: float) -> void:
 	_stun_time = maxf(_stun_time, duration)
@@ -306,6 +337,7 @@ func take_damage(amount: int) -> void:
 	_flash_damage()
 	_spawn_damage_number(amount)
 	_hit_spark()
+	_update_hp_bar()
 	if hp <= 0:
 		# take_damage often runs from a physics area callback; defer teardown so we
 		# don't spawn pickups / disable shapes while the physics server is flushing.
@@ -379,6 +411,8 @@ func _attack() -> void:
 	attack_timer.start(randf_range(1.2, 2.5))
 
 func _die() -> void:
+	if is_instance_valid(_hp_bar):
+		_hp_bar.visible = false
 	# A merge conflict resolves into two smaller, incompatible conflicts.
 	if enemy_type == "merge_conflict" and generation < 1 and not is_boss:
 		_split()

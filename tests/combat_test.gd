@@ -109,6 +109,9 @@ func _test_stack_trace_pierce() -> void:
 	_check("pierce_hits_second", b.hp < b.max_hp)
 	# Impact: hits shove the enemy along the shot direction (rightward here).
 	_check("hit_applies_knockback", a._knockback.x > 50.0)
+	# Clarity: a damaged enemy shows a health bar scaled to its remaining HP.
+	_check("damaged_enemy_shows_hp_bar", is_instance_valid(a._hp_bar) and a._hp_bar.visible)
+	_check("hp_bar_reflects_damage", a._hp_fill.size.x < a.HP_BAR_W)
 	_check("pierce_projectile_survives", is_instance_valid(proj) and not proj.is_queued_for_deletion())
 	# Non-piercing projectile is consumed on first hit.
 	var proj2: Node = ProjectileScene.instantiate()
