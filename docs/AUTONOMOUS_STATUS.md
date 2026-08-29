@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 28 — combat juice (damage numbers, hit sparks, visible projectiles).
-Next: continued playtesting (region traversal, boss fights); more quest variety;
-per-region NPC flavour.
+Iteration 29 — world-map fast-travel + verified live multi-region gameplay.
+Next: live boss-fight playtesting; combat balance across the run; more quest
+variety.
 
 ## Iteration log
 
@@ -357,6 +357,18 @@ per-region NPC flavour.
 - Verified via video review: projectiles, trails, the magenta beam, damage
   numbers, sparks, enemy flash/death all render; combat now has clear feedback.
   (Also confirmed the death screen renders live.) Combat tests still 10/10.
+
+### Iteration 29 — Fast-travel + live multi-region verification
+- The World Map (M) is now **fast-travel**: unlocked, non-current regions are
+  clickable "→ travel" buttons (locked ones shown greyed). Traversing 10 regions
+  on foot was tedious and blocked mid-game playtesting.
+- Verified in-game: fast-traveled to **Dependency District**, which renders its
+  full theme live — node_modules crate piles, a server tower, pink spider-knot
+  dependency-demon enemies, a null-reference orb, the Package Maintainer NPC, and
+  a return portal — no errors. Confirms multi-region gameplay works end-to-end.
+- Per-region HUD subtitles (was "Region under construction" for all non-Localhost).
+- Regression test `tests/map_travel_test.tscn` (4/4): travel buttons for unlocked
+  regions, travel changes region + closes the map, locked travel refused.
 
 ## Verified test commands
 
