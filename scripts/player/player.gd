@@ -371,12 +371,31 @@ func _force_push() -> void:
 			var strength := 1.0 - d / FORCE_PUSH_RADIUS + 0.3
 			e.apply_knockback(away.normalized() * FORCE_PUSH_IMPULSE * strength)
 
+## Aim assist: fire toward the nearest living enemy in range so combat is about
+## positioning/kiting/resources, not twitch-aiming an 8-direction facing. Falls
+## back to the facing direction when no enemy is near.
+const AIM_ASSIST_RANGE := 640.0
+
+func _aim_dir() -> Vector2:
+	var nearest: Node2D = null
+	var best := AIM_ASSIST_RANGE
+	for e in get_tree().get_nodes_in_group("enemy"):
+		if is_instance_valid(e) and not e.get("_dying"):
+			var d: float = global_position.distance_to(e.global_position)
+			if d < best:
+				best = d
+				nearest = e
+	if nearest:
+		return (nearest.global_position - global_position).normalized()
+	return facing if facing != Vector2.ZERO else Vector2.RIGHT
+
 func _fire_projectile(type: String, damage: int, pierce: bool = false) -> void:
+	var dir := _aim_dir()
 	var proj_scene := preload("res://scenes/combat/projectile.tscn")
 	var proj = proj_scene.instantiate()
-	proj.setup(facing, damage, type)
+	proj.setup(dir, damage, type)
 	proj.pierce = pierce
-	proj.global_position = global_position + facing * 20
+	proj.global_position = global_position + dir * 20
 	get_tree().current_scene.add_child(proj)
 
 func apply_external_knockback(impulse: Vector2) -> void:
