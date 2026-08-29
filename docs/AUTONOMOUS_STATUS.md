@@ -9,8 +9,31 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 31 — live boss-fight verification + combat error-spam fixes. Next:
+Iteration 32 — P0 opening death-loop fixed (found via GUI playtest). Next:
 combat balance across the run; more quest variety; per-region NPC flavour.
+
+### Iteration 32 — P0: opening death-loop (broken respawn + spawn-camp)
+A fresh-save GUI playtest exposed a release-blocking first-minutes failure: the
+player kept dying and getting stuck. Three real defects, each reproduced and
+fixed with regression tests:
+- **Respawn was completely broken.** `player._die()` emits `died` AND calls
+  `GameManager.handle_player_death()` (emits `player_died`); `world._ready` wired
+  BOTH to `_on_player_died`, so death stacked TWO death screens — the Respawn
+  button freed only the top one, leaving an identical screen behind. Fixed:
+  connect only `player_died`, make `_on_player_died` idempotent, and guard
+  `handle_player_death` re-entry.
+- **Respawn dropped the player back into the enemy pile.** Now respawns at the
+  region's safe spawn point (`GameManager.region_spawn`) with 3s i-frames, and
+  sends all enemies home (`reset_to_home`) so it's never an instant re-swarm.
+- **Enemies swarmed across the whole room.** Added an aggro radius: enemies stay
+  dormant at their home post until the player comes within `aggro_radius` (340px;
+  bosses 900px), and de-aggro/leash home past 1.8x. The Localhost opening now
+  keeps its 2 bugs on the far-right, away from the spawn/Claude/token path, so a
+  new player can explore, collect, and meet Claude before combat.
+- Verified live (computer-use + video review): a new player explores the opening
+  for 30s at full HP, bugs never chase across the room, respawn lands safely,
+  pause works. New tests: `death_respawn_test` (11 checks), `opening_safety_test`
+  (no spawn-camp); both wired into CI. Full suite: **23 suites green**.
 
 ### Iteration 31 — Live boss verification + physics/particle bug fixes + slam weight
 - **Live boss combat verified** (Enterprise Architect, corporate_enterprise) via a
