@@ -9,8 +9,22 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 35 — combat-pacing verification (mid-game). Next: more quest variety;
-per-region NPC flavour; raise other regions toward Localhost's density.
+Iteration 36 — environmental comedy in every region. Next: more quest variety;
+per-region NPC reactivity; raise other regions toward Localhost's density.
+
+### Iteration 36 — Environmental comedy props in every region
+- Extended the FlavorPopup system beyond Localhost to **all 9 regions** (brief:
+  "every major environment should reward exploration"). 19 new theme-specific
+  props: node_modules ("its own gravity now"), left-pad, the package-lock
+  folklore, API reseller stall + cached status page, Stack Overflow question
+  gravestones, cloud invoices ("successful adoption", €4,207), mining rigs +
+  cooling fan, the $7/month open-source sponsor button + a 3-year-old "URGENT:
+  doesn't work" issue, corporate mission statement + kanban, the on-call pager,
+  the incident runbook ("Step 3: Blame DNS. Step 4: It was DNS"), and the token
+  vault.
+- Verified live: the region popup renders in-context (captured `node_modules/` in
+  Dependency District). `flavor_test` extended to check region props (10 checks).
+  Full suite: **25 suites green**.
 
 ### Iteration 35 — Mid-game combat: verified balance, fixed arrival pacing
 - A mid-game playtest (Dependency District via map fast-travel) claimed combat was
