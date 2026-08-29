@@ -32,6 +32,7 @@ var _grow := 0.0
 var _special_cd := 0.0
 var _telegraph := 0.0
 var _boss_tele := 0.0
+var _dying := false
 
 func _ready() -> void:
 	add_to_group("enemy")
@@ -137,9 +138,36 @@ func _boss_slam() -> void:
 				target.apply_external_knockback(away.normalized() * 520.0)
 			if target.has_method("take_damage"):
 				target.take_damage(int(damage * 0.5), enemy_type)
+	_slam_impact()
 	if enemy_type == "enterprise_architect":
 		_summon("scope_creep")
 	AudioManager.play_sfx("ability")
+
+## Give the slam physical weight: a camera kick plus an expanding dust ring at the
+## point of impact. Both are cosmetic and self-cleaning.
+func _slam_impact() -> void:
+	var cam := get_viewport().get_camera_2d()
+	if cam and cam.has_method("shake"):
+		cam.shake(0.35, 7.0)
+	var parent := get_parent()
+	if not parent:
+		return
+	var dust := CPUParticles2D.new()
+	dust.emitting = true
+	dust.one_shot = true
+	dust.amount = 20
+	dust.lifetime = 0.5
+	dust.explosiveness = 1.0
+	dust.spread = 180.0
+	dust.initial_velocity_min = 140.0
+	dust.initial_velocity_max = 240.0
+	dust.scale_amount_min = 3.0
+	dust.scale_amount_max = 5.0
+	dust.color = Color(0.8, 0.5, 0.55, 0.85)
+	dust.z_index = 500
+	parent.add_child(dust)
+	dust.global_position = global_position
+	dust.finished.connect(dust.queue_free)
 
 func _summon(type: String) -> void:
 	var scene := preload("res://scenes/combat/enemy.tscn")
@@ -205,12 +233,17 @@ func _combat_paused() -> bool:
 	return false
 
 func take_damage(amount: int) -> void:
+	if _dying:
+		return
 	hp -= amount
 	_flash_damage()
 	_spawn_damage_number(amount)
 	_hit_spark()
 	if hp <= 0:
-		_die()
+		# take_damage often runs from a physics area callback; defer teardown so we
+		# don't spawn pickups / disable shapes while the physics server is flushing.
+		_dying = true
+		_die.call_deferred()
 
 ## Floating damage number — parented to the region so it survives the enemy's
 ## death, and driven by its own tween.
@@ -246,11 +279,15 @@ func _hit_spark() -> void:
 	p.scale_amount_max = 3.5
 	p.color = Color(1.0, 0.85, 0.4)
 	p.z_index = 550
-	add_child(p)
+	# Parent to the region (not the enemy) so the burst completes after the enemy
+	# dies, and self-free via `finished` to avoid a timer lambda capturing a node
+	# that gets freed with the enemy.
+	var parent := get_parent()
+	if not parent:
+		return
+	parent.add_child(p)
 	p.global_position = global_position
-	get_tree().create_timer(0.6).timeout.connect(func():
-		if is_instance_valid(p):
-			p.queue_free())
+	p.finished.connect(p.queue_free)
 
 func _flash_damage() -> void:
 	if _flash_tween:
