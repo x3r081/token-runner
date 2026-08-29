@@ -25,12 +25,12 @@ every iteration by fresh playtesting. Priorities:
   de-tiled with jitter/grime; knot repetition removed.)*
 - [x] **Player art**: rewritten with shading, hair, face, headphones, white
   sneakers, outline, and a proper walk cycle. Reads clearly at game scale. *(It18)*
-- [~] **Enemy identity**: distinct silhouettes done for bug (beetle),
-  rate_limiter (barrier), memory_leak (dripping blob), merge_conflict
-  (split red/blue), scope_creep (expanding arrows), dependency_demon (spider
-  knot), hallucination (multi-eyed ghost). Remaining: per-type **telegraphs /
-  behaviors / death effects**, and boss visuals (enterprise_architect,
-  legacy_monolith, infinite_context).
+- [x] **Enemy identity**: distinct silhouettes for bug (beetle), rate_limiter
+  (barrier), memory_leak (dripping blob), merge_conflict (split red/blue),
+  scope_creep (expanding arrows), dependency_demon (spider knot), hallucination
+  (multi-eyed ghost); per-type telegraphs/behaviors/death effects; boss visuals;
+  and now **procedural idle-breathe + scuttle-hop animation** so nothing is a
+  static sticker. *(It6, It17, It38)*
 - [~] **Gameplay depth**: added combat abilities, model selection, technical-debt
   consequences, the reset cycle, a deployable-agent system, and Dream App
   architecture tradeoffs. Still open: more branching quests with multiple endings,

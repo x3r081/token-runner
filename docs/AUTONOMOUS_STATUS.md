@@ -9,8 +9,21 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 37 — reactive archetype NPCs. Next: more quest variety with branching/
-failure states; raise other regions toward Localhost's furniture density.
+Iteration 38 — procedural liveliness (enemy/NPC/player animation). Next: more quest
+variety with branching/failure; raise other regions toward Localhost's density.
+
+### Iteration 38 — Procedural idle/move animation (the "animation" requirement)
+- Enemies and NPCs were static sprites — dormant enemies and NPCs looked painted
+  onto the floor. Added per-frame procedural animation:
+  - **Enemies** breathe (bob + squash) when idle and do a **springy scuttle-hop**
+    with squash-and-stretch + waddle when moving (dizzy wobble when stunned);
+    phases randomized so a group doesn't bob in lockstep.
+  - **NPCs** breathe (bob + subtle scale); the quest indicator floats.
+  - The **player** now breathes while standing idle (its special idles only fire on
+    an 8-18s timer, so it otherwise looked frozen).
+- Verified via video review ("absolutely makes the scene feel alive", lively but
+  not jittery/nauseating, no glitches) and a new `animation_test` (sprites provably
+  move; scuttle range > idle range). Full suite: **26 suites green**.
 
 ### Iteration 37 — Reactive dialogue for all archetype NPCs
 - The 9 regional NPCs were static; now each prepends an in-character, state-aware
