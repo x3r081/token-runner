@@ -9,6 +9,12 @@ var _armed := false
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	# Pause while reading: a modal joke shouldn't let a nearby enemy kill you, and
+	# it avoids input races with other overlays (e.g. the death screen).
+	get_tree().paused = true
+	tree_exiting.connect(func():
+		if is_inside_tree() and get_tree():
+			get_tree().paused = false)
 	# Briefly ignore input so the same [E] press that opened this doesn't close it.
 	get_tree().create_timer(0.18).timeout.connect(func(): _armed = true)
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

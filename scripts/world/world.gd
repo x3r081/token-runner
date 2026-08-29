@@ -155,6 +155,11 @@ func _on_debt_incident(_kind: String) -> void:
 
 func _on_player_died(_msg: String = "") -> void:
 	get_tree().paused = false
+	# Clear any transient overlay that could sit over the death screen and eat the
+	# respawn click (e.g. a flavor popup that was open when you died).
+	for n in hud.get_children():
+		if n.name in ["FlavorPopup", "IntroHint"]:
+			n.queue_free()
 	# Idempotent: never stack death screens (see the player.died wiring note above).
 	if hud.get_node_or_null("DeathScreen"):
 		return

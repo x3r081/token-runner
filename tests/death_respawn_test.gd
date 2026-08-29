@@ -36,6 +36,12 @@ func _run() -> void:
 	if player == null or hud == null:
 		return
 
+	# Simulate a transient overlay (e.g. a flavor popup) open at the moment of
+	# death — it must be cleared so it can't eat the respawn click.
+	var blocker := Control.new()
+	blocker.name = "FlavorPopup"
+	hud.add_child(blocker)
+
 	# Kill the player (bypassing spawn-grace i-frames).
 	player.is_invincible = false
 	player.hp = 1
@@ -43,6 +49,7 @@ func _run() -> void:
 	for i in 4:
 		await get_tree().physics_frame
 
+	_check("blocking_overlay_cleared_on_death", hud.get_node_or_null("FlavorPopup") == null)
 	# EXACTLY ONE death screen, despite the double death-signal path.
 	var screens := 0
 	for c in hud.get_children():
