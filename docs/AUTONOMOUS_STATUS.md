@@ -9,8 +9,23 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 32 — P0 opening death-loop fixed (found via GUI playtest). Next:
-combat balance across the run; more quest variety; per-region NPC flavour.
+Iteration 33 — visual fix (checkerboard rug) + movement red-herring ruled out.
+Next: combat balance across the run; more quest variety; per-region NPC flavour.
+
+### Iteration 33 — Rug redesign + movement investigation
+- **Ruled out a reported "player can't move right / dies on input" bug.** A GUI
+  capture showed the player stalling near Claude, but a deterministic headless
+  sweep proved movement is free (660px) at every Y row across Localhost with no
+  collider — the live stall was an xdotool held-key artifact, not a game defect.
+  (An earlier headless "freeze" was also a test artifact: `EventManager.cooldown`
+  defaults to 0, but the real `start_new_game()` resets it to 60s, so no event
+  fires during the opening.)
+- **Fixed a real visual defect: the centerpiece rug rendered as a hard
+  checkerboard** (looked like a missing texture) in every opening screenshot.
+  Redesigned into a proper woven rug — guard/teal/rust border bands, a central
+  concentric-diamond medallion, low-contrast diagonal weave, and end fringe.
+  Verified in-scene: it now reads as intentional décor anchoring the
+  battlestation zone.
 
 ### Iteration 32 — P0: opening death-loop (broken respawn + spawn-camp)
 A fresh-save GUI playtest exposed a release-blocking first-minutes failure: the
