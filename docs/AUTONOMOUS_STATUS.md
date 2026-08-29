@@ -9,8 +9,19 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 43 — full-session review + no-trap menu exits. Next: more quest variety;
-hand-crafted per-region furniture; deeper combat options.
+Iteration 44 — bloom/glow post-process. Next: more quest variety; hand-crafted
+per-region furniture; deeper combat options.
+
+### Iteration 44 — Subtle bloom/glow (visual pop)
+- Reviews called the look "slightly blocky/flat (7/10)." Added a `WorldEnvironment`
+  bloom (SCREEN blend, intensity 0.75, hdr_threshold 0.9) + enabled HDR 2D so the
+  emissive elements (tokens, monitor screens, neon signs, projectiles, point
+  lights) glow.
+- Verified on the opengl3 (Compatibility) backend the env runs on: first cranked
+  the glow to confirm the pipeline renders at all, then tuned down. Result: tokens
+  sparkle with a soft halo and screens/signs bloom gently, while floor/walls/UI
+  stay un-washed-out. Applies to all regions.
+- Rendering-only change; headless suites unaffected. Full suite: **26 green**.
 
 ### Iteration 43 — Session review + menu no-trap exits
 - Recorded an end-to-end session and had it critically reviewed. Confirmed the game
