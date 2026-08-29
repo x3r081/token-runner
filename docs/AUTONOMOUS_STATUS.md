@@ -9,8 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 23 — interaction range + "[E]" prompt (found via interactive playtest).
-Next: continued interactive playtests; more quest variety; per-region NPC flavour.
+Iteration 24 — **P0 progression dead-end fixed** (couldn't leave Localhost).
+Next: continued interactive playtests (mid/late game, combat feel); more quest
+variety; per-region NPC flavour.
 
 ## Iteration log
 
@@ -300,6 +301,18 @@ Next: continued interactive playtests; more quest variety; per-region NPC flavou
   prompt** above the nearest interactable so players always know when and what
   they can interact with. Verified: Claude dialogue now triggers from a
   comfortable distance.
+
+### Iteration 24 — P0 progression dead-end
+- Investigation (prompted by playtesting) found a **game-ending progression
+  blocker**: no quest ever unlocked `dependency_district`, and Localhost's exit
+  portal only spawns when it's unlocked — so the player was **stranded in
+  Localhost forever** after the opening quests.
+- Fix: `dependency_district` is unlocked from the start (later regions still gate
+  behind quest rewards), added an EXIT signpost, and made portals more forgiving
+  (larger trigger + `[E] Enter <region>` prompt).
+- Regression test `tests/progression_test.tscn` (4/4): first region unlocked, the
+  exit portal spawns, travel works, and quest rewards keep unlocking later
+  regions. Wired into CI.
 
 ## Verified test commands
 
