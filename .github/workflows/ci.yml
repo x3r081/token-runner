@@ -88,6 +88,9 @@ jobs:
       - name: Run world-map fast-travel regression test
         run: godot --headless --path . --scene tests/map_travel_test.tscn
 
+      - name: Run death/respawn regression test
+        run: godot --headless --path . --scene tests/death_respawn_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 

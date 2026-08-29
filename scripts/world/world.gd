@@ -15,10 +15,12 @@ func _ready() -> void:
 	GameManager.region_changed.connect(_on_region_changed)
 	GameManager.player_died.connect(_on_player_died)
 	GameManager.debt_incident.connect(_on_debt_incident)
-	if player and player.has_signal("died"):
-		player.died.connect(_on_player_died)
-		if "can_move" in player:
-			player.can_move = false
+	# NOTE: do NOT also connect player.died here. player._die() emits `died` AND
+	# calls GameManager.handle_player_death() (which emits player_died), so wiring
+	# both spawned two stacked death screens — the top one's Respawn button freed
+	# only itself, leaving an identical screen behind and making respawn look broken.
+	if player and "can_move" in player:
+		player.can_move = false
 	_set_ambient("localhost")
 	if GameManager.show_opening_sequence:
 		_start_opening_sequence()
@@ -120,8 +122,12 @@ func _on_debt_incident(_kind: String) -> void:
 
 func _on_player_died(_msg: String = "") -> void:
 	get_tree().paused = false
+	# Idempotent: never stack death screens (see the player.died wiring note above).
+	if hud.get_node_or_null("DeathScreen"):
+		return
 	var death_scene := preload("res://scenes/ui/death_screen.tscn")
 	var death = death_scene.instantiate()
+	death.name = "DeathScreen"
 	hud.add_child(death)  # screen-space overlay (see _open_pause)
 
 ## Shows a full-screen overlay (victory/etc.) in the HUD's screen space.

@@ -161,6 +161,8 @@ func _update_act() -> void:
 		act_changed.emit(new_act)
 
 func handle_player_death(cause: String = "") -> void:
+	if state == GameState.GAME_OVER:
+		return
 	death_count += 1
 	var messages := [
 		"You have been rate limited by reality.",
