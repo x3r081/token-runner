@@ -9,8 +9,17 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 44 — bloom/glow post-process. Next: more quest variety; hand-crafted
-per-region furniture; deeper combat options.
+Iteration 45 — re-verified composition at 1080p & 1440p with all recent changes.
+Next: more quest variety; hand-crafted per-region furniture; deeper combat options.
+
+### Iteration 45 — Composition re-verification (1080p + 1440p)
+- Re-verified the explicit requirement "looks good at 1920x1080 AND 2560x1440" now
+  that bloom, props, animation, and combat juice have landed. Captured Localhost at
+  2560x1440 (forced the window to fill the display): the apartment fills the whole
+  frame with **no dead space / no black bars**, the HUD scales correctly (full-width
+  top bar, quest panel with live objectives, and the ability bar showing all 5
+  abilities with keys/costs), and the bloom renders at 1440p (tokens glow). 1080p
+  verified via the glow capture. No regressions; no code change required.
 
 ### Iteration 44 — Subtle bloom/glow (visual pop)
 - Reviews called the look "slightly blocky/flat (7/10)." Added a `WorldEnvironment`
