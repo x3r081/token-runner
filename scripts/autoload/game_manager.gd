@@ -30,7 +30,10 @@ var current_act: int = 1
 var play_time_seconds: float = 0.0
 var is_post_game: bool = false
 var death_count: int = 0
-var regions_unlocked: Array[String] = ["localhost"]
+## dependency_district is unlocked from the start so the first hop out of
+## Localhost always exists (otherwise the player is stranded — no quest unlocks
+## it). Later regions unlock progressively via quest rewards.
+var regions_unlocked: Array[String] = ["localhost", "dependency_district"]
 var player_position: Vector2 = Vector2.ZERO
 var session_stats: Dictionary = {
 	"quests_completed": 0,
@@ -90,7 +93,7 @@ func start_new_game() -> void:
 	play_time_seconds = 0.0
 	is_post_game = false
 	death_count = 0
-	regions_unlocked = ["localhost"]
+	regions_unlocked = ["localhost", "dependency_district"]
 	player_position = Vector2.ZERO
 	session_stats = {
 		"quests_completed": 0,

@@ -332,6 +332,7 @@ static func _build_signs(parent: Node2D) -> void:
 	_sign(z, Vector2(1090, 585), "'FREE' TOKENS \u2192", Color(0.4, 0.95, 0.5))
 	_sign(z, Vector2(250, 525), "\u2190 deploy an AI agent\n(what could go wrong)", Color(0.7, 0.6, 0.95))
 	_sign(z, Vector2(1050, 690), "/checkout is DOWN \u2192", Color(1.0, 0.4, 0.35))
+	_sign(z, Vector2(1660, 500), "EXIT \u2192\nDependency District", Color(0.5, 0.95, 0.8))
 
 static func _sign(parent: Node2D, pos: Vector2, text: String, color: Color) -> void:
 	var lbl := Label.new()
