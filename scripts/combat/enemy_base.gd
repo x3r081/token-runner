@@ -207,8 +207,50 @@ func _combat_paused() -> bool:
 func take_damage(amount: int) -> void:
 	hp -= amount
 	_flash_damage()
+	_spawn_damage_number(amount)
+	_hit_spark()
 	if hp <= 0:
 		_die()
+
+## Floating damage number — parented to the region so it survives the enemy's
+## death, and driven by its own tween.
+func _spawn_damage_number(amount: int) -> void:
+	var lbl := Label.new()
+	lbl.text = str(amount)
+	lbl.add_theme_font_size_override("font_size", 18)
+	lbl.add_theme_color_override("font_color", Color(1.0, 0.92, 0.35))
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl.add_theme_constant_override("outline_size", 5)
+	lbl.z_index = 600
+	var parent := get_parent()
+	if not parent:
+		return
+	parent.add_child(lbl)
+	lbl.global_position = global_position + Vector2(randf_range(-10, 6), -28)
+	var tw := lbl.create_tween()
+	tw.tween_property(lbl, "global_position", lbl.global_position + Vector2(0, -34), 0.6).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(lbl, "modulate:a", 0.0, 0.6)
+	tw.tween_callback(lbl.queue_free)
+
+func _hit_spark() -> void:
+	var p := CPUParticles2D.new()
+	p.emitting = true
+	p.one_shot = true
+	p.amount = 8
+	p.lifetime = 0.35
+	p.explosiveness = 1.0
+	p.spread = 180.0
+	p.initial_velocity_min = 60.0
+	p.initial_velocity_max = 140.0
+	p.scale_amount_min = 2.0
+	p.scale_amount_max = 3.5
+	p.color = Color(1.0, 0.85, 0.4)
+	p.z_index = 550
+	add_child(p)
+	p.global_position = global_position
+	get_tree().create_timer(0.6).timeout.connect(func():
+		if is_instance_valid(p):
+			p.queue_free())
 
 func _flash_damage() -> void:
 	if _flash_tween:

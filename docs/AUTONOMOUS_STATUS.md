@@ -9,9 +9,9 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 27 — verified + polished the victory/death screens (the "get roasted"
-payoff). Next: continued playtesting (region traversal, combat feel); more quest
-variety; per-region NPC flavour.
+Iteration 28 — combat juice (damage numbers, hit sparks, visible projectiles).
+Next: continued playtesting (region traversal, boss fights); more quest variety;
+per-region NPC flavour.
 
 ## Iteration log
 
@@ -348,6 +348,15 @@ variety; per-region NPC flavour.
   renders.
 - Polished both panels: neon-teal (victory) / red (death) bordered panels,
   colored titles, readable stats, styled buttons — a finished payoff.
+
+### Iteration 28 — Combat juice
+- Added combat feedback ("juice") so hits read clearly: **floating yellow damage
+  numbers** over enemies, **hit-spark particle bursts** at impact, and brighter/
+  bigger **projectiles with a glow halo + fading trail** (cyan Prompt Blast,
+  magenta Stack Trace beam). Enemies already flash white on hit.
+- Verified via video review: projectiles, trails, the magenta beam, damage
+  numbers, sparks, enemy flash/death all render; combat now has clear feedback.
+  (Also confirmed the death screen renders live.) Combat tests still 10/10.
 
 ## Verified test commands
 
