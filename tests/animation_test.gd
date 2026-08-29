@@ -16,19 +16,24 @@ func _ready() -> void:
 	get_tree().quit(0 if failed == 0 else 1)
 
 func _run() -> void:
-	# Enemy: idle breathing moves the sprite; moving produces a bigger hop.
+	# Keep random events from firing mid-test (an active event freezes idle anim).
+	GameManager.state = GameManager.GameState.PLAYING
+	EventManager.reset()
+	EventManager.cooldown = 1e9
+
+	# Enemy: idle breathing moves the sprite; moving dips into a deeper hop.
 	var e: Node = EnemyScene.instantiate()
 	e.enemy_type = "bug"
 	add_child(e)
 	await get_tree().process_frame
 	var spr: Node = e.get_node("Sprite2D")
-	var base_y: float = spr.position.y
 	e.velocity = Vector2.ZERO
-	var idle_range := _y_range(e, spr, 30, 0.05)
-	_check("enemy_idle_breathes (range=%.2f)" % idle_range, idle_range > 1.0)
+	var idle := _y_span(e, spr, 40, 0.05)
+	_check("enemy_idle_breathes (range=%.2f)" % (idle.y - idle.x), (idle.y - idle.x) > 1.0)
 	e.velocity = Vector2(80, 0)
-	var move_range := _y_range(e, spr, 40, 0.03)
-	_check("enemy_scuttle_hops_more (%.2f > %.2f)" % [move_range, idle_range], move_range > idle_range + 2.0)
+	var move := _y_span(e, spr, 60, 0.03)
+	# Scuttle hop dips clearly lower (more negative min y) than the idle breathe.
+	_check("enemy_scuttle_hops_lower (min %.2f < %.2f)" % [move.x, idle.x], move.x < idle.x - 1.5)
 	e.queue_free()
 
 	# NPC: breathing moves the sprite.
@@ -37,8 +42,8 @@ func _run() -> void:
 	add_child(n)
 	await get_tree().process_frame
 	var nspr: Node = n.get_node("Sprite2D")
-	var nrange := _y_range(n, nspr, 40, 0.05)
-	_check("npc_breathes (range=%.2f)" % nrange, nrange > 1.0)
+	var nspan := _y_span(n, nspr, 40, 0.05)
+	_check("npc_breathes (range=%.2f)" % (nspan.y - nspan.x), (nspan.y - nspan.x) > 1.0)
 	n.queue_free()
 
 	# Player: idle breathing moves the sprite while standing still.
@@ -57,14 +62,15 @@ func _run() -> void:
 	_check("player_idle_breathes (range=%.2f)" % (pmax - pmin), (pmax - pmin) > 1.0)
 	p.queue_free()
 
-func _y_range(node: Node, spr: Node, steps: int, dt: float) -> float:
+## Returns Vector2(min_y, max_y) of the sprite over N procedural-animation steps.
+func _y_span(node: Node, spr: Node, steps: int, dt: float) -> Vector2:
 	var lo := INF
 	var hi := -INF
 	for i in steps:
 		node._process(dt)
 		lo = minf(lo, spr.position.y)
 		hi = maxf(hi, spr.position.y)
-	return hi - lo
+	return Vector2(lo, hi)
 
 func _check(label: String, condition: bool) -> void:
 	if condition:

@@ -38,6 +38,7 @@ static func _build_region_static(parent: Node2D, region_id: String) -> Dictionar
 	_build_floor_themed(parent, theme, w, h)
 	_build_walls_themed(parent, theme, w, h)
 	_build_structures(parent, theme)
+	_build_region_detail(parent, theme, w, h)
 	_build_region_lights(parent, theme)
 	_build_region_signs(parent, theme)
 
@@ -92,9 +93,34 @@ static func _build_floor_themed(parent: Node2D, theme: Dictionary, w: int, h: in
 	var tint: Color = theme.get("floor", Color(0.5, 0.5, 0.55))
 	for x in REGION_SIZE.x:
 		for y in REGION_SIZE.y:
-			var j := rng.randf_range(-0.05, 0.04)
+			var j := rng.randf_range(-0.06, 0.05)
 			var m := Color(tint.r + j, tint.g + j, tint.b + j)
+			# Occasional grime/scorch tiles break the grid so it never reads as a
+			# stamped pattern (matches Localhost's de-tiling).
+			if rng.randf() < 0.08:
+				m = m.darkened(0.2)
+			elif rng.randf() < 0.05:
+				m = m.lightened(0.08)
 			_put(floor, "tech_floor", Vector2(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2), -100, 1.0, m)
+	# Scattered floor debris/cracks (subtle, low z) for texture underfoot.
+	var glow: Color = theme.get("glow", Color(0.6, 0.7, 0.9))
+	for i in 46:
+		var dp := Vector2(rng.randf_range(80, w - 80), rng.randf_range(90, h - 70))
+		var kind := rng.randi() % 3
+		var dec := ColorRect.new()
+		if kind == 0:  # dark speck / stain
+			dec.size = Vector2(rng.randf_range(3, 7), rng.randf_range(3, 7))
+			dec.color = Color(0, 0, 0, rng.randf_range(0.14, 0.28))
+		elif kind == 1:  # hairline crack
+			dec.size = Vector2(rng.randf_range(10, 26), 2)
+			dec.rotation = rng.randf_range(-1.0, 1.0)
+			dec.color = Color(0, 0, 0, 0.22)
+		else:  # faint themed glow-chip (spilled coolant / pixels)
+			dec.size = Vector2(rng.randf_range(3, 6), rng.randf_range(3, 6))
+			dec.color = Color(glow.r, glow.g, glow.b, 0.16)
+		dec.position = dp
+		dec.z_index = -96
+		floor.add_child(dec)
 
 static func _build_walls_themed(parent: Node2D, theme: Dictionary, w: int, h: int) -> void:
 	var walls := Node2D.new()
@@ -132,6 +158,56 @@ static func _build_structures(parent: Node2D, theme: Dictionary) -> void:
 	for s in theme.get("structs", []):
 		var half: float = 40.0 * float(s.get("s", 1.0))
 		_put(z, s.t, s.p, _depth(s.p.y, half), s.get("s", 1.0), s.get("m", Color.WHITE))
+
+## Ambient clutter + depth so regions don't read as a bare floor with props in the
+## corners: a wall-base shadow band, scattered small crates/barrels/cables, and
+## faint pipe runs. All non-colliding decoration, kept out of the central lane.
+static func _build_region_detail(parent: Node2D, theme: Dictionary, w: int, h: int) -> void:
+	var z := Node2D.new()
+	z.name = "Detail"
+	parent.add_child(z)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1337
+	var wall_c: Color = theme.get("wall", Color(0.6, 0.6, 0.7))
+	var glow: Color = theme.get("glow", Color(0.6, 0.7, 0.9))
+
+	# Soft shadow band under the top wall for depth.
+	var band := ColorRect.new()
+	band.size = Vector2(w - 40, 26)
+	band.position = Vector2(20, 34)
+	band.color = Color(0, 0, 0, 0.28)
+	band.z_index = -59
+	z.add_child(band)
+
+	# Cable/pipe runs along the top, threading between the wall lights.
+	for i in 3:
+		var cable := ColorRect.new()
+		cable.size = Vector2(rng.randf_range(160, 320), 4)
+		cable.position = Vector2(rng.randf_range(120, w - 460), rng.randf_range(70, 96))
+		cable.color = Color(glow.r * 0.5, glow.g * 0.5, glow.b * 0.5, 0.5)
+		cable.z_index = -57
+		z.add_child(cable)
+
+	# Small clutter using the region's OWN pixel-art structure vocabulary (scaled
+	# down), scattered around the perimeter away from the central spawn lane so it
+	# reads as intentional set-dressing, never programmer-art squares.
+	var structs: Array = theme.get("structs", [])
+	if structs.is_empty():
+		return
+	var vocab: Array = []
+	for s in structs:
+		if s.get("t", "") != "" and s.t not in vocab:
+			vocab.append(s.t)
+	var center := Vector2(w * 0.5, h * 0.5)
+	for i in 14:
+		var p := Vector2(rng.randf_range(100, w - 100), rng.randf_range(130, h - 100))
+		if p.distance_to(center) < 250.0:
+			continue
+		var tex_name: String = vocab[rng.randi() % vocab.size()]
+		var sc := rng.randf_range(0.32, 0.5)
+		var shade := rng.randf_range(-0.12, 0.08)
+		var m := Color(clampf(wall_c.r + shade, 0, 1), clampf(wall_c.g + shade, 0, 1), clampf(wall_c.b + shade, 0, 1))
+		_put(z, tex_name, p, _depth(p.y, 20.0 * sc), sc, m)
 
 static func _build_region_lights(parent: Node2D, theme: Dictionary) -> void:
 	for lp in theme.get("lights", []):
