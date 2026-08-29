@@ -1,5 +1,30 @@
 extends "res://scripts/world/interactable.gd"
 
+var _breath_t := 0.0
+var _glow_gate := 0.0
+
+const GLOW_RADIUS := 110.0
+
+func _ready() -> void:
+	super._ready()
+	_breath_t = randf() * TAU  # desync so props don't inhale in unison
+
+## Gentle breathing glow when the player is close: interactable props quietly
+## brighten and dim, and the [E] prompt (player-side) fades in on top of this.
+func _process(delta: float) -> void:
+	_breath_t += delta
+	var near := false
+	var player := get_tree().get_first_node_in_group("player")
+	if player and global_position.distance_to(player.global_position) < GLOW_RADIUS:
+		near = true
+	_glow_gate = move_toward(_glow_gate, 1.0 if near else 0.0, delta * 4.0)
+	if _glow_gate <= 0.001:
+		if modulate != Color.WHITE:
+			modulate = Color.WHITE
+		return
+	var b := (0.5 + 0.5 * sin(_breath_t * 2.6)) * _glow_gate
+	modulate = Color(1.0 + b * 0.35, 1.0 + b * 0.3, 1.0 + b * 0.18)
+
 func _on_interact(_player: Node) -> void:
 	match interact_id:
 		"deploy_button":

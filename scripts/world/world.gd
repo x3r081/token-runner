@@ -1,5 +1,35 @@
 extends Node2D
 
+const _CameraFX := preload("res://scripts/world/camera_fx.gd")
+const _PostFXLayer := preload("res://scripts/world/postfx_layer.gd")
+
+## VISUAL_BIBLE per-region palette: starfield accent (primary neon) and the
+## CanvasModulate ambience. Dark enough that the lights do the talking.
+const REGION_ACCENT := {
+	"localhost": Color("#FFB74A"),
+	"dependency_district": Color("#A8FF3E"),
+	"stackoverflow_ruins": Color("#E8C46B"),
+	"api_bazaar": Color("#FF2D95"),
+	"cloud_district": Color("#6BC7FF"),
+	"open_source_wildlands": Color("#58E07C"),
+	"corporate_enterprise": Color("#4D7CFF"),
+	"gpu_mines": Color("#FF6B2D"),
+	"production": Color("#FF4757"),
+	"token_vault": Color("#FFD34D"),
+}
+const REGION_AMBIENT := {
+	"localhost": Color(0.95, 0.9, 1.03),
+	"dependency_district": Color(0.82, 0.95, 0.82),
+	"stackoverflow_ruins": Color(0.92, 0.87, 0.77),
+	"api_bazaar": Color(0.95, 0.79, 0.98),
+	"cloud_district": Color(0.95, 1.03, 1.05),
+	"open_source_wildlands": Color(0.82, 1.0, 0.87),
+	"corporate_enterprise": Color(0.9, 0.95, 1.05),
+	"gpu_mines": Color(1.03, 0.77, 0.69),
+	"production": Color(1.05, 0.74, 0.77),
+	"token_vault": Color(0.98, 0.9, 0.74),
+}
+
 @onready var player: CharacterBody2D = $Player
 @onready var camera: Camera2D = $Player/Camera2D
 @onready var region_container: Node2D = $RegionContainer
@@ -7,10 +37,18 @@ extends Node2D
 @onready var ambient: CanvasModulate = $AmbientLight
 
 var _current_region_node: Node2D
+var _postfx: CanvasLayer
+var _starfield: ColorRect
+var _star_mat: ShaderMaterial
+var _ambient_tween: Tween
+var _first_ambient := true
 
 func _ready() -> void:
 	GameManager.state = GameManager.GameState.PLAYING
 	_setup_glow()
+	_setup_postfx()
+	_setup_starfield()
+	_setup_camera_fx()
 	_load_region(GameManager.current_region)
 	QuestManager.on_region_entered(GameManager.current_region)
 	GameManager.region_changed.connect(_on_region_changed)
@@ -22,7 +60,6 @@ func _ready() -> void:
 	# only itself, leaving an identical screen behind and making respawn look broken.
 	if player and "can_move" in player:
 		player.can_move = false
-	_set_ambient("localhost")
 	if GameManager.show_opening_sequence:
 		_start_opening_sequence()
 	else:
@@ -69,6 +106,12 @@ func _load_region(region_id: String) -> void:
 		camera.enabled = true
 		_apply_camera_bounds(data.get("size", Vector2.ZERO))
 	_set_ambient(region_id)
+	_recenter_starfield(data.get("size", Vector2.ZERO))
+	if _star_mat:
+		_star_mat.set_shader_parameter("accent_color", REGION_ACCENT.get(region_id, Color("#3D9BFF")))
+	if _postfx and _postfx.has_method("set_region"):
+		_postfx.set_region(region_id)
+	_region_flourish()
 	# Production greets you with an incident (once).
 	if region_id == "production" and not EventManager.is_script_completed("production_incident"):
 		call_deferred("_trigger_production_incident")
@@ -93,42 +136,98 @@ func _apply_camera_bounds(size: Vector2) -> void:
 	camera.limit_right = int(size.x)
 	camera.limit_bottom = int(size.y)
 
-## Subtle bloom so the bright, emissive things (tokens, monitors, neon signs,
-## projectiles, point lights) glow and the scene reads less flat/blocky. Tuned
-## conservatively (high threshold, low intensity) so it never washes out.
+## Cinematic bloom so the bright, emissive things (tokens, monitors, neon signs,
+## projectiles, point lights) actually GLOW. Wide multi-level spread with a
+## slightly eager HDR threshold — carves light out of the dark without
+## white-washing the frame (per VISUAL_BIBLE).
 func _setup_glow() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_CANVAS
 	env.glow_enabled = true
-	env.glow_intensity = 0.75
+	env.glow_intensity = 0.62
 	env.glow_strength = 1.0
-	env.glow_bloom = 0.15
+	env.glow_bloom = 0.08
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
-	env.glow_hdr_threshold = 0.9
+	env.glow_hdr_threshold = 1.0
 	env.glow_hdr_scale = 2.0
-	env.set_glow_level(1, 0.6)
-	env.set_glow_level(2, 1.0)
-	env.set_glow_level(3, 0.7)
+	env.set_glow_level(1, 0.5)
+	env.set_glow_level(2, 0.9)
+	env.set_glow_level(3, 1.0)
 	env.set_glow_level(4, 0.4)
+	env.set_glow_level(5, 0.18)
 	var we := WorldEnvironment.new()
 	we.name = "GlowEnvironment"
 	we.environment = env
 	add_child(we)
 
+## Full-screen grade/vignette/grain layer. Sits at CanvasLayer 0 — above the
+## world canvas, below every UI layer — so menus stay crisp.
+func _setup_postfx() -> void:
+	_postfx = _PostFXLayer.new()
+	_postfx.name = "PostFXLayer"
+	add_child(_postfx)
+
+## The void outside rooms: a huge parallax starfield instead of dead black.
+## Scroll is bound to the camera each frame (one uniform write, that's all).
+func _setup_starfield() -> void:
+	_starfield = ColorRect.new()
+	_starfield.name = "Starfield"
+	_starfield.size = Vector2(12000, 12000)
+	_starfield.z_index = -200  # well under the floor tiles (-100)
+	_starfield.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_starfield.color = Color("#05060E")  # VOID — the fallback is still on-palette
+	if ResourceLoader.exists("res://assets/shaders/starfield.gdshader"):
+		_star_mat = ShaderMaterial.new()
+		_star_mat.shader = load("res://assets/shaders/starfield.gdshader")
+		_star_mat.set_shader_parameter("base_color", Color("#05060E"))
+		_starfield.material = _star_mat
+	else:
+		set_process(false)  # nothing to scroll, nothing to do per frame
+	add_child(_starfield)
+	_recenter_starfield(Vector2.ZERO)
+
+## Trauma shake + zoom punches, attached to the player's camera at runtime so
+## the player scene stays untouched. Combat code finds it via group "camera_fx".
+func _setup_camera_fx() -> void:
+	if not camera:
+		return
+	var fx := _CameraFX.new()
+	fx.name = "CameraFX"
+	camera.add_child(fx)
+
+func _process(_delta: float) -> void:
+	# Starfield parallax: one cheap uniform write; the shader does the rest.
+	if _star_mat and is_instance_valid(camera):
+		_star_mat.set_shader_parameter("scroll", camera.global_position * 0.05)
+
+func _recenter_starfield(region_size: Vector2) -> void:
+	if not _starfield:
+		return
+	var center := region_size * 0.5 if region_size != Vector2.ZERO else Vector2(640.0, 480.0)
+	_starfield.position = center - _starfield.size * 0.5
+
+## Region-entry flourish: 0.4s curtain-up plus a slight zoom settle. Cosmetic
+## only — input stays live and the opening sequence (layer 100) sits far above.
+func _region_flourish() -> void:
+	if _postfx and _postfx.has_method("fade_from_black"):
+		_postfx.fade_from_black(0.4)
+	var fx := get_tree().get_first_node_in_group("camera_fx")
+	if fx and fx.has_method("region_settle"):
+		fx.region_settle()
+
+## Tween the room's mood lighting to the region's ambient tint (VISUAL_BIBLE
+## table). First call snaps so the game never boots mid-crossfade.
 func _set_ambient(region_id: String) -> void:
-	match region_id:
-		"localhost":
-			ambient.color = Color(0.72, 0.64, 0.66, 1.0)
-		"production":
-			ambient.color = Color(0.9, 0.5, 0.5, 1.0)
-		"token_vault":
-			ambient.color = Color(1.0, 0.95, 0.7, 1.0)
-		"cloud_district":
-			ambient.color = Color(0.7, 0.8, 1.0, 1.0)
-		"gpu_mines":
-			ambient.color = Color(1.0, 0.7, 0.5, 1.0)
-		_:
-			ambient.color = Color(0.85, 0.85, 0.95, 1.0)
+	var target: Color = REGION_AMBIENT.get(region_id, Color(0.95, 0.95, 1.0))
+	if _ambient_tween and _ambient_tween.is_valid():
+		_ambient_tween.kill()
+	if _first_ambient:
+		_first_ambient = false
+		ambient.color = target
+		return
+	_ambient_tween = create_tween()
+	_ambient_tween.tween_property(ambient, "color", target, 0.6) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 func _on_region_changed(region_id: String) -> void:
 	_load_region(region_id)

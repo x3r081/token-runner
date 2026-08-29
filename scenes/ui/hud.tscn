@@ -15,71 +15,85 @@ offset_bottom = 88.0
 
 [node name="HBox" type="HBoxContainer" parent="TopBar"]
 layout_mode = 2
-theme_override_constants/separation = 32
+theme_override_constants/separation = 16
 
-[node name="RegionBlock" type="VBoxContainer" parent="TopBar/HBox"]
+[node name="ResourcesPanel" type="PanelContainer" parent="TopBar/HBox"]
 layout_mode = 2
-size_flags_horizontal = 3
 
-[node name="RegionLabel" type="Label" parent="TopBar/HBox/RegionBlock"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 22
-text = "Localhost"
-
-[node name="RegionSub" type="Label" parent="TopBar/HBox/RegionBlock"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.55, 0.85, 0.78, 0.75)
-text = "3AM Coder Apartment"
-
-[node name="Resources" type="HBoxContainer" parent="TopBar/HBox"]
+[node name="Resources" type="HBoxContainer" parent="TopBar/HBox/ResourcesPanel"]
 layout_mode = 2
 theme_override_constants/separation = 24
 
-[node name="TokenBlock" type="VBoxContainer" parent="TopBar/HBox/Resources"]
+[node name="TokenBlock" type="VBoxContainer" parent="TopBar/HBox/ResourcesPanel/Resources"]
 layout_mode = 2
 
-[node name="TokenTitle" type="Label" parent="TopBar/HBox/Resources/TokenBlock"]
+[node name="TokenTitle" type="Label" parent="TopBar/HBox/ResourcesPanel/Resources/TokenBlock"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 11
-theme_override_colors/font_color = Color(0.45, 0.9, 0.82, 0.7)
+theme_override_colors/font_color = Color(1, 0.827, 0.302, 0.7)
 text = "TOKENS"
 
-[node name="TokenLabel" type="Label" parent="TopBar/HBox/Resources/TokenBlock"]
+[node name="TokenLabel" type="Label" parent="TopBar/HBox/ResourcesPanel/Resources/TokenBlock"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(1, 0.827, 0.302, 1)
 text = "0"
 
-[node name="ComputeBlock" type="VBoxContainer" parent="TopBar/HBox/Resources"]
+[node name="ComputeBlock" type="VBoxContainer" parent="TopBar/HBox/ResourcesPanel/Resources"]
 layout_mode = 2
 
-[node name="ComputeTitle" type="Label" parent="TopBar/HBox/Resources/ComputeBlock"]
+[node name="ComputeTitle" type="Label" parent="TopBar/HBox/ResourcesPanel/Resources/ComputeBlock"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 11
-theme_override_colors/font_color = Color(0.55, 0.7, 0.95, 0.7)
+theme_override_colors/font_color = Color(0.239, 0.608, 1, 0.7)
 text = "COMPUTE"
 
-[node name="ComputeLabel" type="Label" parent="TopBar/HBox/Resources/ComputeBlock"]
+[node name="ComputeLabel" type="Label" parent="TopBar/HBox/ResourcesPanel/Resources/ComputeBlock"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.635, 0.808, 1, 1)
 text = "0"
 
-[node name="Bars" type="VBoxContainer" parent="TopBar/HBox"]
+[node name="RegionPanel" type="PanelContainer" parent="TopBar/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="RegionBlock" type="VBoxContainer" parent="TopBar/HBox/RegionPanel"]
+layout_mode = 2
+
+[node name="RegionLabel" type="Label" parent="TopBar/HBox/RegionPanel/RegionBlock"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Localhost"
+horizontal_alignment = 1
+
+[node name="RegionSub" type="Label" parent="TopBar/HBox/RegionPanel/RegionBlock"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.486, 0.545, 0.69, 0.9)
+text = "3AM Coder Apartment"
+horizontal_alignment = 1
+
+[node name="BarsPanel" type="PanelContainer" parent="TopBar/HBox"]
+layout_mode = 2
+
+[node name="Bars" type="VBoxContainer" parent="TopBar/HBox/BarsPanel"]
 custom_minimum_size = Vector2(220, 0)
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="HPBlock" type="HBoxContainer" parent="TopBar/HBox/Bars"]
+[node name="HPBlock" type="HBoxContainer" parent="TopBar/HBox/BarsPanel/Bars"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="HPLabel" type="Label" parent="TopBar/HBox/Bars/HPBlock"]
+[node name="HPLabel" type="Label" parent="TopBar/HBox/BarsPanel/Bars/HPBlock"]
 custom_minimum_size = Vector2(28, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.486, 0.545, 0.69, 1)
 text = "HP"
 
-[node name="HPBar" type="ProgressBar" parent="TopBar/HBox/Bars/HPBlock"]
+[node name="HPBar" type="ProgressBar" parent="TopBar/HBox/BarsPanel/Bars/HPBlock"]
 custom_minimum_size = Vector2(180, 14)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -87,17 +101,18 @@ max_value = 100.0
 value = 100.0
 show_percentage = false
 
-[node name="FocusBlock" type="HBoxContainer" parent="TopBar/HBox/Bars"]
+[node name="FocusBlock" type="HBoxContainer" parent="TopBar/HBox/BarsPanel/Bars"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="FocusLabel" type="Label" parent="TopBar/HBox/Bars/FocusBlock"]
+[node name="FocusLabel" type="Label" parent="TopBar/HBox/BarsPanel/Bars/FocusBlock"]
 custom_minimum_size = Vector2(28, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.486, 0.545, 0.69, 1)
 text = "FOC"
 
-[node name="FocusBar" type="ProgressBar" parent="TopBar/HBox/Bars/FocusBlock"]
+[node name="FocusBar" type="ProgressBar" parent="TopBar/HBox/BarsPanel/Bars/FocusBlock"]
 custom_minimum_size = Vector2(180, 10)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -127,7 +142,6 @@ layout_mode = 2
 [node name="QuestHeader" type="Label" parent="QuestPanel/Margin/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
-theme_override_colors/font_color = Color(0.5, 0.88, 0.8, 0.85)
 text = "ACTIVE QUEST"
 
 [node name="QuestTracker" type="Label" parent="QuestPanel/Margin/VBox"]
@@ -148,7 +162,7 @@ offset_top = -36.0
 offset_right = 300.0
 offset_bottom = -12.0
 theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.55, 0.55, 0.65, 0.7)
+theme_override_colors/font_color = Color(0.486, 0.545, 0.69, 0.7)
 text = "[E] Interact  ·  [B] Dream App  ·  [J] Quests  ·  [M] Map"
 horizontal_alignment = 1
 
@@ -161,6 +175,8 @@ offset_top = 120.0
 offset_right = 240.0
 offset_bottom = 200.0
 theme_override_font_sizes/font_size = 22
+theme_override_colors/font_outline_color = Color(0.02, 0.024, 0.055, 0.9)
+theme_override_constants/outline_size = 6
 text = ""
 horizontal_alignment = 1
 autowrap_mode = 2

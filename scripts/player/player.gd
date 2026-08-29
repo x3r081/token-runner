@@ -49,6 +49,11 @@ var _ctrlz_cd := 0.0
 var _hp_hist: Array = []
 const CTRLZ_WINDOW := 2.6
 const CTRLZ_COOLDOWN := 10.0
+## Juice rig: carried light, footstep dust, dash afterimages, damage flash.
+var _light: PointLight2D
+var _dust: CPUParticles2D
+var _flash_tween: Tween
+var _ghost_t := 0.0
 
 func _ready() -> void:
 	add_to_group("player")
@@ -62,6 +67,38 @@ func _ready() -> void:
 	idle_timer.timeout.connect(_on_idle_timer)
 	idle_timer.start(randf_range(8.0, 14.0))
 	_setup_prompt()
+	_setup_fx()
+
+## The player carries a soft warm light (the world is dark on purpose) and kicks
+## up dust while moving. Missing art degrades to generated textures, never errors.
+func _setup_fx() -> void:
+	_light = FxLib.point_light(self, Color(1.0, 0.93, 0.82), 0.55, 3.4, Vector2(0, -12))
+	_dust = CPUParticles2D.new()
+	_dust.emitting = false
+	_dust.amount = 12
+	_dust.lifetime = 0.42
+	_dust.local_coords = false  # puffs stay where the foot fell
+	_dust.spread = 180.0
+	_dust.direction = Vector2.UP
+	_dust.gravity = Vector2(0, -22)
+	_dust.initial_velocity_min = 6.0
+	_dust.initial_velocity_max = 18.0
+	_dust.color = Color(0.62, 0.58, 0.72, 0.4)
+	_dust.position = Vector2(0, 6)
+	_dust.z_index = -1
+	var dot := FxLib.glow_dot()
+	if dot:
+		_dust.texture = dot
+		_dust.scale_amount_min = 0.35
+		_dust.scale_amount_max = 0.7
+	else:
+		_dust.scale_amount_min = 1.4
+		_dust.scale_amount_max = 2.6
+	add_child(_dust)
+
+func _set_dust(on: bool) -> void:
+	if _dust and _dust.emitting != on:
+		_dust.emitting = on
 
 ## Floating "[E]" prompt so players always know when (and what) they can interact with.
 func _setup_prompt() -> void:
@@ -73,22 +110,25 @@ func _setup_prompt() -> void:
 	_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_prompt_label.z_index = 500
 	_prompt_label.visible = false
+	_prompt_label.modulate.a = 0.0
 	add_child(_prompt_label)
 
-func _update_prompt() -> void:
+func _update_prompt(delta: float = 0.016) -> void:
 	if not is_instance_valid(_prompt_label):
 		return
 	var closest := _closest_interactable()
-	if closest and can_move and GameManager.state == GameManager.GameState.PLAYING and not EventManager.has_active_event():
+	var wants := closest != null and can_move and GameManager.state == GameManager.GameState.PLAYING and not EventManager.has_active_event()
+	if wants:
 		var text := "Interact"
 		if closest.has_method("get_prompt"):
 			text = closest.get_prompt()
 		_prompt_label.text = "[E] %s" % text
 		_prompt_label.position = (closest.global_position - global_position) + Vector2(-70, -64)
 		_prompt_label.custom_minimum_size = Vector2(140, 0)
-		_prompt_label.visible = true
-	else:
-		_prompt_label.visible = false
+	# Fade in/out instead of popping, so the prompt feels like UI, not a strobe.
+	var a := move_toward(_prompt_label.modulate.a, 1.0 if wants else 0.0, delta * 7.0)
+	_prompt_label.modulate.a = a
+	_prompt_label.visible = a > 0.02
 
 func _closest_interactable() -> Node:
 	var closest: Node = null
@@ -166,15 +206,22 @@ func _physics_process(delta: float) -> void:
 	_ctrlz_cd = maxf(0.0, _ctrlz_cd - delta)
 	_track_hp_history(delta)
 	_ext_impulse = _ext_impulse.move_toward(Vector2.ZERO, 1300.0 * delta)
-	_update_prompt()
+	_update_prompt(delta)
 	if not can_move or GameManager.state != GameManager.GameState.PLAYING or EventManager.has_active_event():
 		velocity = Vector2.ZERO
+		_set_dust(false)
 		if sprite.animation.begins_with("walk"):
 			_play_facing_anim("idle")
 		return
 	if _dash_timer > 0.0:
 		_dash_timer -= delta
 		velocity = _dash_dir * DASH_SPEED
+		# Overbright cyan afterimages trailing the dash (3-4 over its duration).
+		_ghost_t -= delta
+		if _ghost_t <= 0.0:
+			_ghost_t += DASH_DURATION / 4.0
+			_spawn_dash_ghost()
+		_set_dust(true)
 		move_and_slide()
 		GameManager.player_position = global_position
 		return
@@ -193,8 +240,10 @@ func _physics_process(delta: float) -> void:
 		_play_facing_anim("walk")
 		idle_timer.start(randf_range(10.0, 18.0))
 		sprite.position.y = _spr_base_y  # walk frames carry the motion
+		_set_dust(true)
 	else:
 		velocity = Vector2.ZERO
+		_set_dust(false)
 		if not sprite.animation in ["phone_idle", "laptop_idle", "coffee_idle", "panic_idle"]:
 			_play_facing_anim("idle")
 			# Subtle breathing so the player doesn't look frozen while idle.
@@ -353,11 +402,36 @@ func _start_dash() -> void:
 	_dash_dir = facing if facing != Vector2.ZERO else Vector2.DOWN
 	_dash_timer = DASH_DURATION
 	_dash_cd = DASH_COOLDOWN
+	_ghost_t = 0.0  # first afterimage drops immediately
 	is_invincible = true
 	invincibility.start(DASH_DURATION + 0.12)
 	_force_push()
 	particles.emitting = true
 	AudioManager.play_sfx("ability")
+
+## A fading snapshot of the current sprite frame, tinted overbright cyan so the
+## dash leaves a neon smear through the dark.
+func _spawn_dash_ghost() -> void:
+	var parent := get_parent()
+	if parent == null or sprite.sprite_frames == null:
+		return
+	if not sprite.sprite_frames.has_animation(sprite.animation):
+		return
+	var tex := sprite.sprite_frames.get_frame_texture(sprite.animation, sprite.frame)
+	if tex == null:
+		return
+	var ghost := Sprite2D.new()
+	ghost.texture = tex
+	ghost.flip_h = sprite.flip_h
+	ghost.material = FxLib.additive_material()
+	ghost.modulate = Color(0.31, 2.1, 1.9, 0.5)  # overbright CYAN echo
+	ghost.z_index = z_index - 1
+	parent.add_child(ghost)
+	ghost.global_position = sprite.global_position
+	ghost.scale = sprite.global_scale
+	var tw := ghost.create_tween()
+	tw.tween_property(ghost, "modulate:a", 0.0, 0.34)
+	tw.tween_callback(ghost.queue_free)
 
 ## Shove every nearby enemy away from the player. This is the design-level
 ## guarantee that the player can always break out of a crowd.
@@ -433,6 +507,13 @@ func take_damage(amount: int, _source: String = "") -> void:
 	health_changed.emit(hp, MAX_HP)
 	if sprite.sprite_frames.has_animation("hurt"):
 		sprite.play("hurt")
+	# Overbright red flash + a camera kick: pain must read instantly, mid-chaos.
+	if _flash_tween:
+		_flash_tween.kill()
+	sprite.modulate = Color(2.3, 0.5, 0.5)
+	_flash_tween = create_tween()
+	_flash_tween.tween_property(sprite, "modulate", Color.WHITE, 0.28)
+	FxLib.add_trauma(get_tree(), 0.25)
 	AudioManager.play_sfx("damage")
 	if SettingsManager.get_setting("camera_shake"):
 		var cam := get_viewport().get_camera_2d()
@@ -448,6 +529,7 @@ func heal(amount: int) -> void:
 	health_changed.emit(hp, MAX_HP)
 
 func _die() -> void:
+	FxLib.add_trauma(get_tree(), 0.6)
 	died.emit()
 	GameManager.handle_player_death()
 

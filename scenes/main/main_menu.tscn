@@ -16,14 +16,21 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.04, 0.03, 0.08, 1)
+color = Color(0.0196, 0.0235, 0.0549, 1)
+
+[node name="Starfield" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.0196, 0.0235, 0.0549, 1)
 
 [node name="GlowTop" type="ColorRect" parent="."]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
 offset_bottom = 400.0
-color = Color(0.15, 0.35, 0.45, 0.25)
+color = Color(0.141, 0.941, 0.862, 0.04)
 
 [node name="CenterPanel" type="PanelContainer" parent="."]
 layout_mode = 1

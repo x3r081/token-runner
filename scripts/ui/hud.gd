@@ -2,13 +2,13 @@ extends CanvasLayer
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 
-@onready var token_label: Label = $TopBar/HBox/Resources/TokenBlock/TokenLabel
-@onready var compute_label: Label = $TopBar/HBox/Resources/ComputeBlock/ComputeLabel
-@onready var focus_bar: ProgressBar = $TopBar/HBox/Bars/FocusBlock/FocusBar
-@onready var hp_bar: ProgressBar = $TopBar/HBox/Bars/HPBlock/HPBar
+@onready var token_label: Label = $TopBar/HBox/ResourcesPanel/Resources/TokenBlock/TokenLabel
+@onready var compute_label: Label = $TopBar/HBox/ResourcesPanel/Resources/ComputeBlock/ComputeLabel
+@onready var focus_bar: ProgressBar = $TopBar/HBox/BarsPanel/Bars/FocusBlock/FocusBar
+@onready var hp_bar: ProgressBar = $TopBar/HBox/BarsPanel/Bars/HPBlock/HPBar
 @onready var quest_tracker: Label = $QuestPanel/Margin/VBox/QuestTracker
-@onready var region_label: Label = $TopBar/HBox/RegionBlock/RegionLabel
-@onready var region_sub: Label = $TopBar/HBox/RegionBlock/RegionSub
+@onready var region_label: Label = $TopBar/HBox/RegionPanel/RegionBlock/RegionLabel
+@onready var region_sub: Label = $TopBar/HBox/RegionPanel/RegionBlock/RegionSub
 @onready var notification: Label = $Notification
 
 var _notif_tween: Tween
@@ -17,6 +17,14 @@ var _cycle_label: Label
 var _model_label: Label
 var _player: Node
 var _ability_slots: Array = []
+var _ability_overlays: Array = []
+var _ability_cost_labels: Array = []
+var _hp_ghost: ColorRect
+var _hp_tween: Tween
+var _hp_ghost_tween: Tween
+var _hp_prev := -1.0
+var _focus_tween: Tween
+var _pop_tween: Tween
 
 ## key, display name, resource cost label, cost resource + amount for affordability.
 const ABILITY_DEFS := [
@@ -28,12 +36,28 @@ const ABILITY_DEFS := [
 	{"key": "Q", "name": "Dash / Push", "cost": "free", "res": "", "amt": 0, "id": "dash"},
 ]
 
+## Per-ability accent colors (bible palette) for the slot borders/keys.
+const ABILITY_ACCENTS := {
+	"prompt_blast": _GameTheme.CYAN,
+	"cache": _GameTheme.BLUE,
+	"rubber_duck": _GameTheme.AMBER,
+	"stack_trace": _GameTheme.VIOLET,
+	"ctrl_z": _GameTheme.MAGENTA,
+	"dash": _GameTheme.ACID,
+}
+
+## Cooldown ceilings for the sweep overlay (mirrors player.gd's timings; the
+## duck knows it should be a shared constant and has chosen violence).
+const COOLDOWN_MAX := {
+	"rubber_duck": 4.5, "stack_trace": 1.6, "ctrl_z": 10.0, "dash": 1.1,
+}
+
 func _ready() -> void:
 	_theme = _GameTheme.create()
 	$TopBar.theme = _theme
 	$QuestPanel.theme = _theme
-	hp_bar.add_theme_stylebox_override("fill", _GameTheme.hp_bar_fill())
-	focus_bar.add_theme_stylebox_override("fill", _GameTheme.focus_bar_fill())
+	_dress_top_bar()
+	_dress_quest_panel()
 	ResourceManager.resource_changed.connect(_on_resource_changed)
 	ResourceManager.tokens_gained.connect(_on_tokens_gained)
 	ResourceManager.funny_price_adjustment.connect(_on_price_adjustment)
@@ -48,6 +72,34 @@ func _ready() -> void:
 	_setup_ability_bar()
 	_setup_pause_button()
 	_update_all()
+
+## Grouped glass panels: resources | region title | vitals.
+func _dress_top_bar() -> void:
+	$TopBar.add_theme_stylebox_override("panel", _GameTheme.empty_box())
+	$TopBar/HBox/ResourcesPanel.add_theme_stylebox_override("panel", _GameTheme.glass_box(_GameTheme.GOLD))
+	$TopBar/HBox/RegionPanel.add_theme_stylebox_override("panel", _GameTheme.glass_box(_GameTheme.CYAN))
+	$TopBar/HBox/BarsPanel.add_theme_stylebox_override("panel", _GameTheme.glass_box(_GameTheme.RED))
+	region_label.add_theme_font_override("font", _GameTheme.spaced_font(2))
+	region_label.add_theme_color_override("font_color", _GameTheme.TEXT)
+	# Vitals: gradient fills with a white-hot top edge (baked into the texture).
+	_GameTheme.style_bar(hp_bar, _GameTheme.RED, Color("#FF9A7A"))
+	_GameTheme.style_bar(focus_bar, _GameTheme.CYAN, _GameTheme.CYAN_HOT)
+	# Red trailing ghost segment shown while recent damage "burns down".
+	_hp_ghost = ColorRect.new()
+	_hp_ghost.color = _GameTheme.with_alpha(_GameTheme.RED, 0.6)
+	_hp_ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hp_ghost.visible = false
+	_hp_ghost.anchor_top = 0.12
+	_hp_ghost.anchor_bottom = 0.88
+	_hp_ghost.anchor_left = 1.0
+	_hp_ghost.anchor_right = 1.0
+	hp_bar.add_child(_hp_ghost)
+
+func _dress_quest_panel() -> void:
+	$QuestPanel.add_theme_stylebox_override("panel", _GameTheme.glass_box(_GameTheme.CYAN, 4.0))
+	var header: Label = $QuestPanel/Margin/VBox/QuestHeader
+	_GameTheme.style_heading(header, _GameTheme.CYAN, 13)
+	quest_tracker.add_theme_color_override("font_color", _GameTheme.TEXT)
 
 ## One-time onboarding card: teaches controls AND states the goal/loop, because
 ## the boot sequence is comedy, not a tutorial. Shown when control is first given.
@@ -66,25 +118,23 @@ func show_intro_hint() -> void:
 	dim.color = Color(0, 0, 0, 0.55)
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.add_child(dim)
+	root.add_child(_GameTheme.make_vignette(_GameTheme.with_alpha(_GameTheme.VOID, 0.7)))
 	var panel := PanelContainer.new()
 	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.09, 0.10, 0.14, 0.98)
-	sb.border_color = Color(0.35, 0.85, 0.75)
-	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(10)
-	sb.set_content_margin_all(22)
-	panel.add_theme_stylebox_override("panel", sb)
+	panel.add_theme_stylebox_override("panel", _GameTheme.panel_box(_GameTheme.CYAN, 22.0))
 	root.add_child(panel)
+	_GameTheme.add_sheen(panel)
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 10)
 	vb.custom_minimum_size = Vector2(560, 0)
 	panel.add_child(vb)
-	_hint_label(vb, "WELCOME TO THE HACKATHON", 24, Color(0.4, 0.95, 0.85))
-	_hint_label(vb, "GOAL: ship your Dream App before the RESET.\nCollect tokens -> upgrade the Dream App [B] -> meet its ship requirements -> Deploy.", 16, Color(0.92, 0.94, 0.98))
-	_hint_label(vb, "CONTROLS", 18, Color(0.95, 0.8, 0.4))
-	_hint_label(vb, "WASD / Arrows  —  Move\nE  —  Interact / Talk (walk up to props & Claude)\n1  —  Prompt Blast (attack)      Shift  —  Dash (escape)\n2-5  —  Abilities (Cache, Rubber Duck, Stack Trace, Ctrl+Z undo)\nB  —  Dream App      M  —  Map      J  —  Quests      Esc  —  Pause", 15, Color(0.85, 0.9, 0.95))
-	_hint_label(vb, "First up: talk to Claude at the desk, then grab some tokens.\n\n[E] / click to begin", 14, Color(0.6, 0.85, 0.8))
+	_hint_label(vb, "WELCOME TO THE HACKATHON", 24, _GameTheme.CYAN, true)
+	_hint_label(vb, "GOAL: ship your Dream App before the RESET.\nCollect tokens -> upgrade the Dream App [B] -> meet its ship requirements -> Deploy.", 16, _GameTheme.TEXT)
+	_hint_label(vb, "CONTROLS", 18, _GameTheme.AMBER, true)
+	_hint_label(vb, "WASD / Arrows  —  Move\nE  —  Interact / Talk (walk up to props & Claude)\n1  —  Prompt Blast (attack)      Shift  —  Dash (escape)\n2-5  —  Abilities (Cache, Rubber Duck, Stack Trace, Ctrl+Z undo)\nB  —  Dream App      M  —  Map      J  —  Quests      Esc  —  Pause", 15, _GameTheme.TEXT)
+	_hint_label(vb, "First up: talk to Claude at the desk, then grab some tokens.\n\n[E] / click to begin", 14, _GameTheme.TEXT_DIM)
+	_GameTheme.open_panel(panel)
+	_GameTheme.stagger_rows(vb)
 	get_tree().create_timer(0.25).timeout.connect(func():
 		if is_instance_valid(root):
 			root.set_meta("armed", true))
@@ -105,11 +155,13 @@ func _input(event: InputEvent) -> void:
 			_intro_root = null
 			get_viewport().set_input_as_handled()
 
-func _hint_label(parent: Node, text: String, size: int, col: Color) -> void:
+func _hint_label(parent: Node, text: String, size: int, col: Color, heading := false) -> void:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", col)
+	if heading:
+		l.add_theme_font_override("font", _GameTheme.spaced_font(3))
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.custom_minimum_size = Vector2(560, 0)
@@ -117,13 +169,14 @@ func _hint_label(parent: Node, text: String, size: int, col: Color) -> void:
 
 func _setup_pause_button() -> void:
 	var b := Button.new()
-	b.text = "\u2016"  # pause glyph
+	b.text = "‖"  # pause glyph
 	b.anchor_left = 1.0
 	b.anchor_right = 1.0
 	b.position = Vector2(-52, 46)
 	b.custom_minimum_size = Vector2(40, 30)
 	b.tooltip_text = "Pause (Esc)"
 	b.focus_mode = Control.FOCUS_NONE
+	_GameTheme.style_button(b, _GameTheme.CYAN, 14)
 	b.pressed.connect(_on_pause_button)
 	add_child(b)
 
@@ -163,22 +216,22 @@ func _setup_cycle_readout() -> void:
 	ArchitectureManager.delayed_consequence.connect(_on_arch_consequence)
 
 func _on_cycle_warning(seconds_left: int) -> void:
-	_show_notification("\u26a0 TOKEN RESET IN %ds\nShip something before it's gone!" % seconds_left, Color(1.0, 0.55, 0.3))
+	_show_notification("⚠ TOKEN RESET IN %ds\nShip something before it's gone!" % seconds_left, Color(1.0, 0.55, 0.3))
 
 func _on_reset_triggered(cycle: int) -> void:
-	_show_notification("\u267b RESET \u2014 Cycle %d\nQuotas refilled. Prices shifted." % cycle, Color(0.5, 0.85, 1.0))
+	_show_notification("♻ RESET — Cycle %d\nQuotas refilled. Prices shifted." % cycle, Color(0.5, 0.85, 1.0))
 
 func _on_model_changed(_id: String, display_name: String) -> void:
-	_show_notification("Model \u2192 %s" % display_name, ModelManager.color())
+	_show_notification("Model → %s" % display_name, ModelManager.color())
 
 func _on_agent_deployed(display_name: String) -> void:
-	_show_notification("\ud83e\udd16 %s deployed\nResolves at next RESET." % display_name, Color(0.6, 0.85, 1.0))
+	_show_notification("🤖 %s deployed\nResolves at next RESET." % display_name, Color(0.6, 0.85, 1.0))
 
 func _on_agent_resolved(display_name: String, summary: String) -> void:
-	_show_notification("\ud83e\udd16 %s: %s" % [display_name, summary], Color(0.8, 0.9, 1.0))
+	_show_notification("🤖 %s: %s" % [display_name, summary], Color(0.8, 0.9, 1.0))
 
 func _on_arch_consequence(text: String) -> void:
-	_show_notification("\ud83c\udff7 %s" % text, Color(1.0, 0.6, 0.5))
+	_show_notification("🏷 %s" % text, Color(1.0, 0.6, 0.5))
 
 func _setup_ability_bar() -> void:
 	var bar := HBoxContainer.new()
@@ -193,30 +246,52 @@ func _setup_ability_bar() -> void:
 	bar.offset_bottom = -8
 	add_child(bar)
 	for def in ABILITY_DEFS:
-		var slot := PanelContainer.new()
+		var accent: Color = ABILITY_ACCENTS.get(def.id, _GameTheme.CYAN)
+		# Plain Control slot so the cooldown overlay can use its own anchors
+		# without a container fighting it every layout pass.
+		var slot := Control.new()
+		slot.custom_minimum_size = Vector2(104, 58)
+		var panel := PanelContainer.new()
+		panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(0.06, 0.07, 0.11, 0.92)
+		sb.bg_color = _GameTheme.with_alpha(_GameTheme.BASE, 0.85)
 		sb.set_border_width_all(1)
-		sb.border_color = Color(0.3, 0.9, 0.82, 0.6)
+		sb.border_color = _GameTheme.with_alpha(accent, 0.55)
 		sb.set_corner_radius_all(6)
 		sb.set_content_margin_all(6)
-		slot.add_theme_stylebox_override("panel", sb)
-		slot.custom_minimum_size = Vector2(104, 58)
+		sb.shadow_color = _GameTheme.with_alpha(accent, 0.10)
+		sb.shadow_size = 5
+		panel.add_theme_stylebox_override("panel", sb)
+		slot.add_child(panel)
 		var v := VBoxContainer.new()
 		v.add_theme_constant_override("separation", 0)
-		slot.add_child(v)
+		panel.add_child(v)
 		var key := Label.new()
 		key.text = "[%s]  %s" % [def.key, def.cost]
 		key.add_theme_font_size_override("font_size", 12)
-		key.add_theme_color_override("font_color", Color(0.35, 0.95, 0.85))
+		key.add_theme_color_override("font_color", _GameTheme.hot_of(accent))
 		v.add_child(key)
 		var nm := Label.new()
 		nm.text = def.name
 		nm.add_theme_font_size_override("font_size", 14)
-		nm.add_theme_color_override("font_color", Color(0.92, 0.94, 0.98))
+		nm.add_theme_color_override("font_color", _GameTheme.TEXT)
 		v.add_child(nm)
+		# Cooldown: dark vertical sweep that drains as the ability recharges.
+		var ov := ColorRect.new()
+		ov.color = Color(0.02, 0.024, 0.055, 0.62)
+		ov.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ov.anchor_left = 0.0
+		ov.anchor_right = 1.0
+		ov.anchor_top = 1.0
+		ov.anchor_bottom = 1.0
+		ov.visible = false
+		slot.add_child(ov)
+		_GameTheme.attach_hover_motion(slot)
 		bar.add_child(slot)
 		_ability_slots.append(slot)
+		_ability_overlays.append(ov)
+		_ability_cost_labels.append(key)
 
 func _update_ability_bar() -> void:
 	if not is_instance_valid(_player):
@@ -228,6 +303,36 @@ func _update_ability_bar() -> void:
 		var ready_now: bool = _player.ability_ready(def.id)
 		var affordable: bool = def.res == "" or ResourceManager.get_value(def.res) >= float(def.amt)
 		_ability_slots[i].modulate = Color(1, 1, 1, 1.0) if (ready_now and affordable) else Color(1, 1, 1, 0.38)
+		# Unaffordable cost readout goes red — the universal "no" color.
+		var accent: Color = ABILITY_ACCENTS.get(def.id, _GameTheme.CYAN)
+		_ability_cost_labels[i].add_theme_color_override("font_color",
+			_GameTheme.hot_of(accent) if affordable else _GameTheme.RED)
+		var frac := _cooldown_frac(def.id)
+		var ov: ColorRect = _ability_overlays[i]
+		ov.anchor_top = 1.0 - frac
+		ov.visible = frac > 0.003
+
+## 1.0 = just used, 0.0 = ready. Reads the player's cooldown state directly.
+func _cooldown_frac(id: String) -> float:
+	var left := 0.0
+	var ceil_v := 1.0
+	match id:
+		"prompt_blast", "cache":
+			left = _player.ability_cooldown.time_left
+			ceil_v = maxf(_player.ability_cooldown.wait_time, 0.01)
+		"rubber_duck":
+			left = _player._duck_cd
+			ceil_v = COOLDOWN_MAX.rubber_duck
+		"stack_trace":
+			left = _player._trace_cd
+			ceil_v = COOLDOWN_MAX.stack_trace
+		"ctrl_z":
+			left = _player._ctrlz_cd
+			ceil_v = COOLDOWN_MAX.ctrl_z
+		"dash":
+			left = _player._dash_cd
+			ceil_v = COOLDOWN_MAX.dash
+	return clampf(left / ceil_v, 0.0, 1.0)
 
 func _process(_delta: float) -> void:
 	_update_quest_tracker()
@@ -235,18 +340,31 @@ func _process(_delta: float) -> void:
 	if _cycle_label:
 		var secs := CycleManager.seconds_left()
 		var warn := secs <= int(CycleManager.WARN_AT)
-		_cycle_label.text = "\u25c9 Cycle %d   \u23f1 reset in %ds" % [CycleManager.cycle, secs]
-		_cycle_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.3) if warn else Color(0.7, 0.78, 0.85))
+		_cycle_label.text = "◉ Cycle %d   ⏱ reset in %ds" % [CycleManager.cycle, secs]
+		if warn:
+			# Amber panic pulse — the deadline is a physical presence now.
+			var p := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.012)
+			_cycle_label.add_theme_color_override("font_color",
+				_GameTheme.AMBER.lerp(_GameTheme.WHITE_HOT, p * 0.6))
+		else:
+			_cycle_label.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
 	if _model_label:
 		var m := ModelManager.current()
 		var pc: int = _player.prompt_cost() if is_instance_valid(_player) else int(m.cost * 5)
-		_model_label.text = "\u2699 Model: %s  ([T], %d tk/blast)" % [m.name, pc]
+		_model_label.text = "⚙ Model: %s  ([T], %d tk/blast)" % [m.name, pc]
 		_model_label.add_theme_color_override("font_color", ModelManager.color())
 
 func _update_all() -> void:
 	token_label.text = "%d" % int(ResourceManager.get_value("tokens"))
 	compute_label.text = "%d" % int(ResourceManager.get_value("compute"))
-	focus_bar.value = ResourceManager.get_value("focus")
+	var target := ResourceManager.get_value("focus")
+	if absf(focus_bar.value - target) > 0.5:
+		if _focus_tween and _focus_tween.is_valid():
+			_focus_tween.kill()
+		_focus_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		_focus_tween.tween_property(focus_bar, "value", target, _GameTheme.T_STD)
+	else:
+		focus_bar.value = target
 	_update_quest_tracker()
 
 func _on_resource_changed(name: String, _o: float, _new_val: float) -> void:
@@ -255,10 +373,37 @@ func _on_resource_changed(name: String, _o: float, _new_val: float) -> void:
 
 func _on_health_changed(current: int, max_hp: int) -> void:
 	hp_bar.max_value = max_hp
-	hp_bar.value = current
+	var target := float(current)
+	var prev := _hp_prev if _hp_prev >= 0.0 else target
+	_hp_prev = target
+	if _hp_tween and _hp_tween.is_valid():
+		_hp_tween.kill()
+	_hp_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_hp_tween.tween_property(hp_bar, "value", target, _GameTheme.T_STD)
+	if target < prev and is_instance_valid(_hp_ghost):
+		# Trailing red segment marking what was just lost, then it burns away.
+		var denom := maxf(1.0, float(max_hp))
+		var lo := clampf(target / denom, 0.0, 1.0)
+		var hi := clampf(prev / denom, 0.0, 1.0)
+		if _hp_ghost_tween and _hp_ghost_tween.is_valid():
+			_hp_ghost_tween.kill()
+		_hp_ghost.visible = true
+		_hp_ghost.anchor_left = lo
+		_hp_ghost.anchor_right = hi
+		_hp_ghost_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+		_hp_ghost_tween.tween_interval(0.2)
+		_hp_ghost_tween.tween_property(_hp_ghost, "anchor_right", lo, 0.3)
+		_hp_ghost_tween.tween_callback(func(): _hp_ghost.visible = false)
 
 func _on_tokens_gained(amount: int, _source: String) -> void:
 	_show_notification("+%d Tokens" % amount, Color(0.35, 0.95, 0.85))
+	# Scale-pop the counter so pickups register in the corner of your eye.
+	if _pop_tween and _pop_tween.is_valid():
+		_pop_tween.kill()
+	token_label.pivot_offset = token_label.size * 0.5
+	_pop_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_pop_tween.tween_property(token_label, "scale", Vector2(1.25, 1.25), 0.08)
+	_pop_tween.tween_property(token_label, "scale", Vector2.ONE, 0.17)
 
 func _on_price_adjustment(lost: int) -> void:
 	_show_notification("Provider pricing updated.\n−%d Tokens" % lost, Color(1.0, 0.45, 0.42))
@@ -286,6 +431,10 @@ const REGION_SUBTITLES := {
 func _on_region_changed(region_id: String) -> void:
 	region_label.text = _format_region(region_id)
 	region_sub.text = REGION_SUBTITLES.get(region_id, "Region under construction")
+	# Brief cyan flash on arrival — new zone, new neon.
+	var t := create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	t.tween_property(region_label, "modulate", Color(1.6, 1.9, 1.85, 1.0), 0.1)
+	t.tween_property(region_label, "modulate", Color.WHITE, 0.5)
 
 func _format_region(id: String) -> String:
 	return id.replace("_", " ").capitalize()
@@ -309,9 +458,13 @@ func _show_notification(text: String, color: Color) -> void:
 	notification.text = text
 	notification.modulate = color
 	notification.visible = true
+	notification.pivot_offset = notification.size * 0.5
+	notification.scale = Vector2(0.92, 0.92)
 	if _notif_tween:
 		_notif_tween.kill()
 	_notif_tween = create_tween()
-	_notif_tween.tween_interval(2.5)
+	_notif_tween.tween_property(notification, "scale", Vector2.ONE, _GameTheme.T_MICRO) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_notif_tween.tween_interval(2.4)
 	_notif_tween.tween_property(notification, "modulate:a", 0.0, 0.5)
 	_notif_tween.tween_callback(func(): notification.visible = false; notification.modulate.a = 1.0)

@@ -36,12 +36,33 @@ const PROMPT_AUTO := 6.0    # auto-continue after the prompt has been shown a wh
 func _ready() -> void:
 	layer = 100
 	panel.theme = _GameTheme.create()
+	_dress()
 	label.text = ""
 	label.scroll_active = true
 	prompt.visible = false
 	AudioManager.stop_music()
 	_char_index = 1
 	label.text = _build_display()
+
+## Terminal noir: styled glass, faint code rain behind the boot text, and a
+## breathing "press any key" prompt. Sets the tone before the first frame of play.
+func _dress() -> void:
+	panel.add_theme_stylebox_override("panel", _GameTheme.panel_box(_GameTheme.CYAN, 22.0))
+	var title: Label = $Panel/Margin/VBox/Title
+	_GameTheme.style_heading(title, _GameTheme.CYAN, 22)
+	if ResourceLoader.exists("res://assets/shaders/code_rain.gdshader"):
+		var rain := ColorRect.new()
+		rain.color = Color(0, 0, 0, 0)
+		rain.material = _GameTheme.shader_material("res://assets/shaders/code_rain.gdshader",
+			{"tint": _GameTheme.with_alpha(_GameTheme.CYAN, 1.0), "columns": 56.0, "speed": 0.7, "alpha_max": 0.10})
+		rain.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		rain.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		$Dimmer.add_child(rain)
+	prompt.add_theme_color_override("font_color", _GameTheme.hot_of(_GameTheme.CYAN))
+	var pt := prompt.create_tween().set_loops().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	pt.tween_property(prompt, "modulate:a", 0.45, 0.8)
+	pt.tween_property(prompt, "modulate:a", 1.0, 0.8)
+	_GameTheme.open_panel(panel)
 
 func _process(delta: float) -> void:
 	if _done:

@@ -3,6 +3,8 @@ extends Control
 ## router, terminal...). Screen-space (added under the HUD CanvasLayer), pauses
 ## nothing, and closes on any confirm/cancel/interact key or a click.
 
+const _GameTheme = preload("res://scripts/ui/game_theme.gd")
+
 var title_text := "Prop"
 var body_text := "..."
 var _armed := false
@@ -25,19 +27,15 @@ func _ready() -> void:
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(backdrop)
+	backdrop.modulate.a = 0.0
+	var bt := backdrop.create_tween().set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	bt.tween_property(backdrop, "modulate:a", 1.0, _GameTheme.T_STD)
 
 	var panel := PanelContainer.new()
 	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.09, 0.10, 0.14, 0.98)
-	sb.border_color = Color(0.35, 0.85, 0.75)
-	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(8)
-	sb.set_content_margin_all(18)
-	sb.shadow_color = Color(0, 0, 0, 0.5)
-	sb.shadow_size = 10
-	panel.add_theme_stylebox_override("panel", sb)
+	panel.add_theme_stylebox_override("panel", _GameTheme.panel_box(_GameTheme.CYAN, 18.0))
 	add_child(panel)
+	_GameTheme.add_sheen(panel)
 
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 8)
@@ -47,14 +45,14 @@ func _ready() -> void:
 	var title := Label.new()
 	title.text = title_text
 	title.add_theme_font_size_override("font_size", 22)
-	title.add_theme_color_override("font_color", Color(0.4, 0.95, 0.85))
+	_GameTheme.style_heading(title, _GameTheme.CYAN, 22)
 	vb.add_child(title)
 
 	var body := Label.new()
 	body.text = body_text
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_theme_font_size_override("font_size", 16)
-	body.add_theme_color_override("font_color", Color(0.9, 0.92, 0.96))
+	body.add_theme_color_override("font_color", _GameTheme.TEXT)
 	body.custom_minimum_size = Vector2(460, 0)
 	vb.add_child(body)
 
@@ -62,8 +60,11 @@ func _ready() -> void:
 	hint.text = "[E] / click to close"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	hint.add_theme_font_size_override("font_size", 12)
-	hint.add_theme_color_override("font_color", Color(0.55, 0.6, 0.7))
+	hint.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
 	vb.add_child(hint)
+
+	_GameTheme.open_panel(panel)
+	_GameTheme.stagger_rows(vb)
 
 func _input(event: InputEvent) -> void:
 	if not _armed:

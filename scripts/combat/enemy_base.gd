@@ -48,6 +48,26 @@ var _hp_bar: Node2D
 var _hp_fill: ColorRect
 const HP_BAR_W := 30.0
 
+## Per-type death accents (VISUAL_BIBLE palette) for the dissolve burn edge.
+const DEATH_ACCENTS := {
+	"bug": Color("#A8FF3E"),
+	"merge_conflict": Color("#FF2D95"),
+	"scope_creep": Color("#8B5CF6"),
+	"memory_leak": Color("#3D9BFF"),
+	"rate_limiter": Color("#FFB020"),
+	"hallucination": Color("#8B5CF6"),
+	"cloud_bill": Color("#6BC7FF"),
+	"dependency_demon": Color("#A8FF3E"),
+	"enterprise_architect": Color("#4D7CFF"),
+	"legacy_monolith": Color("#C97B4A"),
+	"legacy_system": Color("#C97B4A"),
+	"null_reference": Color("#7C8BB0"),
+	"infinite_context": Color("#24F0DC"),
+}
+
+func _accent() -> Color:
+	return DEATH_ACCENTS.get(enemy_type, Color("#FF4757"))
+
 func _ready() -> void:
 	add_to_group("enemy")
 	hp = max_hp
@@ -378,9 +398,16 @@ func _hit_spark() -> void:
 	p.spread = 180.0
 	p.initial_velocity_min = 60.0
 	p.initial_velocity_max = 140.0
-	p.scale_amount_min = 2.0
-	p.scale_amount_max = 3.5
-	p.color = Color(1.0, 0.85, 0.4)
+	var spark := FxLib.spark()
+	if spark:
+		p.texture = spark
+		p.material = FxLib.additive_material()
+		p.scale_amount_min = 0.6
+		p.scale_amount_max = 1.2
+	else:
+		p.scale_amount_min = 2.0
+		p.scale_amount_max = 3.5
+	p.color = Color(2.0, 1.7, 0.8)  # overbright so sparks actually spark
 	p.z_index = 550
 	# Parent to the region (not the enemy) so the burst completes after the enemy
 	# dies, and self-free via `finished` to avoid a timer lambda capturing a node
@@ -421,13 +448,39 @@ func _die() -> void:
 	AudioManager.play_sfx("enemy_death")
 	_spawn_tokens()
 	_death_burst()
-	# Satisfying pop: flash white, punch up in scale, then fade out. The scale +
-	# fade run together; queue_free waits for the fade to finish (was firing early).
-	sprite.modulate = Color(2.4, 2.4, 2.4)
-	var tween := create_tween()
-	tween.tween_property(sprite, "scale", sprite.scale * 1.45, 0.22).set_ease(Tween.EASE_OUT)
-	tween.parallel().tween_property(sprite, "modulate", Color(1, 1, 1, 0.0), 0.3)
-	tween.tween_callback(queue_free)
+	_hit_stop_if_close()
+	# Dissolve into glowing embers (dissolve.gdshader, edge in the enemy's accent)
+	# — falls back to the old white pop-fade if the shader library is missing.
+	# Total death time stays under 0.5s (combat_test waits exactly that long).
+	var shader_path := "res://assets/shaders/dissolve.gdshader"
+	if ResourceLoader.exists(shader_path):
+		var mat := ShaderMaterial.new()
+		mat.shader = load(shader_path)
+		mat.set_shader_parameter("edge_color", _accent())
+		mat.set_shader_parameter("pixel_size", 2.0)
+		mat.set_shader_parameter("progress", 0.0)  # explicit start for the tween
+		sprite.material = mat
+		sprite.modulate = Color(1.35, 1.35, 1.35)
+		var tween := create_tween()
+		tween.tween_property(mat, "shader_parameter/progress", 1.0, 0.45)
+		tween.parallel().tween_property(sprite, "scale", sprite.scale * 1.12, 0.45)
+		tween.tween_callback(queue_free)
+	else:
+		sprite.modulate = Color(2.4, 2.4, 2.4)
+		var tween := create_tween()
+		tween.tween_property(sprite, "scale", sprite.scale * 1.45, 0.22).set_ease(Tween.EASE_OUT)
+		tween.parallel().tween_property(sprite, "modulate", Color(1, 1, 1, 0.0), 0.3)
+		tween.tween_callback(queue_free)
+
+## ~40ms time-freeze on close-range kills so melee-distance takedowns have
+## physical weight. All the safety guards live in FxLib.hit_stop.
+func _hit_stop_if_close() -> void:
+	if not is_inside_tree():
+		return
+	var player := get_tree().get_first_node_in_group("player")
+	if player == null or global_position.distance_to(player.global_position) > 150.0:
+		return
+	FxLib.hit_stop(get_tree())
 
 ## A burst of enemy-tinted debris on death, parented to the region so it outlives
 ## the enemy.
@@ -435,9 +488,7 @@ func _death_burst() -> void:
 	var parent := get_parent()
 	if not parent:
 		return
-	var col := Color(0.9, 0.4, 0.4)
-	if sprite and sprite.texture:
-		col = sprite.modulate  # roughly the enemy's tint
+	var col := _accent()
 	var p := CPUParticles2D.new()
 	p.emitting = true
 	p.one_shot = true
@@ -447,14 +498,24 @@ func _death_burst() -> void:
 	p.spread = 180.0
 	p.initial_velocity_min = 90.0
 	p.initial_velocity_max = 220.0
-	p.scale_amount_min = 2.5
-	p.scale_amount_max = 4.5
 	p.gravity = Vector2(0, 240)
-	p.color = Color(0.95, 0.5, 0.45)
+	p.color = Color(col.r * 1.8, col.g * 1.8, col.b * 1.8)  # overbright: embers bloom
 	p.z_index = 540
+	var spark := FxLib.spark()
+	if spark:
+		p.texture = spark
+		p.material = FxLib.additive_material()
+		p.scale_amount_min = 0.7
+		p.scale_amount_max = 1.6
+	else:
+		p.scale_amount_min = 2.5
+		p.scale_amount_max = 4.5
 	parent.add_child(p)
 	p.global_position = global_position
 	p.finished.connect(p.queue_free)
+	# Second layer: slow overbright glow motes drifting up out of the corpse.
+	FxLib.burst(parent, global_position, Color(col.r * 2.0, col.g * 2.0, col.b * 2.0), 8, 90.0, FxLib.glow_dot(), Vector2(0, -140))
+	FxLib.flash(parent, global_position, col, 0.4, 2.2, 0.3)
 
 func _split() -> void:
 	var scene := preload("res://scenes/combat/enemy.tscn")
@@ -482,4 +543,7 @@ func _on_hitbox_area_entered(area: Area2D) -> void:
 	if area.is_in_group("player_projectile"):
 		var dmg: int = area.get("damage") if area.get("damage") else 10
 		take_damage(dmg)
-		area.queue_free()
+		# Piercing shots (Stack Trace) survive contact — the projectile's own
+		# handler tracks per-enemy hits; only consume non-piercing bolts.
+		if not (area.get("pierce") == true):
+			area.queue_free()
