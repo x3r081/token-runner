@@ -49,6 +49,8 @@ func _ready() -> void:
 		_mat.set_shader_parameter("grade_lift", Vector3(0.012, 0.008, 0.03))
 		_mat.set_shader_parameter("aberration", 1.1)
 		_mat.set_shader_parameter("vignette_strength", 0.20)
+		_mat.set_shader_parameter("saturation", 1.16)
+		_mat.set_shader_parameter("contrast", 0.12)
 		rect.material = _mat
 	else:
 		rect.visible = false  # no shader, no opinions
@@ -77,9 +79,15 @@ func fade_from_black(duration: float = 0.4) -> void:
 	_fade_tween.tween_property(_fade, "color:a", 0.0, duration) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
-## Per-region screen chemistry: nudge lift/vignette/aberration toward the
-## region's mood (VISUAL_BIBLE ambience table). Subtle by design — the grade
-## seasons the frame, it doesn't cook it.
+## Per-region screen chemistry: nudge lift/vignette/aberration/saturation/
+## contrast toward the region's mood (VISUAL_BIBLE ambience table). Subtle by
+## design — the grade seasons the frame, it doesn't cook it.
+##
+## Two rules after the ambience raise: vignettes are lighter across the board
+## (the old 0.34–0.42 was eating the corners of an already dark frame), and
+## every region now carries a small S-curve so the indigo shadow lift reads as
+## depth instead of haze. Corporate Enterprise gets the flattest, least
+## saturated grade in the game, on purpose.
 func set_region(region_id: String) -> void:
 	if _haze:
 		_haze.visible = region_id == "gpu_mines" and _haze.material != null
@@ -89,33 +97,53 @@ func set_region(region_id: String) -> void:
 		return
 	var lift := Vector3(0.012, 0.008, 0.03)  # default: shadows toward indigo
 	var aberr := 1.1
-	var vig := 0.34
+	var vig := 0.28
+	var sat := 1.16
+	var con := 0.12
 	match region_id:
 		"gpu_mines":
-			lift = Vector3(0.03, 0.012, 0.006)
+			lift = Vector3(0.028, 0.012, 0.006)
 			aberr = 1.5
-			vig = 0.4
+			vig = 0.30
+			sat = 1.20
+			con = 0.16
 		"production":
-			lift = Vector3(0.034, 0.008, 0.012)
+			lift = Vector3(0.032, 0.008, 0.012)
 			aberr = 1.9
-			vig = 0.42
+			vig = 0.32
+			sat = 1.24
+			con = 0.18
 		"cloud_district":
 			lift = Vector3(0.014, 0.02, 0.038)
 			aberr = 0.8
-			vig = 0.26
+			vig = 0.20
+			sat = 1.10
+			con = 0.08
 		"token_vault":
-			lift = Vector3(0.028, 0.022, 0.008)
-			vig = 0.38
+			lift = Vector3(0.026, 0.020, 0.008)
+			vig = 0.30
+			sat = 1.22
+			con = 0.14
 		"api_bazaar":
-			lift = Vector3(0.026, 0.006, 0.026)
+			lift = Vector3(0.024, 0.006, 0.026)
 			aberr = 1.4
+			vig = 0.26
+			sat = 1.26
+			con = 0.14
 		"open_source_wildlands", "dependency_district":
 			lift = Vector3(0.008, 0.022, 0.012)
+			sat = 1.14
+			con = 0.11
 		"stackoverflow_ruins":
-			lift = Vector3(0.022, 0.016, 0.008)
+			lift = Vector3(0.020, 0.015, 0.008)
+			vig = 0.30
+			sat = 1.06
+			con = 0.10
 		"corporate_enterprise":
-			lift = Vector3(0.01, 0.014, 0.032)
-			vig = 0.28
+			lift = Vector3(0.010, 0.014, 0.030)
+			vig = 0.22
+			sat = 1.02
+			con = 0.07
 	if _grade_tween and _grade_tween.is_valid():
 		_grade_tween.kill()
 	_grade_tween = create_tween().set_parallel(true)
@@ -124,4 +152,8 @@ func set_region(region_id: String) -> void:
 	_grade_tween.tween_property(_mat, "shader_parameter/aberration", aberr, 0.6) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_grade_tween.tween_property(_mat, "shader_parameter/vignette_strength", vig, 0.6) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_grade_tween.tween_property(_mat, "shader_parameter/saturation", sat, 0.6) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_grade_tween.tween_property(_mat, "shader_parameter/contrast", con, 0.6) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)

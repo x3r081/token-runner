@@ -1,14 +1,27 @@
 extends CanvasLayer
+## Incidents are dressed like a real incident channel: a ticket number, a
+## severity nobody agrees on, and a footer reminding you that the bill for this
+## decision arrives later. The choices themselves stay untouched and readable.
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
+const _Comedy = preload("res://scripts/ui/comedy_lines.gd")
+
+var _ticket_label: Label
+var _footer_label: Label
 
 func _ready() -> void:
 	EventManager.event_triggered.connect(_on_event)
 	panel.visible = false
 	# Incidents wear amber — the color of warnings and vending-machine coffee.
 	panel.add_theme_stylebox_override("panel", _GameTheme.panel_box(_GameTheme.AMBER, 4.0))
+	# Two extra rows (ticket header, consequences footer) need a little more room.
+	panel.offset_left = -350.0
+	panel.offset_right = 350.0
+	panel.offset_top = -235.0
+	panel.offset_bottom = 235.0
 	_GameTheme.style_heading(title_label, _GameTheme.AMBER, 26)
 	desc_label.add_theme_color_override("font_color", _GameTheme.TEXT)
+	_build_rows()
 	for i in 3:
 		var btn: Button = choice_buttons[i]
 		_GameTheme.style_button(btn, _GameTheme.AMBER, 16)
@@ -24,7 +37,27 @@ func _ready() -> void:
 	$Panel/Margin/VBox/Choice3,
 ]
 
-func _on_event(_event_id: String, description: String) -> void:
+## Incident-channel dressing. Purely decorative — it never carries information
+## the player needs, so it can be as sarcastic as it likes.
+func _build_rows() -> void:
+	var vbox: VBoxContainer = $Panel/Margin/VBox
+	_ticket_label = Label.new()
+	_ticket_label.name = "Ticket"
+	_ticket_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_ticket_label.add_theme_font_size_override("font_size", 12)
+	_ticket_label.add_theme_color_override("font_color", _GameTheme.with_alpha(_GameTheme.AMBER, 0.7))
+	vbox.add_child(_ticket_label)
+	vbox.move_child(_ticket_label, 1)
+
+	_footer_label = Label.new()
+	_footer_label.name = "Footer"
+	_footer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_footer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_footer_label.add_theme_font_size_override("font_size", 12)
+	_footer_label.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
+	vbox.add_child(_footer_label)
+
+func _on_event(event_id: String, description: String) -> void:
 	var ev := EventManager.get_active()
 	if ev.is_empty():
 		return
@@ -36,6 +69,14 @@ func _on_event(_event_id: String, description: String) -> void:
 	backdrop.visible = true
 	title_label.text = ev.get("title", "INCIDENT")
 	desc_label.text = description
+	if is_instance_valid(_ticket_label):
+		# Ticket number is derived from the event id, so re-rendering a scripted
+		# stage keeps the same incident open instead of filing a new one.
+		var ticket := absi(event_id.hash()) % 9000 + 1000
+		_ticket_label.text = "INC-%d · %s · reported by: everyone" % [
+			ticket, _Comedy.pick("incident_sev", _Comedy.INCIDENT_SEVERITY)]
+	if is_instance_valid(_footer_label):
+		_footer_label.text = _Comedy.pick("incident_footer", _Comedy.INCIDENT_FOOTER)
 	var choices: Array = ev.get("choices", [])
 	for i in 3:
 		if i < choices.size():

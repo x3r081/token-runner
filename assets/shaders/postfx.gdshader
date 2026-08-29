@@ -5,14 +5,17 @@ shader_type canvas_item;
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 uniform float intensity : hint_range(0.0, 1.0) = 1.0;
-uniform float vignette_strength : hint_range(0.0, 1.0) = 0.34;
+uniform float vignette_strength : hint_range(0.0, 1.0) = 0.28;
 uniform float aberration : hint_range(0.0, 4.0) = 1.1;
-uniform float grain_amount : hint_range(0.0, 0.2) = 0.035;
-uniform float scanline_amount : hint_range(0.0, 0.3) = 0.05;
+uniform float grain_amount : hint_range(0.0, 0.2) = 0.028;
+uniform float scanline_amount : hint_range(0.0, 0.3) = 0.04;
 uniform float scanline_count = 540.0;
 uniform vec3 grade_lift = vec3(0.012, 0.008, 0.03);
 uniform vec3 grade_gamma = vec3(1.0, 0.99, 0.94);
-uniform float saturation : hint_range(0.0, 2.0) = 1.12;
+uniform float saturation : hint_range(0.0, 2.0) = 1.16;
+// Gentle S-curve applied after the lift. The lift is what stops shadows going
+// dead black; without a counter-curve it also turns the whole frame into haze.
+uniform float contrast : hint_range(0.0, 0.6) = 0.12;
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -32,6 +35,10 @@ void fragment() {
 
 	// Grade: lift shadows toward indigo, warm the gamma, boost saturation.
 	col = pow(max(col + grade_lift * intensity, vec3(0.0)), 1.0 / grade_gamma);
+	// S-curve on the 0..1 range only, so HDR values above 1.0 (neon cores,
+	// portals, emissive pixels) pass through untouched and still bloom.
+	vec3 lowc = clamp(col, vec3(0.0), vec3(1.0));
+	col += (lowc * lowc * (3.0 - 2.0 * lowc) - lowc) * contrast * intensity;
 	float luma = dot(col, vec3(0.299, 0.587, 0.114));
 	col = mix(vec3(luma), col, mix(1.0, saturation, intensity));
 

@@ -70,6 +70,24 @@ static func white_square(size: int = 64) -> Texture2D:
 		_white_tex = ImageTexture.create_from_image(img)
 	return _white_tex
 
+## Push a colour to full value and boosted chroma WITHOUT changing its hue.
+## The bible's per-region accents include several muted ones (stackoverflow gold
+## #E8C46B, cloud sky #6BC7FF, corporate #4D7CFF); multiplied by a dark ambient
+## CanvasModulate they collapse into brown/grey sludge. Anything that has to
+## read as "energy" — portals, threat halos, danger rims — runs through here
+## first. Near-white inputs degrade gracefully (they stay near-white).
+static func vivid(c: Color, chroma: float = 1.45) -> Color:
+	var mx: float = maxf(c.r, maxf(c.g, c.b))
+	if mx <= 0.001:
+		return c
+	var n := Color(c.r / mx, c.g / mx, c.b / mx, c.a)
+	var lum: float = n.r * 0.299 + n.g * 0.587 + n.b * 0.114
+	return Color(
+		clampf(lum + (n.r - lum) * chroma, 0.0, 1.0),
+		clampf(lum + (n.g - lum) * chroma, 0.0, 1.0),
+		clampf(lum + (n.b - lum) * chroma, 0.0, 1.0),
+		c.a)
+
 ## Attach a soft PointLight2D to `parent`. Returns it for further tuning.
 static func point_light(parent: Node, color: Color, energy: float, tex_scale: float, offset := Vector2.ZERO) -> PointLight2D:
 	var light := PointLight2D.new()

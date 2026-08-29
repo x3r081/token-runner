@@ -62,7 +62,13 @@ func _tech_floor() -> void:
 	# Machined deck plating: two 32px panels per axis, each with a beveled lip,
 	# brushed grain, corner rivets and per-panel value jitter so the grid never
 	# reads as a stamped checkerboard. Tiles seamlessly against itself.
+	# Every region multiplies this one texture by its own tint, so its STRUCTURE
+	# has to survive being scaled down to a fifth of its value. Deep seams and a
+	# bright bevel lip do that; a flat mid-grey does not, which is how nine
+	# regions ended up sharing one muddy floor.
 	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	# Base value is left where region_builder calibrated its floor tints against
+	# (0.50); only the STRUCTURE gets stronger here.
 	var base := Color(0.50, 0.51, 0.56)
 	for y in 64:
 		for x in 64:
@@ -79,12 +85,23 @@ func _tech_floor() -> void:
 			c = Color(c.r + n, c.g + n, c.b + n, 1.0)
 			# machined bevel: dark seam, lit lip below it, shadowed far edge
 			if px == 0 or py == 0:
-				c = base.darkened(0.34)
+				c = base.darkened(0.46)
 			elif px == 1 or py == 1:
-				c = base.lightened(0.14)
+				c = base.lightened(0.24)
 			elif px == 31 or py == 31:
-				c = base.darkened(0.20)
+				c = base.darkened(0.26)
 			img.set_pixel(x, y, c)
+	# wear: scuffed traffic marks inside the panels, never across the seams
+	for sc in 7:
+		var sx := 4 + _hash(sc, 61) % 24
+		var sy := 4 + _hash(sc, 67) % 24
+		var quad := _hash(sc, 71) % 4
+		var ox := (quad & 1) * 32
+		var oy := ((quad >> 1) & 1) * 32
+		for j in 3 + _hash(sc, 73) % 6:
+			var tx: int = ox + mini(sx + j, 30)
+			var ty: int = oy + mini(sy + j / 3, 30)
+			img.set_pixel(tx, ty, img.get_pixel(tx, ty).darkened(0.14))
 	# corner rivets with a top-left glint
 	for pan in [Vector2i(0, 0), Vector2i(32, 0), Vector2i(0, 32), Vector2i(32, 32)]:
 		for rp in [Vector2i(5, 5), Vector2i(26, 5), Vector2i(5, 26), Vector2i(26, 26)]:
@@ -103,7 +120,10 @@ func _struct_slab() -> void:
 	# near-white status glyphs that inherit the region tint and bloom.
 	var img := Image.create(80, 120, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var g := Color(0.60, 0.61, 0.66)
+	# Structures are drawn near-grayscale and then MULTIPLIED by a region tint
+	# (0.44-0.78), so a mid-grey body lands as a near-black silhouette on a dark
+	# floor. Every shared struct sits a notch brighter than it used to.
+	var g := Color(0.66, 0.67, 0.72)
 	_shadow(img, 40, 112, 34, 5, 0.32)
 	_vgrad(img, 8, 4, 64, 104, g.lightened(0.10), g.darkened(0.22))
 	_rect(img, 8, 4, 64, 3, g.lightened(0.26))       # lit top cap
@@ -131,7 +151,7 @@ func _struct_crate() -> void:
 	# which in this economy is probably for the best.
 	var img := Image.create(76, 66, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var g := Color(0.64, 0.58, 0.50)
+	var g := Color(0.70, 0.63, 0.55)
 	_shadow(img, 38, 59, 34, 4, 0.30)
 	_bevel(img, 3, 4, 70, 54, g)
 	# vertical plank seams: shadow + caught-light edge
@@ -164,7 +184,7 @@ func _struct_console() -> void:
 	# Terminal kiosk. The cursor has been blinking since before you were born.
 	var img := Image.create(88, 96, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var body := Color(0.42, 0.44, 0.50)
+	var body := Color(0.50, 0.52, 0.58)
 	_shadow(img, 44, 90, 30, 4, 0.32)
 	_bevel(img, 30, 68, 28, 22, body.darkened(0.32))     # stand
 	_bevel(img, 6, 4, 76, 64, body)
@@ -195,7 +215,7 @@ func _struct_tower() -> void:
 	# Full-height equipment tower: fan intake, bays of blinking LEDs, vents.
 	var img := Image.create(72, 150, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var cab := Color(0.40, 0.42, 0.47)
+	var cab := Color(0.49, 0.51, 0.56)
 	_shadow(img, 36, 143, 30, 4, 0.32)
 	_vgrad(img, 6, 4, 60, 138, cab.lightened(0.08), cab.darkened(0.24))
 	_rect(img, 6, 4, 60, 2, cab.lightened(0.24))
@@ -279,7 +299,7 @@ func _struct_arch() -> void:
 	# lintel, rubble underneath, and carved glyphs that still glow. Legacy code.
 	var img := Image.create(150, 128, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var stone := Color(0.58, 0.56, 0.53)
+	var stone := Color(0.64, 0.62, 0.58)
 	_shadow(img, 25, 122, 20, 4, 0.30)
 	_shadow(img, 125, 122, 20, 4, 0.30)
 	# two pillars of coursed blocks with staggered joints + value jitter
@@ -333,7 +353,10 @@ func _floor_tiles() -> void:
 	# Warm plank flooring, three tone variants that share one plank phase so
 	# any tile sits next to any other without a visible seam. Grain runs along
 	# the boards; each board gets its own value jitter, lit top edge and AO.
-	var bases := [Color(0.30, 0.225, 0.170), Color(0.275, 0.208, 0.158), Color(0.315, 0.240, 0.182)]
+	# Warmer and a step brighter than they used to be: the wall above is now
+	# cool indigo, so the floor has to own the warm half of the frame or the
+	# two collapse back into one brown mass.
+	var bases := [Color(0.318, 0.234, 0.166), Color(0.292, 0.216, 0.152), Color(0.338, 0.252, 0.178)]
 	for v in bases.size():
 		var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
 		var base: Color = bases[v]
@@ -344,28 +367,34 @@ func _floor_tiles() -> void:
 				# per-plank tone jitter (±4%) so boards read as separate cuts
 				var pj := float(_hash(row * 31 + v * 7, 5) % 9 - 4) / 100.0
 				var c := Color(base.r + pj, base.g + pj, base.b + pj * 0.8, 1.0)
-				# wavy lengthwise grain streaks
-				var g := sin(float(x) * 0.35 + float(row) * 2.1 + sin(float(x) * 0.07) * 2.0)
-				if g > 0.82:
-					c = c.darkened(0.10)
-				elif g < -0.86:
-					c = c.lightened(0.06)
+				# Grain that actually runs ALONG the board: streaks parallel to the
+				# plank, waving gently down its length (two full waves per tile, so
+				# it still tiles). The old version varied with x alone, which drew
+				# vertical stripes across horizontal boards and was the real reason
+				# this floor read as brickwork.
+				var g := sin(float(ry) * 1.35 + float(row) * 2.1 + sin(float(x) * 0.19635) * 1.8)
+				if g > 0.72:
+					c = c.darkened(0.13)
+				elif g < -0.78:
+					c = c.lightened(0.08)
 				# fine per-pixel noise
 				var n := float(_hash(x * 3 + v * 101, y) % 10) / 300.0
 				c = Color(c.r + n, c.g + n, c.b + n * 0.8, 1.0)
 				# 4-tone plank profile: seam shadow, lit edge, AO before the seam
 				if ry == 0:
-					c = c.darkened(0.38)
+					c = c.darkened(0.46)
 				elif ry == 1:
-					c = c.lightened(0.10)
+					c = c.lightened(0.17)
 				elif ry == 15:
-					c = c.darkened(0.16)
-				# staggered butt joints: shadow px + caught-light px
+					c = c.darkened(0.20)
+				# Staggered butt joints, on every other course only: one joint per
+				# board per tile was reading as masonry rather than floorboards.
 				var joint := (x + row * 29 + v * 11) % 64
-				if joint == 0 and ry > 0:
-					c = c.darkened(0.30)
-				elif joint == 1 and ry > 0:
-					c = c.lightened(0.07)
+				if (row + v) % 2 == 0 and ry > 0:
+					if joint == 0:
+						c = c.darkened(0.32)
+					elif joint == 1:
+						c = c.lightened(0.10)
 				img.set_pixel(x, y, c)
 		# the odd knot, kept away from tile edges so tiling stays clean
 		if v == 0:
@@ -457,48 +486,67 @@ func _rug() -> void:
 # ---------------------------------------------------------------- walls -----
 
 func _wall_tiles() -> void:
-	# Upper wall face: lit crown trim, panel seams that catch the light, a
-	# wainscot rail, a proper baseboard, and contact shadow onto the floor.
+	# Upper wall face. The wall must never be mistaken for the floor: it is
+	# COOL indigo where the plank floor is warm brown, it is deeper in value,
+	# its crown and wainscot catch the light, and its base ends in a heavy
+	# baseboard, a warm skirting light, and an ALPHA-feathered contact shadow
+	# that falls ONTO the real floor instead of painting a fake band over it.
 	var img := Image.create(64, 96, false, Image.FORMAT_RGBA8)
-	var wall := Color(0.15, 0.145, 0.20)
+	var wall := Color(0.105, 0.115, 0.185)
+	var trim := Color(0.16, 0.18, 0.28)
 	for y in 96:
 		for x in 64:
 			var c := wall
 			if y < 2:
-				c = wall.darkened(0.40)                  # ceiling shadow line
+				c = wall.darkened(0.55)                  # ceiling shadow line
 			elif y < 4:
-				c = wall.lightened(0.30)                 # crown trim, lit
+				c = trim.lightened(0.34)                 # crown trim, lit
 			elif y < 8:
-				c = wall.lightened(0.12)
+				c = trim.lightened(0.10)
 			elif y == 8:
-				c = wall.darkened(0.28)                  # trim shadow
-			elif y < 78:
+				c = wall.darkened(0.40)                  # trim shadow
+			elif y < 75:
 				# field: gentle top-to-bottom falloff, dithered, plus seams
-				var t := float(y - 9) / 69.0
-				c = wall.lightened(0.05 * (1.0 - t)).darkened(0.10 * t)
+				var t := float(y - 9) / 66.0
+				c = wall.lightened(0.07 * (1.0 - t)).darkened(0.12 * t)
 				if (((x >> 1) + (y >> 1)) & 7) == 0:
-					c = c.lightened(0.02)
+					c = c.lightened(0.025)
 				if x % 32 == 0:
-					c = c.darkened(0.22)                 # panel seam
+					c = c.darkened(0.26)                 # panel seam
 				elif x % 32 == 1:
-					c = c.lightened(0.09)                # seam edge catches light
+					c = c.lightened(0.11)                # seam edge catches light
 				if y == 52:
-					c = c.lightened(0.14)                # wainscot rail
+					c = trim.lightened(0.20)             # wainscot rail
 				elif y == 53:
-					c = c.darkened(0.22)
+					c = c.darkened(0.30)
 				var n := float(_hash(x, y * 2) % 6) / 340.0
 				c = Color(c.r + n, c.g + n, c.b + n, 1.0)
 				# the occasional scuff down low; furniture happened here
 				if y > 62 and _hash(x >> 2, y >> 1) % 37 == 0:
-					c = c.darkened(0.12)
-			elif y == 78:
-				c = wall.darkened(0.05).lightened(0.16)  # baseboard top edge, lit
-			elif y < 90:
-				c = wall.darkened(0.28)                  # baseboard body
+					c = c.darkened(0.14)
+			elif y == 75:
+				c = Color(0.24, 0.17, 0.10)              # skirting channel
+			elif y == 76:
+				c = Color(0.30, 0.26, 0.21)              # baseboard cap, warm-lit
+			elif y == 77:
+				c = Color(0.17, 0.16, 0.15)
+			elif y < 88:
+				c = wall.darkened(0.44)                  # baseboard body, deep
+			elif y == 88:
+				c = wall.darkened(0.66)                  # its own contact line
 			else:
-				# contact shadow feathering onto the floor
-				c = wall.darkened(0.38 + 0.06 * float(y - 90))
+				# Feathered contact shadow with REAL alpha, so the floor reads
+				# through it and the two surfaces stop being one brown mass.
+				var fa: float = clampf((1.0 - float(y - 89) / 7.0) * 0.82, 0.0, 1.0)
+				c = Color(0.012, 0.014, 0.035, fa)
 			img.set_pixel(x, y, c)
+	# Skirting light: a dim amber strip in the channel above the baseboard with
+	# one hot LED per tile. Cheap trick, enormous wall/floor separation, and
+	# entirely in character for someone who lit their flat from Amazon.
+	for lx in 64:
+		var a := 0.5 + 0.5 * sin(float(lx) * 0.098)
+		img.set_pixel(lx, 75, Color(0.26, 0.17, 0.09).lerp(AMBER.darkened(0.30), a * 0.65))
+	_glow(img, 32, 75, AMBER)
 	_save(img, "int_wall.png")
 
 	# Side wall column (for left/right room edges): lit inner face, dark outer.

@@ -182,3 +182,221 @@ func on_talk(npc_id: String) -> void:
 		for obj in quest_defs[qid].get("objectives", []):
 			if obj.get("type") == "talk" and obj.get("target") == npc_id:
 				set_objective(qid, obj.id, 1)
+
+# ----------------------------------------------------------------------------
+# Objective routing — "what now, and WHERE?"
+#
+# Everything below is purely additive read-only sugar over the state the rest of
+# this file already maintains. It exists because a quest line that says "Talk to
+# your AI roommate" is useless if the player has no idea which of the eleven
+# glowing rectangles in the room IS the roommate. scripts/ui/objective_waypoint.gd
+# turns these dictionaries into an on-screen arrow; the HUD turns them into a
+# sentence. Nothing here mutates quest state.
+# ----------------------------------------------------------------------------
+
+## Objectives of type "story" are advanced by an EventManager script, but the
+## player still has to find the prop that STARTS that script. This maps the
+## story id to the interactable that fires it, so the waypoint has something
+## physical to point at instead of shrugging.
+const STORY_TRIGGERS := {
+	"tiny_change": "client_email",
+	"free_tier": "free_tokens_ad",
+	"autonomous_agent": "agent_terminal",
+	"debugging_investigation": "broken_service",
+}
+
+## Short, conversational NPC names for objective lines. The full display names
+## ("SVP of AI Transformation Excellence") are correct and also do not fit on a
+## HUD arrow, which is arguably the most accurate thing about that job title.
+const NPC_SHORT_NAMES := {
+	"roommate_ai": "Claude",
+	"maintainer": "the Maintainer",
+	"stackoverflow_hermit": "the Hermit",
+	"api_reseller": "the Reseller",
+	"cloud_salesperson": "the Salesperson",
+	"oss_maintainer": "the Maintainer",
+	"svp_ai": "the SVP",
+	"gpu_foreman": "the Foreman",
+	"oncall_engineer": "the On-Call Engineer",
+	"junior_agent": "the Junior Agent",
+}
+
+## Objective type -> the kind of world node that satisfies it. Consumers switch
+## on "kind" instead of re-deriving this from the raw JSON types.
+const OBJECTIVE_KINDS := {
+	"talk": "npc",
+	"collect_tokens": "token",
+	"defeat": "enemy",
+	"interact": "prop",
+	"story": "prop",
+	"visit": "region",
+	"reach": "region",
+}
+
+func npc_short_name(npc_id: String) -> String:
+	if NPC_SHORT_NAMES.has(npc_id):
+		return str(NPC_SHORT_NAMES[npc_id])
+	return DialogueManager.get_npc_name(npc_id)
+
+## "dependency_demon" -> "Dependency Demon". Used for enemies and regions alike.
+func pretty_name(id: String) -> String:
+	return id.replace("_", " ").capitalize()
+
+## The one quest the HUD and the waypoint agree to track. Prefers something the
+## player can actually do standing where they are, then the critical path, then
+## whatever is left — so the pointer never sends you three regions away for a
+## side quest you picked up by accident.
+func get_tracked_quest_id() -> String:
+	var active := get_active_quests()
+	if active.is_empty():
+		return ""
+	var here: String = GameManager.current_region
+	var best := ""
+	var best_score := -9999
+	for qid in active:
+		var obj := get_next_objective(qid)
+		if obj.is_empty():
+			continue
+		var score := 0
+		if objective_region(qid, obj) == here:
+			score += 100
+		var q: Dictionary = quest_defs.get(qid, {})
+		if q.get("rewards", {}).has("unlock_region"):
+			score += 10
+		# Earlier regions first, so the critical path stays in story order.
+		# (find() returns -1 for a region-less side quest, nudging it one point
+		# up — harmless, and stable across runs.)
+		score -= GameManager.REGION_ORDER.find(str(q.get("region", "")))
+		if score > best_score:
+			best_score = score
+			best = qid
+	return best if best != "" else active[0]
+
+## First objective of `quest_id` that is not yet satisfied ({} when all are).
+func get_next_objective(quest_id: String) -> Dictionary:
+	var prog: Dictionary = quest_progress.get(quest_id, {})
+	for obj in quest_defs.get(quest_id, {}).get("objectives", []):
+		if not (obj is Dictionary):
+			continue
+		var oid := str(obj.get("id", ""))
+		if int(prog.get(oid, 0)) < int(obj.get("count", 1)):
+			return obj
+	return {}
+
+## Which region an objective is performed in. "visit" objectives name their own;
+## everything else happens wherever the quest is set.
+##
+## A quest's "region" field means "where the GIVER stands" (quest_log.gd renders
+## it that way in its FROM: line), which is usually also where the work happens.
+## It is not always: context_window_full is handed out by the Cloud Salesperson in
+## cloud_district, but its target boss, THE INFINITE CONTEXT, only ever spawns in
+## token_vault. Trusting the quest region there would aim the waypoint at a region
+## the objective cannot be completed in, and contradict the objective's own text.
+## So for "defeat" we resolve the region from where the enemy actually spawns and
+## only fall back to the quest region when the type isn't placed anywhere.
+func objective_region(quest_id: String, obj: Dictionary) -> String:
+	var otype := str(obj.get("type", ""))
+	if otype == "visit" or otype == "reach":
+		return str(obj.get("target", ""))
+	var q: Dictionary = quest_defs.get(quest_id, {})
+	var r := str(q.get("region", ""))
+	if otype == "defeat":
+		var spawned := enemy_home_region(str(obj.get("target", "")), r)
+		if spawned != "":
+			return spawned
+	if r == "":
+		r = GameManager.current_region
+	return r
+
+## enemy type -> the region it actually spawns in, built once from the world's own
+## spawn table so this can never drift from what the builder places.
+var _enemy_regions: Dictionary = {}
+
+## Where an enemy type is actually spawned. When a type appears in several regions
+## (bug, memory_leak, rate_limiter) we prefer `prefer` if it is one of them, so a
+## quest set in a region that does spawn its target keeps pointing there.
+func enemy_home_region(enemy_type: String, prefer: String = "") -> String:
+	if enemy_type == "":
+		return ""
+	if _enemy_regions.is_empty():
+		var builder = load("res://scripts/world/region_builder.gd")
+		if builder == null:
+			return ""
+		for region: String in GameManager.REGION_ORDER:
+			for e: Dictionary in builder._region_enemies(region):
+				var t := str(e.get("type", ""))
+				if t == "":
+					continue
+				if not _enemy_regions.has(t):
+					_enemy_regions[t] = []
+				_enemy_regions[t].append(region)
+	var homes: Array = _enemy_regions.get(enemy_type, [])
+	if homes.is_empty():
+		return ""
+	if prefer != "" and prefer in homes:
+		return prefer
+	return str(homes[0])
+
+## The current objective, resolved to something a waypoint can find:
+##   quest_id, quest_name, objective_id, text, type, target, kind, node_id,
+##   region, progress, count, remaining, action
+## Returns {} when there is genuinely nothing to do.
+func get_current_objective() -> Dictionary:
+	var qid := get_tracked_quest_id()
+	if qid == "":
+		return {}
+	var obj := get_next_objective(qid)
+	if obj.is_empty():
+		return {}
+	var oid := str(obj.get("id", ""))
+	var otype := str(obj.get("type", ""))
+	var target := str(obj.get("target", ""))
+	var kind := str(OBJECTIVE_KINDS.get(otype, ""))
+	var node_id := target
+	# A story beat is invisible; the prop that triggers it is not.
+	if otype == "story" and STORY_TRIGGERS.has(target):
+		node_id = str(STORY_TRIGGERS[target])
+	var count: int = int(obj.get("count", 1))
+	var progress: int = int(quest_progress.get(qid, {}).get(oid, 0))
+	var remaining: int = maxi(count - progress, 0)
+	return {
+		"quest_id": qid,
+		"quest_name": str(quest_defs.get(qid, {}).get("name", qid)),
+		"objective_id": oid,
+		"text": str(obj.get("text", oid)),
+		"type": otype,
+		"target": target,
+		"kind": kind,
+		"node_id": node_id,
+		"region": objective_region(qid, obj),
+		"progress": progress,
+		"count": count,
+		"remaining": remaining,
+		"action": _objective_action(kind, target, remaining, str(obj.get("text", oid))),
+	}
+
+## One concrete imperative sentence: what the player should physically do next.
+func get_objective_hint() -> String:
+	var obj := get_current_objective()
+	if obj.is_empty():
+		return ""
+	return str(obj.get("action", ""))
+
+func _objective_action(kind: String, target: String, remaining: int, text: String) -> String:
+	match kind:
+		"npc":
+			return "Talk to %s" % npc_short_name(target)
+		"token":
+			var noun := "token" if remaining == 1 else "tokens"
+			if target == "compute":
+				noun = "compute" if remaining == 1 else "compute pickups"
+			return "Collect %d more %s" % [remaining, noun]
+		"enemy":
+			var who := pretty_name(target)
+			if remaining != 1:
+				who += "s"
+			return "Defeat %d more %s" % [remaining, who]
+		"region":
+			return "Travel to %s" % pretty_name(target)
+		_:
+			return text

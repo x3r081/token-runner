@@ -6,6 +6,10 @@ const OUT_DIR := "res://assets/textures/generated/"
 ## Bible constants — every sprite in the game agrees on these.
 const OUTLINE_COLOR := Color(0.039, 0.047, 0.086, 0.85)  # #0A0C16 @ ~85%
 const WHITE_HOT := Color(0.957, 0.976, 1.0)              # hottest emissive core
+## Enemies get a harder, fully-opaque version of the same outline: they must
+## separate from a near-black floor at a glance, which is a playability
+## requirement, not a taste one.
+const OUTLINE_ENEMY := Color(0.031, 0.036, 0.070, 0.97)
 
 func generate_all() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
@@ -395,35 +399,86 @@ func _outline_silhouette(img: Image, color: Color) -> void:
 func _generate_player_sprites() -> void:
 	pass
 
+## Per-region floor tiles. Each region gets its own MATERIAL, not just its own
+## tint — you should be able to name the region from a 64px crop of its floor.
+##
+## BRIGHTNESS CONTRACT: region_builder draws these with modulate ≈ k * tile_mul
+## (tile_mul is 1.9–2.5 per region, and the "_b" variant gets a further x1.3).
+## So each tile is authored at a comfortable working value and then scaled by
+## "dim" = (0.30 / tile_mul) / the material's own mean luminance, so the
+## builder's multiply lands the floor back at ~0.30 luminance, right next to the
+## tech-deck fallback, with no channel clipping. Scaling the finished
+## image (rather than the base colour) keeps every material's relative contrast
+## intact; darkening the base instead would make every lightened() highlight
+## explode once the builder multiplied it back up. If tile_mul changes, "dim"
+## changes with it.
 func _generate_tileset() -> void:
-	# 64x64 canvas = a 2x2 block of 32px floor plates, seamless at the edges.
-	# Base values sit near bible BASE/SURFACE tinted per region; the accent is
-	# the region neon. "_b" variants exist so builders can break repetition.
 	var regions := {
-		"localhost": {"base": Color(0.075, 0.07, 0.12), "accent": Color(1.0, 0.72, 0.29)},
-		"dependency": {"base": Color(0.07, 0.09, 0.07), "accent": Color(0.66, 1.0, 0.24)},
-		"stackoverflow": {"base": Color(0.10, 0.09, 0.07), "accent": Color(0.91, 0.77, 0.42)},
-		"api_bazaar": {"base": Color(0.09, 0.06, 0.10), "accent": Color(1.0, 0.18, 0.58)},
-		"cloud": {"base": Color(0.07, 0.09, 0.14), "accent": Color(0.42, 0.78, 1.0)},
-		"opensource": {"base": Color(0.06, 0.10, 0.07), "accent": Color(0.35, 0.88, 0.49)},
-		"corporate": {"base": Color(0.08, 0.09, 0.13), "accent": Color(0.30, 0.49, 1.0)},
-		"gpu": {"base": Color(0.11, 0.07, 0.06), "accent": Color(1.0, 0.42, 0.18)},
-		"production": {"base": Color(0.11, 0.05, 0.06), "accent": Color(1.0, 0.28, 0.34)},
-		"vault": {"base": Color(0.10, 0.08, 0.05), "accent": Color(1.0, 0.83, 0.30)},
+		"localhost": {"base": Color(0.42, 0.33, 0.25), "accent": Color(1.0, 0.72, 0.29), "mat": "planks", "dim": 0.39},
+		"dependency": {"base": Color(0.30, 0.40, 0.26), "accent": Color(0.66, 1.0, 0.24), "mat": "sludge", "dim": 0.38},
+		"stackoverflow": {"base": Color(0.50, 0.47, 0.40), "accent": Color(0.91, 0.77, 0.42), "mat": "flagstone", "dim": 0.31},
+		"api_bazaar": {"base": Color(0.40, 0.30, 0.40), "accent": Color(1.0, 0.18, 0.58), "mat": "rug", "dim": 0.38},
+		"cloud": {"base": Color(0.52, 0.57, 0.64), "accent": Color(0.42, 0.78, 1.0), "mat": "raised", "dim": 0.28},
+		"opensource": {"base": Color(0.32, 0.38, 0.26), "accent": Color(0.35, 0.88, 0.49), "mat": "forest", "dim": 0.45},
+		"corporate": {"base": Color(0.40, 0.42, 0.48), "accent": Color(0.30, 0.49, 1.0), "mat": "carpet", "dim": 0.39},
+		"gpu": {"base": Color(0.44, 0.33, 0.29), "accent": Color(1.0, 0.42, 0.18), "mat": "grating", "dim": 0.37},
+		"production": {"base": Color(0.42, 0.36, 0.36), "accent": Color(1.0, 0.28, 0.34), "mat": "concrete", "dim": 0.33},
+		"vault": {"base": Color(0.46, 0.40, 0.28), "accent": Color(1.0, 0.83, 0.30), "mat": "vault", "dim": 0.35},
 	}
 	for rname in regions:
 		var data: Dictionary = regions[rname]
 		_save_image(_make_floor_tile(rname, data, 0), "tile_%s.png" % rname)
 		_save_image(_make_floor_tile(rname, data, 7), "tile_%s_b.png" % rname)
 
-## One seamless floor texture: hash noise (tiles by construction), per-plate
-## value jitter, beveled 32px seams, hairline scratches, and a rare subtle
-## detail per plate. Low contrast on purpose — this repeats everywhere.
+## One seamless 64x64 floor texture. Dispatches to the region's material; the
+## default is the old machined-plate treatment, kept for any region that has no
+## material of its own yet.
 func _make_floor_tile(rname: String, data: Dictionary, salt: int) -> Image:
 	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
 	var base: Color = data["base"]
 	var accent: Color = data["accent"]
 	var tseed: int = abs(rname.hash() % 100000) + salt * 977
+	match String(data.get("mat", "plate")):
+		"planks":
+			_mat_planks(img, base, accent, tseed)
+		"sludge":
+			_mat_sludge(img, base, accent, tseed)
+		"flagstone":
+			_mat_flagstone(img, base, accent, tseed)
+		"rug":
+			_mat_rug(img, base, accent, tseed)
+		"raised":
+			_mat_raised(img, base, accent, tseed)
+		"forest":
+			_mat_forest(img, base, accent, tseed)
+		"carpet":
+			_mat_carpet(img, base, accent, tseed)
+		"grating":
+			_mat_grating(img, base, accent, tseed)
+		"concrete":
+			# Only the "_b" variant carries painted floor markings — a hazard
+			# stripe on EVERY tile would band the whole region.
+			_mat_concrete(img, base, accent, tseed, salt != 0)
+		"vault":
+			_mat_vault(img, base, accent, tseed)
+		_:
+			_mat_plate(img, base, accent, tseed)
+	_dim_tile(img, float(data.get("dim", 1.0)))
+	return img
+
+## Uniform value scale over a finished tile — see the brightness contract on
+## _generate_tileset. Relative contrast is preserved exactly.
+func _dim_tile(img: Image, k: float) -> void:
+	if is_equal_approx(k, 1.0):
+		return
+	for x in img.get_width():
+		for y in img.get_height():
+			var c := img.get_pixel(x, y)
+			img.set_pixel(x, y, Color(c.r * k, c.g * k, c.b * k, c.a))
+
+## Machined deck plating: hash noise (tiles by construction), per-plate value
+## jitter, beveled 32px seams, hairline scratches, a rare plate detail.
+func _mat_plate(img: Image, base: Color, accent: Color, tseed: int) -> void:
 	for x in 64:
 		for y in 64:
 			var n := (_hash01(x, y, tseed) - 0.5) * 0.05
@@ -457,7 +512,378 @@ func _make_floor_tile(rname: String, data: Dictionary, salt: int) -> Image:
 			if _hash01(cx * 31 + cy * 57, 13, tseed) > 0.30:
 				continue
 			_tile_detail(img, cx * 32, cy * 32, accent, base, _hash01(cx, cy + 19, tseed))
-	return img
+
+## LOCALHOST — warm plank boards. Four 16px boards per tile, staggered butt
+## joints, grain, one knot. Home, such as it is.
+func _mat_planks(img: Image, base: Color, accent: Color, s: int) -> void:
+	for y in 64:
+		var row := y >> 4
+		var ry := y & 15
+		var pj := (_hash01(row, 3, s) - 0.5) * 0.10
+		for x in 64:
+			var c := base.lightened(pj) if pj > 0.0 else base.darkened(-pj)
+			# Grain runs ALONG the board (streaks parallel to the plank, waving
+			# down its length) — grain that varies with x alone draws vertical
+			# stripes across horizontal boards and reads as brickwork.
+			var g := sin(float(ry) * 1.35 + float(row) * 2.1 + sin(float(x) * 0.19635) * 1.8)
+			if g > 0.72:
+				c = c.darkened(0.13)
+			elif g < -0.78:
+				c = c.lightened(0.08)
+			c = _pixel_noise(c, x, y, s, 0.035)
+			if ry == 0:
+				c = c.darkened(0.42)            # board seam
+			elif ry == 1:
+				c = c.lightened(0.14)           # lit edge (light from the top-left)
+			elif ry == 15:
+				c = c.darkened(0.18)
+			# butt joints on every other course only, or it reads as masonry
+			var joint := (x + row * 29) % 64
+			if row % 2 == 0 and ry > 0:
+				if joint == 0:
+					c = c.darkened(0.32)
+				elif joint == 1:
+					c = c.lightened(0.09)
+			img.set_pixel(x, y, c)
+	var kx := 12 + int(_hash01(1, 2, s) * 38.0)
+	var ky := 12 + int(_hash01(3, 4, s) * 38.0)
+	for ky2 in range(ky - 5, ky + 6):
+		for kx2 in range(kx - 5, kx + 6):
+			if kx2 < 1 or ky2 < 1 or kx2 > 62 or ky2 > 62:
+				continue
+			var d := Vector2(kx2 - kx, ky2 - ky).length()
+			var kc := img.get_pixel(kx2, ky2)
+			if d < 1.6:
+				img.set_pixel(kx2, ky2, kc.darkened(0.50))
+			elif d < 3.0:
+				img.set_pixel(kx2, ky2, kc.darkened(0.24))
+			elif d < 4.2:
+				img.set_pixel(kx2, ky2, kc.darkened(0.34))
+	# one board edge catches the warm spill of an always-on monitor
+	var ay := (int(_hash01(7, 8, s) * 4.0) << 4) + 1
+	for lx in 64:
+		img.set_pixel(lx, ay, img.get_pixel(lx, ay).lerp(accent, 0.10))
+
+## DEPENDENCY DISTRICT — node_modules. A viscous green mass with half-sunk
+## package cubes in it. Nobody has ever reached the bottom.
+func _mat_sludge(img: Image, base: Color, accent: Color, s: int) -> void:
+	var blobs: Array[Vector3] = []
+	for i in 7:
+		blobs.append(Vector3(_hash01(i, 11, s) * 64.0, _hash01(i, 13, s) * 64.0, 9.0 + _hash01(i, 17, s) * 9.0))
+	var lo := base.darkened(0.24)
+	var hi := base.lightened(0.18)
+	for y in 64:
+		for x in 64:
+			var field := 0.0
+			for b: Vector3 in blobs:
+				var dx := _wrap_d(x, int(b.x), 64)
+				var dy := _wrap_d(y, int(b.y), 64)
+				field += maxf(0.0, 1.0 - sqrt(dx * dx + dy * dy) / b.z)
+			var c := lo.lerp(hi, clampf(field, 0.0, 1.0))
+			if field > 0.90 and field < 1.04:
+				c = c.lerp(accent, 0.18)     # meniscus where the ooze crests
+			c = _pixel_noise(c, x, y, s, 0.05)
+			img.set_pixel(x, y, c)
+	for i in 3:
+		var px := int(_hash01(i, 23, s) * 64.0)
+		var py := int(_hash01(i, 29, s) * 64.0)
+		var sz := 6 + int(_hash01(i, 31, s) * 4.0)
+		for oy in sz:
+			for ox in sz:
+				var cc := base.darkened(0.06)
+				if oy == 0:
+					cc = base.lightened(0.30)           # lit top face
+				elif ox == sz - 1 or oy == sz - 1:
+					cc = base.darkened(0.36)
+				img.set_pixel((px + ox) % 64, (py + oy) % 64, cc)
+		img.set_pixel((px + 1) % 64, (py + 1) % 64, accent.lerp(WHITE_HOT, 0.30))
+
+## STACKOVERFLOW RUINS — cracked stone flags, wobbling joints, drifting dust.
+func _mat_flagstone(img: Image, base: Color, accent: Color, s: int) -> void:
+	for y in 64:
+		for x in 64:
+			var jv := (_hash01((x >> 5) * 7 + (y >> 5) * 13, 3, s) - 0.5) * 0.14
+			var c := base.lightened(jv) if jv > 0.0 else base.darkened(-jv)
+			c = _pixel_noise(c, x, y, s, 0.05)
+			if _hash01(x * 3, y * 5, s) > 0.955:
+				c = c.lightened(0.16)                 # aggregate speck
+			var wobx := int(_hash01(y, 41, s) * 2.0)
+			var woby := int(_hash01(x, 43, s) * 2.0)
+			if (x & 31) == wobx or (y & 31) == woby:
+				c = base.darkened(0.46)               # mortar joint
+			elif (x & 31) == wobx + 1 or (y & 31) == woby + 1:
+				c = c.lightened(0.12)
+			elif (x & 31) == 31 or (y & 31) == 31:
+				c = c.darkened(0.16)
+			img.set_pixel(x, y, c)
+	# a fissure wandering down the tile, steered back to its start so it wraps
+	var fx0 := 6 + int(_hash01(5, 7, s) * 50.0)
+	var fx := float(fx0)
+	for y in 64:
+		var ix := (int(fx) % 64 + 64) % 64
+		img.set_pixel(ix, y, img.get_pixel(ix, y).darkened(0.45))
+		if y > 51:
+			fx += (float(fx0) - fx) * 0.28
+		else:
+			fx += (_hash01(ix, y, s) - 0.5) * 1.1
+	for i in 10:
+		var dx2 := int(_hash01(i, 51, s) * 62.0) + 1
+		var dy2 := int(_hash01(i, 53, s) * 62.0) + 1
+		img.set_pixel(dx2, dy2, img.get_pixel(dx2, dy2).lerp(accent, 0.16))
+
+## API BAZAAR — a kilim of hooked diamonds in magenta and gold. Everything
+## here is for sale, the floor included.
+func _mat_rug(img: Image, base: Color, accent: Color, s: int) -> void:
+	var gold := Color(1.0, 0.83, 0.30)
+	for y in 64:
+		for x in 64:
+			var mx := x & 31
+			var my := y & 31
+			var c := base if ((x + y) & 3) < 2 else base.darkened(0.10)
+			c = _pixel_noise(c, x, y, s, 0.045)
+			var dman: int = absi(mx - 16) + absi(my - 16)
+			if dman == 15 or dman == 14:
+				c = base.darkened(0.34)                 # diamond outline
+			elif dman == 12 or dman == 11:
+				c = base.lerp(accent, 0.40)             # magenta ring
+			elif dman == 8:
+				c = base.lerp(gold, 0.32)               # gold ring
+			elif dman < 4:
+				c = base.lerp(accent, 0.24) if ((mx + my) & 1) == 0 else base.lerp(gold, 0.24)
+			if mx == 0 or my == 0:
+				c = base.darkened(0.40)                 # guard stripe
+			elif mx == 1 or my == 1:
+				c = base.lerp(gold, 0.14)
+			img.set_pixel(x, y, c)
+	for i in 30:
+		var tx := int(_hash01(i, 61, s) * 64.0)
+		var ty := int(_hash01(i, 67, s) * 64.0)
+		img.set_pixel(tx, ty, img.get_pixel(tx, ty).darkened(0.18))
+
+## CLOUD DISTRICT — data-centre raised access floor: perforated panels on a
+## pedestal grid. Cool, clean, billing by the hour.
+func _mat_raised(img: Image, base: Color, accent: Color, s: int) -> void:
+	for y in 64:
+		for x in 64:
+			var mx := x & 31
+			var my := y & 31
+			var pj := (_hash01(x >> 5, (y >> 5) + 3, s) - 0.5) * 0.07
+			var c := base.lightened(pj) if pj > 0.0 else base.darkened(-pj)
+			c = _pixel_noise(c, x, y, s, 0.03)
+			if mx >= 6 and mx <= 25 and my >= 6 and my <= 25:
+				if (mx & 3) == 0 and (my & 3) == 0:
+					c = base.darkened(0.52)             # perforation
+				elif (mx & 3) == 0 and (my & 3) == 3:
+					c = base.lightened(0.14)            # lit lip below it
+			if mx == 0 or my == 0:
+				c = base.darkened(0.36)                 # panel gap
+			elif mx == 1 or my == 1:
+				c = base.lightened(0.20)                # lifted lip
+			elif mx == 31 or my == 31:
+				c = base.darkened(0.18)
+			img.set_pixel(x, y, c)
+	for py: int in [0, 32]:
+		for px: int in [0, 32]:
+			for oy in 3:
+				for ox in 3:
+					img.set_pixel(px + 2 + ox, py + 2 + oy, base.darkened(0.30))
+			img.set_pixel(px + 2, py + 2, base.lightened(0.34))
+	img.set_pixel(3, 3, accent)
+	img.set_pixel(35, 35, accent.lerp(WHITE_HOT, 0.40))
+
+## OPEN SOURCE WILDLANDS — loam, leaf litter and moss. Maintained by one
+## volunteer and a lot of weather.
+func _mat_forest(img: Image, base: Color, accent: Color, s: int) -> void:
+	var soil := base.darkened(0.22)
+	for y in 64:
+		for x in 64:
+			var c := soil
+			var n := _hash01(x, y, s)
+			if n > 0.86:
+				c = c.lightened(0.14)
+			elif n < 0.12:
+				c = c.darkened(0.20)
+			var mfield := 0.0
+			for i in 4:
+				var dx := _wrap_d(x, int(_hash01(i, 71, s) * 64.0), 64)
+				var dy := _wrap_d(y, int(_hash01(i, 73, s) * 64.0), 64)
+				mfield += maxf(0.0, 1.0 - sqrt(dx * dx + dy * dy) / 15.0)
+			if mfield > 0.55:
+				c = c.lerp(accent.darkened(0.42), clampf((mfield - 0.55) * 1.6, 0.0, 0.55))
+				if _hash01(x * 5, y * 3, s) > 0.90:
+					c = c.lerp(accent, 0.28)            # a lit moss tip
+			img.set_pixel(x, y, c)
+	for i in 22:
+		var lx := int(_hash01(i, 79, s) * 64.0)
+		var ly := int(_hash01(i, 83, s) * 64.0)
+		var ln := 2 + int(_hash01(i, 89, s) * 3.0)
+		var horiz := _hash01(i, 97, s) > 0.5
+		var leaf := soil.lightened(0.22).lerp(accent, 0.12 + 0.20 * _hash01(i, 101, s))
+		for j in ln:
+			img.set_pixel((lx + (j if horiz else 0)) % 64, (ly + (0 if horiz else j)) % 64, leaf)
+		img.set_pixel(lx % 64, ly % 64, leaf.lightened(0.18))
+
+## CORPORATE ENTERPRISE — contract carpet tile, laid quarter-turned like every
+## office on earth. Flecked, forgettable, rated for ten years of nobody looking.
+func _mat_carpet(img: Image, base: Color, accent: Color, s: int) -> void:
+	for y in 64:
+		for x in 64:
+			var turned := (((x >> 5) + (y >> 5)) & 1) == 1
+			var u := y if turned else x                 # pile runs per tile
+			var c := base.darkened(0.06)
+			if (u % 3) == 0:
+				c = c.lightened(0.06)
+			elif (u % 3) == 2:
+				c = c.darkened(0.06)
+			c = _pixel_noise(c, x, y, s, 0.05)
+			var n := _hash01(x * 7, y * 11, s)
+			if n > 0.955:
+				c = c.lightened(0.26)                   # the procurement fleck
+			elif n < 0.035:
+				c = c.lerp(accent, 0.22)
+			if (x & 31) == 0 or (y & 31) == 0:
+				c = c.darkened(0.20)                    # tile seam, barely there
+			img.set_pixel(x, y, c)
+
+## GPU MINES — ribbed steel deck over the heat. The slots glow because whatever
+## is under them has been at 94 degrees since March.
+func _mat_grating(img: Image, base: Color, accent: Color, s: int) -> void:
+	for y in 64:
+		var r := y & 7
+		for x in 64:
+			var c := base
+			if r == 0:
+				c = base.darkened(0.55).lerp(accent, 0.30 + 0.25 * _hash01(x, y, s))
+			elif r == 1:
+				c = base.lightened(0.24)                # lit lip of the rib
+			elif r == 7:
+				c = base.darkened(0.28)
+			else:
+				c = _pixel_noise(base, x, y, s, 0.045)
+				if (x & 15) == 0:
+					c = c.darkened(0.22)                # cross-tie
+				elif (x & 15) == 1:
+					c = c.lightened(0.10)
+			img.set_pixel(x, y, c)
+	for i in 5:
+		var ex := int(_hash01(i, 103, s) * 64.0)
+		var ey := int(_hash01(i, 107, s) * 8.0) * 8
+		for ox in range(-3, 4):
+			var tx := (ex + ox + 64) % 64
+			img.set_pixel(tx, ey, img.get_pixel(tx, ey).lerp(accent, 0.55 - 0.12 * absf(float(ox))))
+		img.set_pixel(ex % 64, ey, accent.lerp(WHITE_HOT, 0.45))
+	for i in 6:
+		var sx := int(_hash01(i, 109, s) * 64.0)
+		var sy := int(_hash01(i, 113, s) * 64.0)
+		img.set_pixel(sx, sy, img.get_pixel(sx, sy).darkened(0.30))
+
+## PRODUCTION — poured slab under an alarm light: patch repairs, map cracks,
+## and a hazard stripe someone painted the week before the incident.
+func _mat_concrete(img: Image, base: Color, accent: Color, s: int, marked: bool) -> void:
+	for y in 64:
+		for x in 64:
+			var c := _pixel_noise(base, x, y, s, 0.055)
+			if _hash01(x * 5, y * 7, s) > 0.965:
+				c = c.lightened(0.14)                   # aggregate
+			var pf := 0.0
+			for i in 3:
+				var dx := _wrap_d(x, int(_hash01(i, 127, s) * 64.0), 64)
+				var dy := _wrap_d(y, int(_hash01(i, 131, s) * 64.0), 64)
+				pf = maxf(pf, 1.0 - sqrt(dx * dx + dy * dy) / 17.0)
+			if pf > 0.0:
+				c = c.lerp(base.darkened(0.16), clampf(pf, 0.0, 0.70))
+			var band := 1.0 - absf(float(y) - 40.0) / 22.0
+			if band > 0.0:
+				c = c.lerp(accent, 0.07 * band)         # the alarm stains everything
+			# sawn control joints on a 32px grid — poured slabs always have them
+			if (x & 31) == 0 or (y & 31) == 0:
+				c = c.darkened(0.30)
+			elif (x & 31) == 1 or (y & 31) == 1:
+				c = c.lightened(0.07)
+			img.set_pixel(x, y, c)
+	if marked:
+		# Faded hazard stripe. Someone painted this the week before the incident.
+		for hx in 64:
+			for hy in range(11, 16):
+				var stripe := (((hx + hy * 2) >> 2) & 1) == 0
+				var c := accent.darkened(0.42) if stripe else base.darkened(0.34)
+				if hy == 11:
+					c = c.lightened(0.12)
+				elif hy == 15:
+					c = c.darkened(0.20)
+				# worn through in patches: the paint lost
+				if _hash01(hx * 3, hy, s) > 0.62:
+					c = c.lerp(base, 0.55)
+				img.set_pixel(hx, hy, c)
+	for i in 4:
+		var ax := 6.0 + _hash01(i, 137, s) * 52.0
+		var ay := 26.0 + _hash01(i, 139, s) * 34.0
+		var ang := _hash01(i, 149, s) * TAU
+		for j in 12:
+			var tx := (int(ax + cos(ang) * float(j)) % 64 + 64) % 64
+			var ty := (int(ay + sin(ang) * float(j)) % 64 + 64) % 64
+			img.set_pixel(tx, ty, img.get_pixel(tx, ty).darkened(0.34))
+			ang += (_hash01(j, i, s) - 0.5) * 0.5
+
+## TOKEN VAULT — dark marble, gold veining, inlaid coins. The only region where
+## the floor is itself an asset class.
+func _mat_vault(img: Image, base: Color, accent: Color, s: int) -> void:
+	for y in 64:
+		for x in 64:
+			var c := _pixel_noise(base.darkened(0.18), x, y, s, 0.05)
+			var v := sin(float(x) * 0.11 + sin(float(y) * 0.09) * 2.4) + sin(float(y) * 0.13)
+			if v > 1.1:
+				c = c.lightened(0.10)
+			elif v < -1.2:
+				c = c.darkened(0.12)
+			if (x & 31) == 0 or (y & 31) == 0:
+				c = base.darkened(0.44)
+			elif (x & 31) == 1 or (y & 31) == 1:
+				c = c.lightened(0.14)
+			img.set_pixel(x, y, c)
+	# gold veins, steered back to their start so they wrap cleanly. Two of them,
+	# hairline: this is marble with gold IN it, not gold with marble in it.
+	for i in 2:
+		var vy0 := 10.0 + _hash01(i, 151, s) * 44.0
+		var vy := vy0
+		for x in 64:
+			var iy := (int(vy) % 64 + 64) % 64
+			img.set_pixel(x, iy, base.lerp(accent, 0.44))
+			if (x & 3) == 0:
+				img.set_pixel(x, (iy + 1) % 64, base.lerp(accent, 0.18))
+			if x > 51:
+				vy += (vy0 - vy) * 0.28
+			else:
+				vy += (_hash01(x, i * 17, s) - 0.5) * 1.0
+	# Two inlaid coins per tile, on opposite 32px cells so the repeat reads as
+	# scattered rather than as a grid of coins.
+	for cn: int in [0, 1]:
+		var cx: int = 8 if cn == 0 else 40
+		var cy: int = 40 if cn == 0 else 8
+		var ox := cx + int(_hash01(cx, cy, s) * 12.0)
+		var oy := cy + int(_hash01(cy, cx, s) * 12.0)
+		for dy in range(-4, 5):
+			for dx in range(-4, 5):
+				if Vector2(dx, dy).length() > 4.2:
+					continue
+				var col := base.lerp(accent, 0.55)
+				if dx + dy < -2:
+					col = base.lerp(accent, 0.82)       # lit top-left
+				elif dx + dy > 2:
+					col = base.lerp(accent, 0.30)
+				img.set_pixel((ox + dx + 64) % 64, (oy + dy + 64) % 64, col)
+		img.set_pixel((ox - 2 + 64) % 64, (oy - 2 + 64) % 64, WHITE_HOT)
+
+## Toroidal distance on one axis — the reason blobs and clumps above can sit
+## anywhere in the tile and still tile seamlessly against themselves.
+func _wrap_d(a: int, b: int, period: int) -> float:
+	var d: int = absi(a - b)
+	return float(mini(d, period - d))
+
+## Deterministic +-amt value jitter on a single pixel. Tiles by construction.
+func _pixel_noise(c: Color, x: int, y: int, s: int, amt: float) -> Color:
+	var n := (_hash01(x, y, s) - 0.5) * amt * 2.0
+	return c.lightened(n) if n > 0.0 else c.darkened(-n)
 
 func _tile_detail(img: Image, ox: int, oy: int, accent: Color, base: Color, roll: float) -> void:
 	var dxp := ox + 8 + int(roll * 14.0)
@@ -483,21 +909,26 @@ func _tile_detail(img: Image, ox: int, oy: int, accent: Color, base: Color, roll
 		_fill_rect(img, dxp, dyp, 1, 4, dim)
 		img.set_pixel(dxp + 4, dyp + 3, base.lerp(accent, 0.35))
 
+## Enemy threat colours. Deliberately hot and saturated: an enemy is the one
+## thing on screen that MUST NOT be missed, and the regions it walks through are
+## near-black. Each sprite is finished with the readability chain below —
+## value lift, hot rim, hard outline, threat halo, contact shadow — so it reads
+## as DANGER before the player has consciously identified what it is.
 func _generate_enemies() -> void:
 	var enemies := {
-		"bug": Color(0.9, 0.2, 0.3),
-		"null_reference": Color(0.6, 0.1, 0.8),
-		"rate_limiter": Color(0.9, 0.7, 0.1),
-		"scope_creep": Color(0.3, 0.8, 0.3),
-		"dependency_demon": Color(0.8, 0.2, 0.5),
-		"legacy_system": Color(0.5, 0.45, 0.4),
-		"memory_leak": Color(0.2, 0.5, 0.9),
-		"hallucination": Color(0.9, 0.5, 0.9),
-		"merge_conflict": Color(0.9, 0.4, 0.1),
-		"cloud_bill": Color(0.1, 0.8, 0.3),
-		"enterprise_architect": Color(0.3, 0.3, 0.5),
-		"legacy_monolith": Color(0.4, 0.35, 0.3),
-		"infinite_context": Color(0.5, 0.2, 0.9),
+		"bug": Color(1.0, 0.26, 0.34),
+		"null_reference": Color(0.74, 0.24, 1.0),
+		"rate_limiter": Color(1.0, 0.78, 0.16),
+		"scope_creep": Color(0.44, 0.96, 0.44),
+		"dependency_demon": Color(1.0, 0.28, 0.62),
+		"legacy_system": Color(0.80, 0.72, 0.52),
+		"memory_leak": Color(0.28, 0.64, 1.0),
+		"hallucination": Color(1.0, 0.58, 1.0),
+		"merge_conflict": Color(1.0, 0.46, 0.14),
+		"cloud_bill": Color(0.22, 0.95, 0.44),
+		"enterprise_architect": Color(0.44, 0.56, 1.0),
+		"legacy_monolith": Color(0.72, 0.64, 0.48),
+		"infinite_context": Color(0.62, 0.30, 1.0),
 	}
 	for ename in enemies:
 		var img := Image.create(32, 32, false, Image.FORMAT_RGBA8)
@@ -531,19 +962,26 @@ func _generate_enemies() -> void:
 			_draw_cloud_bill(img, c)
 		else:
 			_draw_glow_blob(img, c)
-		# every enemy gets the bible finish: accent rim light + 1px outline
-		_rim_light_pass(img, c.lightened(0.45), 0.4)
-		_outline_silhouette(img, OUTLINE_COLOR)
+		# The readability chain. Order matters: lift the interior BEFORE the
+		# outline goes down (so the outline stays the darkest thing on the
+		# sprite), and stamp the ground shadow last, into whatever is still
+		# empty, so it never eats the halo.
+		var threat: Color = _vivid_color(c)
+		_readability_pass(img, 0.30, 0.34, 0.22)
+		_rim_light_pass(img, threat.lightened(0.35), 0.55)
+		_outline_silhouette(img, OUTLINE_ENEMY)
+		_threat_halo(img, threat)
+		_contact_shadow(img)
 		_save_image(img, "enemy_%s.png" % ename)
 
 ## A software "bug" that actually reads as a beetle: 4-tone shell lit from the
 ## top-left, jointed legs, a cracked elytron, and eyes that bloom amber.
 func _draw_bug(img: Image, _c: Color) -> void:
-	var shell := Color(0.52, 0.13, 0.17)
-	var shell_hi := Color(0.72, 0.24, 0.26)
-	var shell_sh := Color(0.32, 0.07, 0.11)
-	var carapace := Color(0.15, 0.09, 0.12)
-	var leg := Color(0.07, 0.05, 0.07)
+	var shell := Color(0.74, 0.17, 0.22)
+	var shell_hi := Color(0.95, 0.38, 0.35)
+	var shell_sh := Color(0.46, 0.09, 0.14)
+	var carapace := Color(0.20, 0.10, 0.13)
+	var leg := Color(0.10, 0.06, 0.08)
 	# legs first (body overlaps their roots), with knee joints
 	for sy in [12, 17, 22]:
 		_draw_line_img(img, 12, sy, 5, sy - 4, leg)
@@ -744,8 +1182,8 @@ func _draw_hallucination(img: Image, c: Color) -> void:
 ## THE LEGACY MONOLITH: a towering brick slab with per-brick value jitter,
 ## structural cracks, dithered moss, and COBOL runes that still glow.
 func _draw_legacy_monolith(img: Image, _c: Color) -> void:
-	var brick := Color(0.34, 0.30, 0.28)
-	var mortar := brick.darkened(0.45)
+	var brick := Color(0.47, 0.42, 0.38)
+	var mortar := brick.darkened(0.48)
 	_fill_rect(img, 3, 2, 26, 28, brick)
 	# offset brick rows, each brick hashed a little lighter or darker
 	for row in range(2, 30, 5):
@@ -802,9 +1240,9 @@ func _draw_enterprise_architect(img: Image, c: Color) -> void:
 	# governance aura: concentric compliance at low alpha (stays un-outlined)
 	_draw_rect_outline(img, 2, 2, 28, 28, Color(c.r, c.g, minf(c.b + 0.2, 1.0), 0.30))
 	_draw_rect_outline(img, 5, 5, 22, 22, Color(c.r, c.g, minf(c.b + 0.2, 1.0), 0.45))
-	var suit := Color(0.15, 0.17, 0.27)
-	var suit_hi := Color(0.23, 0.26, 0.38)
-	var suit_sh := Color(0.09, 0.10, 0.17)
+	var suit := Color(0.22, 0.25, 0.40)
+	var suit_hi := Color(0.34, 0.39, 0.56)
+	var suit_sh := Color(0.13, 0.15, 0.25)
 	var skin := Color(0.86, 0.72, 0.60)
 	# head, with a haircut that costs more than your GPU
 	_shade_sphere(img, 16, 8, 5, skin)
@@ -1057,11 +1495,15 @@ func _generate_fx() -> void:
 	# White, so consumers can modulate any accent over it.
 	var dot := Image.create(16, 16, false, Image.FORMAT_RGBA8)
 	dot.fill(Color(0, 0, 0, 0))
+	# A small solid plateau in the middle so additive users get a genuinely hot
+	# core (it crosses the glow threshold) instead of a soft grey smudge.
 	for x in 16:
 		for y in 16:
 			var d := Vector2(x - 7.5, y - 7.5).length() / 8.0
-			if d < 1.0:
-				dot.set_pixel(x, y, Color(1, 1, 1, pow(1.0 - d, 2.2)))
+			if d >= 1.0:
+				continue
+			var a := 1.0 if d < 0.22 else pow((1.0 - d) / 0.78, 2.0)
+			dot.set_pixel(x, y, Color(1, 1, 1, clampf(a, 0.0, 1.0)))
 	_save_image(dot, "fx_glow_dot.png")
 	# fx_spark: 8x8 four-point star with a white-hot 2x2 core.
 	var spark := Image.create(8, 8, false, Image.FORMAT_RGBA8)
@@ -1253,6 +1695,88 @@ func _halo_pass(img: Image, halo: Color) -> void:
 					break
 			if touching:
 				img.set_pixel(x, y, halo)
+
+## ---------- enemy readability (a playability pass, not decoration) ----------
+
+## Full value + boosted chroma, same hue. Several enemy accents are muted
+## (legacy beige, architect blue-grey); halos drawn in the raw colour are
+## invisible against a dark floor, which defeats the point of drawing them.
+func _vivid_color(c: Color, chroma: float = 1.4) -> Color:
+	var mx: float = maxf(c.r, maxf(c.g, c.b))
+	if mx <= 0.001:
+		return c
+	var n := Color(c.r / mx, c.g / mx, c.b / mx, c.a)
+	var lum: float = n.r * 0.299 + n.g * 0.587 + n.b * 0.114
+	return Color(
+		clampf(lum + (n.r - lum) * chroma, 0.0, 1.0),
+		clampf(lum + (n.g - lum) * chroma, 0.0, 1.0),
+		clampf(lum + (n.b - lum) * chroma, 0.0, 1.0),
+		c.a)
+
+## Lift muddy midtones and boost chroma across a sprite body. Near-black detail
+## (pupils, seams, chevrons) is deliberately left alone — that internal contrast
+## is what makes the shape legible — and highlights are left alone too, so the
+## 4-tone ramp survives.
+func _readability_pass(img: Image, min_luma: float, lift: float, sat: float) -> void:
+	for x in img.get_width():
+		for y in img.get_height():
+			var p := img.get_pixel(x, y)
+			if p.a <= 0.5:
+				continue
+			var l: float = p.r * 0.299 + p.g * 0.587 + p.b * 0.114
+			var c := p
+			if sat > 0.0:
+				c = Color(
+					clampf(l + (p.r - l) * (1.0 + sat), 0.0, 1.0),
+					clampf(l + (p.g - l) * (1.0 + sat), 0.0, 1.0),
+					clampf(l + (p.b - l) * (1.0 + sat), 0.0, 1.0),
+					p.a)
+			if l > 0.075 and l < min_luma:
+				c = c.lightened(lift * (min_luma - l) / min_luma)
+			c.a = p.a
+			img.set_pixel(x, y, c)
+
+## Two-ring emissive halo hugging the outline. Ring one is opaque enough to
+## count as "solid" so ring two can grow outside it; together they read as a
+## 4px threat glow at the 2x scale enemies render at. This is the single change
+## that makes a dark creature pop off a dark floor without repainting it.
+func _threat_halo(img: Image, hue: Color) -> void:
+	_halo_pass(img, Color(hue.r, hue.g, hue.b, 0.48))
+	_halo_pass(img, Color(hue.r, hue.g, hue.b, 0.19))
+
+## Soft elliptical contact shadow under the silhouette, stamped into empty
+## pixels only. Grounds hovering enemies and darkens the floor right behind
+## them — half of why they read at a glance.
+func _contact_shadow(img: Image) -> void:
+	var w := img.get_width()
+	var h := img.get_height()
+	var min_x := w
+	var max_x := -1
+	var max_y := -1
+	for x in w:
+		for y in h:
+			if img.get_pixel(x, y).a > 0.5:
+				min_x = mini(min_x, x)
+				max_x = maxi(max_x, x)
+				max_y = maxi(max_y, y)
+	if max_x < 0:
+		return
+	var cx := float(min_x + max_x) * 0.5
+	var cy := float(mini(max_y, h - 3))
+	var rx: float = maxf(float(max_x - min_x) * 0.46, 4.0)
+	var ry := 3.5
+	for x in range(int(cx - rx) - 1, int(cx + rx) + 2):
+		for y in range(int(cy - ry) - 1, int(cy + ry) + 2):
+			if x < 0 or y < 0 or x >= w or y >= h:
+				continue
+			if img.get_pixel(x, y).a > 0.03:
+				continue
+			var dx := (float(x) - cx) / rx
+			var dy := (float(y) - cy) / ry
+			var d := dx * dx + dy * dy
+			if d > 1.0:
+				continue
+			img.set_pixel(x, y, Color(0.008, 0.010, 0.028, 0.34 * (1.0 - d)))
 
 ## Fill a circle with a 4-tone top-left-lit ramp and a dithered transition
 ## band — instant "sphere" for heads and domes.

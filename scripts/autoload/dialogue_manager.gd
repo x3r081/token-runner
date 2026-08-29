@@ -254,16 +254,34 @@ func build_claude_lines() -> Array:
 			lines.append(_c(pool[i]))
 
 	# Running gag: backups.
+	#
+	# This block is ALSO the only door into Claude's authored guidance tree in
+	# data/dialogue/npcs.json (topics: plan -> orders -> advice / tokens ->
+	# pricing -> app -> reset). build_claude_lines() replaces roommate_ai's JSON
+	# "greeting" wholesale, so if we do not offer a goto here the whole tree is
+	# unreachable and the player loses the in-fiction "what now, and WHERE?"
+	# answer. A choice carrying "action" but no "goto" ends the dialogue, so the
+	# guidance entry has to live in THIS block -- a second choices block appended
+	# after it would never be shown.
+	#
+	# Hard cap: dialogue_ui.tscn renders one button per choice inside a fixed
+	# 200px panel, so every block stays at 3 choices or fewer.
 	if not GameManager.get_flag("backups"):
 		if not claude_state.get("warned_backups", false):
 			claude_state.warned_backups = true
 			lines.append(_c("Also: that sticky note says 'TODO: BACKUPS'. It's been there since you moved in."))
 		lines.append({"choices": [
+			{"text": "What should I be doing right now?", "goto": "plan"},
 			{"text": "Set up backups (30 tokens)", "action": "setup_backups"},
 			{"text": "Backups are for cowards", "action": "decline_backups"},
 		]})
 	else:
 		lines.append(_c("You actually made backups. I'm... weirdly proud. Boring, but proud."))
+		lines.append({"choices": [
+			{"text": "What should I be doing right now?", "goto": "plan"},
+			{"text": "Where do I go?", "goto": "orders"},
+			{"text": "I'll figure it out.", "action": "decline_backups"},
+		]})
 	return lines
 
 func get_npc_name(npc_id: String) -> String:

@@ -2,11 +2,15 @@ extends Control
 ## Lightweight, styled popup for environmental comedy props (fridge, plant, bed,
 ## router, terminal...). Screen-space (added under the HUD CanvasLayer), pauses
 ## nothing, and closes on any confirm/cancel/interact key or a click.
+##
+## `subtitle_text` is optional: the props use it to note how many times you have
+## now stared at the same object, which is its own slow-building joke.
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 
 var title_text := "Prop"
 var body_text := "..."
+var subtitle_text := ""
 var _armed := false
 
 func _ready() -> void:
@@ -47,6 +51,16 @@ func _ready() -> void:
 	title.add_theme_font_size_override("font_size", 22)
 	_GameTheme.style_heading(title, _GameTheme.CYAN, 22)
 	vb.add_child(title)
+
+	# Repeat-visit note ("you have looked at this four times now"), when supplied.
+	if not subtitle_text.is_empty():
+		var sub := Label.new()
+		sub.text = subtitle_text
+		sub.add_theme_font_size_override("font_size", 12)
+		sub.add_theme_stylebox_override("normal", _GameTheme.chip_box(_GameTheme.AMBER))
+		sub.add_theme_color_override("font_color", _GameTheme.hot_of(_GameTheme.AMBER))
+		sub.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		vb.add_child(sub)
 
 	var body := Label.new()
 	body.text = body_text

@@ -252,7 +252,7 @@ func _on_debt_incident(_kind: String) -> void:
 	var ang := randf() * TAU
 	e.global_position = player.global_position + Vector2(cos(ang), sin(ang)) * randf_range(180.0, 260.0)
 
-func _on_player_died(_msg: String = "") -> void:
+func _on_player_died(msg: String = "") -> void:
 	get_tree().paused = false
 	# Clear any transient overlay that could sit over the death screen and eat the
 	# respawn click (e.g. a flavor popup that was open when you died).
@@ -266,6 +266,11 @@ func _on_player_died(_msg: String = "") -> void:
 	var death = death_scene.instantiate()
 	death.name = "DeathScreen"
 	hud.add_child(death)  # screen-space overlay (see _open_pause)
+	# Prefer the actual cause of death over the death screen's random pool line —
+	# "the agent deleted the database" beats a generic quip. Must come after
+	# add_child so the screen's _ready has resolved its labels. Idempotent, and a
+	# no-op for an empty msg, so the pool line still shows when we have no cause.
+	death._set_message(msg)
 
 ## Shows a full-screen overlay (victory/etc.) in the HUD's screen space.
 func show_overlay(node: Node) -> void:

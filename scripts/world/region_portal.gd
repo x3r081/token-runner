@@ -26,13 +26,36 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	_build_vortex()
 
-## Swirling energy vortex (portal_swirl.gdshader) hued by destination, a soft
-## PointLight2D, and motes spiralling into the mouth. Collision and interaction
-## are untouched — this is purely the "that is obviously a portal" upgrade.
+## Swirling energy vortex (portal_swirl.gdshader) hued by destination, an outer
+## bloom halo, a soft PointLight2D, and motes spiralling into the mouth.
+## Collision and interaction are untouched — this is purely the "that is
+## obviously a portal, and obviously THAT colour" upgrade.
+##
+## Every hue is pushed to full chroma first (FxLib.vivid): the bible's muted
+## accents — stackoverflow gold #E8C46B, cloud sky #6BC7FF — otherwise land as
+## brown/grey sludge once the dark ambient CanvasModulate has had its way.
 func _build_vortex() -> void:
 	var hue: Color = REGION_HUES.get(target_region, Color("#8B5CF6"))
+	var vivid := FxLib.vivid(hue)
 	var shader_path := "res://assets/shaders/portal_swirl.gdshader"
 	var rect := get_node_or_null("ColorRect")
+	# Outer bloom skirt: an additive hue wash behind the disc, breathing slowly.
+	# It is what makes the portal visible from the far side of a dark region.
+	var cookie := FxLib.light_texture()
+	if cookie:
+		var halo := Sprite2D.new()
+		halo.name = "PortalHalo"
+		halo.texture = cookie
+		halo.material = FxLib.additive_material()
+		halo.scale = Vector2(1.25, 1.25)
+		halo.z_index = -1
+		halo.modulate = Color(vivid.r * 0.75, vivid.g * 0.75, vivid.b * 0.75, 0.55)
+		add_child(halo)
+		var pulse := halo.create_tween().set_loops()
+		pulse.tween_property(halo, "scale", Vector2(1.42, 1.42), 1.6) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		pulse.tween_property(halo, "scale", Vector2(1.25, 1.25), 1.6) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	if ResourceLoader.exists(shader_path):
 		if rect:
 			rect.visible = false
@@ -44,11 +67,12 @@ func _build_vortex() -> void:
 		mat.set_shader_parameter("hue_color", hue)
 		mat.set_shader_parameter("speed", 0.8)
 		mat.set_shader_parameter("arms", 3.0)
+		mat.set_shader_parameter("core_heat", 1.0)
 		swirl.material = mat
 		add_child(swirl)
 	elif rect:
-		rect.color = Color(hue.r, hue.g, hue.b, 0.5)
-	FxLib.point_light(self, hue, 0.55, 1.0)
+		rect.color = Color(vivid.r, vivid.g, vivid.b, 0.72)
+	FxLib.point_light(self, vivid, 1.0, 1.7)
 	# Ambient motes drifting inward, caught by the vortex.
 	var motes := CPUParticles2D.new()
 	motes.emitting = true
@@ -63,7 +87,7 @@ func _build_vortex() -> void:
 	motes.radial_accel_max = -30.0
 	motes.tangential_accel_min = 16.0
 	motes.tangential_accel_max = 26.0
-	motes.color = Color(hue.r * 1.25, hue.g * 1.25, hue.b * 1.25, 0.6)
+	motes.color = Color(vivid.r * 1.45, vivid.g * 1.45, vivid.b * 1.45, 0.7)
 	var dot := FxLib.glow_dot()
 	if dot:
 		motes.texture = dot
@@ -75,9 +99,9 @@ func _build_vortex() -> void:
 		motes.scale_amount_max = 2.0
 	add_child(motes)
 	# The label reads in the destination's color, with an outline for the dark.
-	label.add_theme_color_override("font_color", hue.lightened(0.35))
-	label.add_theme_color_override("font_outline_color", Color(0.02, 0.02, 0.06, 0.9))
-	label.add_theme_constant_override("outline_size", 4)
+	label.add_theme_color_override("font_color", vivid.lightened(0.30))
+	label.add_theme_color_override("font_outline_color", Color(0.01, 0.012, 0.035, 0.96))
+	label.add_theme_constant_override("outline_size", 6)
 
 func _on_body_entered(body: Node2D) -> void:
 	if not body.is_in_group("player"):

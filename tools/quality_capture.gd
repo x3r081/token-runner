@@ -21,7 +21,10 @@ func _run() -> void:
 	await _settle(1.2)
 	await _shot("menu.png")
 
-	# Enter world without the opening cutscene.
+	# Start a REAL run: start_new_game() activates the starter quest, which is
+	# what the waypoint and guide overlay key off. Then skip the cutscene.
+	GameManager.start_new_game()
+	await _settle(0.3)
 	GameManager.show_opening_sequence = false
 	get_tree().change_scene_to_file("res://scenes/world/world.tscn")
 	await _settle(1.6)
@@ -50,6 +53,19 @@ func _run() -> void:
 			await _shot(m[1])
 			world.call(m[0])  # close again
 			await _settle(0.3)
+
+	# The [H] guide overlay — the answer to "what do I do now".
+	var guide := get_tree().root.find_children("*Guide*", "", true, false)
+	for g in guide:
+		if g.has_method("toggle") or g.has_method("open"):
+			if g.has_method("open"): g.call("open")
+			else: g.call("toggle")
+			await _settle(0.6)
+			await _shot("ui_guide.png")
+			if g.has_method("close"): g.call("close")
+			elif g.has_method("toggle"): g.call("toggle")
+			await _settle(0.3)
+			break
 
 	# Every region.
 	for rid in GameManager.REGION_ORDER:

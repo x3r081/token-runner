@@ -1,6 +1,10 @@
 extends Node
 ## Central game state and scene flow controller.
 
+## Preloaded rather than referenced by class_name: GameManager is an autoload and
+## resolves before the global class cache is guaranteed to be populated.
+const _ComedyLines = preload("res://scripts/ui/comedy_lines.gd")
+
 signal game_started
 signal game_paused(paused: bool)
 signal region_changed(region_id: String)
@@ -119,6 +123,12 @@ func start_new_game() -> void:
 	ModelManager.reset()
 	AgentManager.reset()
 	ArchitectureManager.reset()
+	# ComedyLines keeps its no-repeat bags and prop-visit counters in STATIC state,
+	# so they outlive every UI node being freed — which is the point, but it means a
+	# run started outside the main menu (debug, tests, restart-after-victory) would
+	# otherwise inherit the previous run's exhausted pools and repeat itself.
+	# main_menu._on_new_game() covers the normal path; this covers all of them.
+	_ComedyLines.reset_session()
 	state = GameState.PLAYING
 	game_started.emit()
 	_change_scene("res://scenes/world/world.tscn")

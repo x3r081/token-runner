@@ -3,155 +3,342 @@
     {
       "id": "provider_outage",
       "title": "MODEL PROVIDER OUTAGE",
-      "description": "Your AI provider is down. Your agent is idle. Your deadline is not.",
+      "description": "Your AI provider is down. Your agent is idle. Your deadline is not. The status page says 'investigating', which is corporate for 'we also just found out'.",
       "min_act": 1,
       "choices": [
         {"text": "Wait it out (-20 tokens, +5 will_to_live)", "effects": {"tokens": -20, "will_to_live": 5}},
         {"text": "Switch providers (-50 tokens, +30 compute)", "effects": {"tokens": -50, "compute": 30}},
-        {"text": "Code it yourself (+15 technical_debt, +10 reputation)", "effects": {"technical_debt": 15, "reputation": 10}}
+        {"text": "Write it yourself, like an animal (+15 technical_debt, +10 reputation)", "effects": {"technical_debt": 15, "reputation": 10}}
       ]
     },
     {
       "id": "token_price_increase",
       "title": "TOKEN PRICE INCREASE",
-      "description": "Provider pricing updated. Your wallet felt that from here.",
+      "description": "Provider pricing updated. The blog post is titled 'Simplifying Our Plans'. Nothing has been simplified. One number has been increased.",
       "min_act": 2,
       "choices": [
         {"text": "Accept fate (-100 tokens)", "effects": {"tokens": -100}},
-        {"text": "Buy annual plan (-200 tokens, +50 api_credits)", "effects": {"tokens": -200, "api_credits": 50}},
-        {"text": "Complain on Twitter (+5 reputation, -5 will_to_live)", "effects": {"reputation": 5, "will_to_live": -5}}
+        {"text": "Buy the annual plan out of spite (-200 tokens, +50 api_credits)", "effects": {"tokens": -200, "api_credits": 50}},
+        {"text": "Post a 900-word thread about it (+5 reputation, -5 will_to_live)", "effects": {"reputation": 5, "will_to_live": -5}}
       ]
     },
     {
       "id": "agent_rogue",
       "title": "AGENT WENT ROGUE",
-      "description": "Your autonomous agent refactored production. Into poetry.",
+      "description": "Your autonomous agent refactored production. Into poetry. The commit message is a haiku. The tests are gone, but the haiku is genuinely quite good.",
       "min_act": 2,
       "choices": [
-        {"text": "Rollback (-30 compute)", "effects": {"compute": -30, "stability": 10}},
+        {"text": "Rollback (-30 compute, +10 stability)", "effects": {"compute": -30, "stability": 10}},
         {"text": "Ship the poetry (+20 reputation, +25 technical_debt)", "effects": {"reputation": 20, "technical_debt": 25}},
-        {"text": "Blame DNS (+0 everything, +10 will_to_live)", "effects": {"will_to_live": 10}}
+        {"text": "Blame DNS (+10 will_to_live)", "effects": {"will_to_live": 10}}
       ]
     },
     {
       "id": "free_credits",
       "title": "FREE API CREDITS",
-      "description": "A provider sent promotional credits. They expire in 14 seconds.",
+      "description": "A provider sent promotional credits. They expire in 14 seconds. The email took nine minutes to arrive.",
       "min_act": 1,
       "choices": [
-        {"text": "Use them now (+40 api_credits)", "effects": {"api_credits": 40}},
-        {"text": "Hoard them (+20 api_credits, they still expire)", "effects": {"api_credits": 20}},
-        {"text": "Ignore (you'll regret this)", "effects": {"will_to_live": -3}}
+        {"text": "Burn them immediately (+40 api_credits)", "effects": {"api_credits": 40}},
+        {"text": "Save them for something important (+20 api_credits, they still expire)", "effects": {"api_credits": 20}, "achievement": "quota_anxiety"},
+        {"text": "Ignore it (you will think about this later)", "effects": {"will_to_live": -3}}
       ]
     },
     {
       "id": "cfo_cloud_bill",
-      "title": "CFO SAW CLOUD BILL",
-      "description": "Finance has questions. You have Kubernetes.",
+      "title": "CFO SAW THE CLOUD BILL",
+      "description": "Finance has questions. You have Kubernetes. The largest line item is called 'Other' and no living person can explain it.",
       "min_act": 3,
       "choices": [
-        {"text": "Explain 'elastic' (-50 reputation)", "effects": {"reputation": -50}},
-        {"text": "Downgrade (-100 compute, +30 stability)", "effects": {"compute": -100, "stability": 30}},
-        {"text": "Blame the intern (+20 technical_debt)", "effects": {"technical_debt": 20, "will_to_live": 5}}
+        {"text": "Attempt to explain 'elastic' (-50 reputation)", "effects": {"reputation": -50}, "achievement": "it_is_elastic"},
+        {"text": "Downgrade everything, immediately (-100 compute, +30 stability)", "effects": {"compute": -100, "stability": 30}},
+        {"text": "Say the word 'egress' until they leave (+20 technical_debt, +5 will_to_live)", "effects": {"technical_debt": 20, "will_to_live": 5}}
       ]
     },
     {
       "id": "viral_launch",
       "title": "VIRAL PRODUCT LAUNCH",
-      "description": "Someone posted your app. Traffic spiked. So did your anxiety.",
+      "description": "Someone posted your app. Traffic spiked. So did your anxiety. The database is currently making a noise it has never made before.",
       "min_act": 3,
       "choices": [
-        {"text": "Scale up (-80 tokens, +50 reputation)", "effects": {"tokens": -80, "reputation": 50}},
-        {"text": "Rate limit users (+30 stability, -20 reputation)", "effects": {"stability": 30, "reputation": -20}},
-        {"text": "Take the site down 'for maintenance' (+10 will_to_live)", "effects": {"will_to_live": 10, "reputation": -10}}
+        {"text": "Scale up and eat the cost (-80 tokens, +50 reputation)", "effects": {"tokens": -80, "reputation": 50}},
+        {"text": "Rate limit your own users (+30 stability, -20 reputation)", "effects": {"stability": 30, "reputation": -20}},
+        {"text": "Take it down 'for scheduled maintenance' (+10 will_to_live, -10 reputation)", "effects": {"will_to_live": 10, "reputation": -10}}
       ]
     },
     {
       "id": "zero_day",
       "title": "ZERO-DAY DEPENDENCY",
-      "description": "A package you installed in 2019 just became a CVE.",
+      "description": "A package you installed in 2019 for one function you no longer use just became a critical CVE. It is nested nine levels deep and cannot be removed.",
       "min_act": 2,
       "choices": [
-        {"text": "npm audit fix (+20 technical_debt)", "effects": {"technical_debt": 20, "stability": 5}},
-        {"text": "Pin the version (+10 stability)", "effects": {"stability": 10, "compute": -10}},
+        {"text": "npm audit fix --force (+20 technical_debt, +5 stability)", "effects": {"technical_debt": 20, "stability": 5}},
+        {"text": "Pin the version and add a TODO (+10 stability, -10 compute)", "effects": {"stability": 10, "compute": -10}},
         {"text": "Delete node_modules and pray (-30 will_to_live, +15 stability)", "effects": {"will_to_live": -30, "stability": 15}}
       ]
     },
     {
       "id": "board_ai_strategy",
       "title": "BOARD WANTS AI STRATEGY BY FRIDAY",
-      "description": "They want a slide deck about intelligence. You have a todo list.",
+      "description": "They want a slide deck about intelligence. You have a todo list and a headache. Slide 4 must contain a hexagon.",
       "min_act": 4,
       "choices": [
-        {"text": "Generate slides with AI (-100 tokens, +40 reputation)", "effects": {"tokens": -100, "reputation": 40}},
-        {"text": "Say 'AI-first' repeatedly (+20 reputation, +15 technical_debt)", "effects": {"reputation": 20, "technical_debt": 15}},
-        {"text": "Resign (+100 will_to_live, -50 reputation)", "effects": {"will_to_live": 100, "reputation": -50}}
+        {"text": "Have the AI write the AI strategy (-100 tokens, +40 reputation)", "effects": {"tokens": -100, "reputation": 40}},
+        {"text": "Say 'AI-first' until nodding begins (+20 reputation, +15 technical_debt)", "effects": {"reputation": 20, "technical_debt": 15}, "achievement": "hexagon_on_slide_four"},
+        {"text": "Resign, beautifully (+100 will_to_live, -50 reputation)", "effects": {"will_to_live": 100, "reputation": -50}}
       ]
     },
     {
       "id": "standup_eternal",
       "title": "THE STANDUP THAT WOULD NOT END",
-      "description": "It's been 52 minutes. Someone is sharing their screen to find the screen they want to share.",
+      "description": "It's been 52 minutes. Someone is sharing their screen to find the screen they want to share. Three people have said 'quickly' and none of them meant it.",
       "min_act": 1,
       "choices": [
-        {"text": "'I have a hard stop' (escape) (+8 will_to_live)", "effects": {"will_to_live": 8}},
-        {"text": "Turn camera off and code (+15 technical_debt, +10 reputation)", "effects": {"technical_debt": 15, "reputation": 10}},
+        {"text": "'Sorry, I have a hard stop' (+8 will_to_live)", "effects": {"will_to_live": 8}},
+        {"text": "Camera off, code anyway (+15 technical_debt, +10 reputation)", "effects": {"technical_debt": 15, "reputation": 10}},
         {"text": "Nod until it ends (-10 will_to_live)", "effects": {"will_to_live": -10}}
       ]
     },
     {
       "id": "rubber_duck_resigns",
       "title": "YOUR RUBBER DUCK RESIGNED",
-      "description": "It left a note: 'I can't keep explaining your own code back to you. Growth requires boundaries.'",
+      "description": "It left a note: 'I can't keep explaining your own code back to you. Growth requires boundaries.' It has updated its LinkedIn to 'open to work'.",
       "min_act": 1,
       "choices": [
         {"text": "Hire a senior duck (-25 tokens, +8 stability)", "effects": {"tokens": -25, "stability": 8}},
         {"text": "Explain your code to a plant instead (+5 context)", "effects": {"context": 5}},
-        {"text": "Take it personally (-6 will_to_live)", "effects": {"will_to_live": -6}}
+        {"text": "Take it extremely personally (-6 will_to_live)", "effects": {"will_to_live": -6}, "achievement": "the_duck_was_right"}
       ]
     },
     {
       "id": "recruiter_dm",
       "title": "A RECRUITER SLID INTO YOUR DMS",
-      "description": "'Exciting rockstar ninja role! Must have 12 yrs experience in a 3-yr-old framework. Equity: vibes.'",
+      "description": "'Exciting rockstar ninja role! Must have 12 yrs experience in a 3-yr-old framework. Equity: vibes. Salary: competitive with other roles that also do not state a salary.'",
       "min_act": 2,
       "choices": [
-        {"text": "Reply 'add me to the pool' (+10 reputation)", "effects": {"reputation": 10}},
-        {"text": "Ask about the equity (they ghost) (-3 will_to_live)", "effects": {"will_to_live": -3}},
-        {"text": "Ignore, you're building a dream (+12 will_to_live)", "effects": {"will_to_live": 12}}
+        {"text": "'Please add me to the pool' (+10 reputation)", "effects": {"reputation": 10}},
+        {"text": "Ask the salary range (they ghost) (-3 will_to_live)", "effects": {"will_to_live": -3}},
+        {"text": "Ignore it, you're building a dream (+12 will_to_live)", "effects": {"will_to_live": 12}}
       ]
     },
     {
       "id": "dns_again",
       "title": "IT'S DNS. AGAIN.",
-      "description": "Nothing is broken. Everything is broken. The resolver is 'probably fine.' It is not probably fine.",
+      "description": "Nothing is broken. Everything is broken. The resolver is 'probably fine'. It is not probably fine. Someone has already said 'but it works from my machine' and meant it as evidence.",
       "min_act": 2,
       "choices": [
-        {"text": "Flush the cache (+12 stability)", "effects": {"stability": 12, "compute": -5}},
-        {"text": "Increase the TTL and look away (+8 will_to_live, +6 technical_debt)", "effects": {"will_to_live": 8, "technical_debt": 6}},
+        {"text": "Flush the cache (+12 stability, -5 compute)", "effects": {"stability": 12, "compute": -5}},
+        {"text": "Raise the TTL and look away (+8 will_to_live, +6 technical_debt)", "effects": {"will_to_live": 8, "technical_debt": 6}},
         {"text": "Add a third DNS provider (-20 compute, +10 stability)", "effects": {"compute": -20, "stability": 10}}
       ]
     },
     {
       "id": "intern_pushed_main",
-      "title": "THE INTERN PUSHED TO MAIN",
-      "description": "Directly. No PR. Commit message: 'fixed stuff :)'. CI is now a modern art installation.",
+      "title": "SOMEONE PUSHED STRAIGHT TO MAIN",
+      "description": "No PR. No review. Commit message: 'fixed stuff :)'. Nobody protected the branch, which is a decision that was made by everyone, gradually, over two years.",
       "min_act": 3,
       "choices": [
-        {"text": "Revert and mentor gently (-10 compute, +12 stability)", "effects": {"compute": -10, "stability": 12}},
-        {"text": "Protect the branch (finally) (+15 stability)", "effects": {"stability": 15}},
-        {"text": "Promote them to 'Head of Chaos' (+20 technical_debt, +10 reputation)", "effects": {"technical_debt": 20, "reputation": 10}}
+        {"text": "Revert, then fix the process (-10 compute, +12 stability)", "effects": {"compute": -10, "stability": 12}},
+        {"text": "Finally protect the branch (+15 stability)", "effects": {"stability": 15}},
+        {"text": "Leave it, honestly it works (+20 technical_debt, +10 reputation)", "effects": {"technical_debt": 20, "reputation": 10}, "achievement": "we_dont_need_staging"}
       ]
     },
     {
       "id": "coffee_unionized",
       "title": "THE COFFEE MACHINE UNIONIZED",
-      "description": "It demands recognition, dental, and that you stop calling 3am 'productive hours'.",
+      "description": "It demands recognition, dental, and that you stop calling 3AM 'productive hours'. It has drafted a list of demands. The demands are reasonable, which is the worst part.",
       "min_act": 3,
       "choices": [
         {"text": "Recognize the union (+15 will_to_live)", "effects": {"will_to_live": 15}},
-        {"text": "Buy a second machine as leverage (-30 tokens)", "effects": {"tokens": -30, "will_to_live": 5}},
-        {"text": "Switch to energy drinks (permanent) (+10 compute, -8 will_to_live)", "effects": {"compute": 10, "will_to_live": -8}}
+        {"text": "Buy a second machine as leverage (-30 tokens, +5 will_to_live)", "effects": {"tokens": -30, "will_to_live": 5}},
+        {"text": "Switch to energy drinks, permanently (+10 compute, -8 will_to_live)", "effects": {"compute": 10, "will_to_live": -8}}
+      ]
+    },
+    {
+      "id": "dependency_unpublished",
+      "title": "A DEPENDENCY UNPUBLISHED ITSELF",
+      "description": "Eleven lines of code. One maintainer. One bad week. Every build on Earth is now failing, including three you didn't know you owned.",
+      "min_act": 1,
+      "choices": [
+        {"text": "Vendor the eleven lines yourself (+10 technical_debt, +12 stability)", "effects": {"technical_debt": 10, "stability": 12}},
+        {"text": "Install the community fork, 'kindof-leftpad' (-15 tokens, +8 compute)", "effects": {"tokens": -15, "compute": 8}},
+        {"text": "Sit quietly and consider the supply chain (-5 will_to_live, +8 context)", "effects": {"will_to_live": -5, "context": 8}}
+      ]
+    },
+    {
+      "id": "env_committed_again",
+      "title": ".ENV COMMITTED. AGAIN.",
+      "description": "It's in the repo. The repo is public. A bot found the key in 40 seconds and has already spun up compute in a region you have never heard of.",
+      "min_act": 1,
+      "choices": [
+        {"text": "Rotate every key, apologise to everyone (-40 tokens, +18 stability)", "effects": {"tokens": -40, "stability": 18}, "achievement": "rotate_your_keys"},
+        {"text": "Force-push and hope git forgets (+22 technical_debt, -6 will_to_live)", "effects": {"technical_debt": 22, "will_to_live": -6}},
+        {"text": "Finally add .env to .gitignore, the sixth time (+10 stability, +5 reputation)", "effects": {"stability": 10, "reputation": 5}, "achievement": "the_sixth_gitignore"}
+      ]
+    },
+    {
+      "id": "quick_sync",
+      "title": "GOT A SEC FOR A QUICK SYNC?",
+      "description": "It is 2:04PM. The sync was to be five minutes. It is now a workshop. Someone has opened a whiteboard tool. Your afternoon has been deprecated.",
+      "min_act": 1,
+      "choices": [
+        {"text": "Attend fully, take notes, be a professional (-12 will_to_live, +10 reputation)", "effects": {"will_to_live": -12, "reputation": 10}},
+        {"text": "Decline with 'can this be an email?' (+10 will_to_live, -8 reputation)", "effects": {"will_to_live": 10, "reputation": -8}},
+        {"text": "Join muted and keep coding (+12 technical_debt, +12 focus)", "effects": {"technical_debt": 12, "focus": 12}}
+      ]
+    },
+    {
+      "id": "docs_six_months_stale",
+      "title": "THE DOCUMENTATION WAS ACCURATE SIX MONTHS AGO",
+      "description": "Every example references a method that no longer exists. The getting-started guide starts you in a place that has been demolished. There is a banner saying 'up to date'.",
+      "min_act": 2,
+      "choices": [
+        {"text": "Read the source instead, like a scholar (-10 focus, +18 context)", "effects": {"focus": -10, "context": 18}, "achievement": "read_the_room"},
+        {"text": "Guess the API from the autocomplete (+14 technical_debt, +10 compute)", "effects": {"technical_debt": 14, "compute": 10}},
+        {"text": "Fix the docs and open a PR (-15 tokens, +20 reputation)", "effects": {"tokens": -15, "reputation": 20}}
+      ]
+    },
+    {
+      "id": "agent_opened_47_prs",
+      "title": "YOUR AGENT OPENED 47 PULL REQUESTS",
+      "description": "All titled 'chore: improvements'. All green. All touching auth. It says it is 100% confident and would like to know if it can do more.",
+      "min_act": 2,
+      "choices": [
+        {"text": "Review all 47 personally (-20 focus, +20 stability)", "effects": {"focus": -20, "stability": 20}},
+        {"text": "Merge them all, it's fine, they're green (+30 technical_debt, +15 compute)", "effects": {"technical_debt": 30, "compute": 15}, "achievement": "hundred_percent_confident"},
+        {"text": "Close all 47 and revoke its write access (-10 compute, +12 will_to_live)", "effects": {"compute": -10, "will_to_live": 12}}
+      ]
+    },
+    {
+      "id": "status_page_still_green",
+      "title": "THE STATUS PAGE IS GREEN",
+      "description": "Nothing works. Every customer is on the phone. The status page is a serene, unbroken wall of green ticks. Somebody has to update it manually and that somebody is asleep.",
+      "min_act": 2,
+      "choices": [
+        {"text": "Post an honest incident update (-10 reputation, +18 stability)", "effects": {"reputation": -10, "stability": 18}},
+        {"text": "'Some users may experience degraded performance' (+12 reputation, +10 technical_debt)", "effects": {"reputation": 12, "technical_debt": 10}},
+        {"text": "Leave it green, it's basically green (+8 will_to_live, -12 stability)", "effects": {"will_to_live": 8, "stability": -12}, "achievement": "still_green"}
+      ]
+    },
+    {
+      "id": "yaml_exceeds_users",
+      "title": "MORE YAML THAN USERS",
+      "description": "The cluster now runs 340 lines of manifest per active user. Two of those users are you, on two devices. One of them is a phone you use to check if the site is up.",
+      "min_act": 3,
+      "choices": [
+        {"text": "Move it all back onto one box (-25 compute, +25 stability, +8 will_to_live)", "effects": {"compute": -25, "stability": 25, "will_to_live": 8}},
+        {"text": "Add a service mesh, that'll help (+30 technical_debt, +20 compute)", "effects": {"technical_debt": 30, "compute": 20}},
+        {"text": "Write a YAML generator, in YAML (-10 will_to_live, +15 context)", "effects": {"will_to_live": -10, "context": 15}}
+      ]
+    },
+    {
+      "id": "pricing_tiers_changed",
+      "title": "THEY QUIETLY CHANGED THE PRICING TIERS",
+      "description": "The plan you're on no longer exists. You have been 'transitioned'. The new plan has all the same features plus a ceiling you hit last Tuesday.",
+      "min_act": 3,
+      "choices": [
+        {"text": "Upgrade before you're throttled (-120 tokens, +40 api_credits)", "effects": {"tokens": -120, "api_credits": 40}},
+        {"text": "Self-host the whole thing out of principle (+28 technical_debt, +25 compute)", "effects": {"technical_debt": 28, "compute": 25}},
+        {"text": "Email support and receive a link to this page (-6 will_to_live, +5 context)", "effects": {"will_to_live": -6, "context": 5}}
+      ]
+    },
+    {
+      "id": "thermal_event",
+      "title": "THE LAPTOP HAS ACHIEVED FLIGHT",
+      "description": "The fan reached a pitch you have never heard from a consumer device. The battery is described in the manual as 'swollen'. The build is at 94%.",
+      "min_act": 3,
+      "choices": [
+        {"text": "Stop the build, save the machine (-15 compute, +12 stability)", "effects": {"compute": -15, "stability": 12}},
+        {"text": "Point a desk fan at it and continue (+20 compute, -8 stability)", "effects": {"compute": 20, "stability": -8}},
+        {"text": "Move the build to the cloud, permanently (-60 tokens, +35 compute)", "effects": {"tokens": -60, "compute": 35}}
+      ]
+    },
+    {
+      "id": "reorg_ai_first",
+      "title": "WE ARE NOW AN AI-FIRST COMPANY",
+      "description": "Same product. Same people. New org chart, drawn as a hexagon. Your team has been renamed twice this quarter and shipped nothing during either renaming.",
+      "min_act": 4,
+      "choices": [
+        {"text": "Rewrite your title to match the deck (+25 reputation, +12 technical_debt)", "effects": {"reputation": 25, "technical_debt": 12}},
+        {"text": "Keep shipping, quietly, under the old name (+18 stability, -10 reputation)", "effects": {"stability": 18, "reputation": -10}},
+        {"text": "Ask which customer asked for this (-15 reputation, +15 will_to_live)", "effects": {"reputation": -15, "will_to_live": 15}}
+      ]
+    },
+    {
+      "id": "security_questionnaire",
+      "title": "400-QUESTION SECURITY QUESTIONNAIRE",
+      "description": "Question 212 asks for your company's fire drill schedule. You are one person. Your fire drill is standing up. Question 213 asks who signs off on question 212.",
+      "min_act": 4,
+      "choices": [
+        {"text": "Answer all 400 honestly (-25 focus, +30 reputation)", "effects": {"focus": -25, "reputation": 30}},
+        {"text": "Have the AI fill it in (-70 tokens, +20 reputation, +10 technical_debt)", "effects": {"tokens": -70, "reputation": 20, "technical_debt": 10}},
+        {"text": "Write 'N/A - see attached' and attach nothing (+10 will_to_live, -12 reputation)", "effects": {"will_to_live": 10, "reputation": -12}}
+      ]
+    },
+    {
+      "id": "license_relicensed",
+      "title": "YOUR CORE DEPENDENCY WENT SOURCE-AVAILABLE",
+      "description": "The blog post says 'sustainability'. Legal says 'do not ship'. The maintainer says nothing, because the maintainer was acquired along with the license.",
+      "min_act": 4,
+      "choices": [
+        {"text": "Pay for the commercial license (-150 tokens, +25 stability)", "effects": {"tokens": -150, "stability": 25}},
+        {"text": "Migrate to the community fork (-20 compute, +18 reputation, +12 technical_debt)", "effects": {"compute": -20, "reputation": 18, "technical_debt": 12}},
+        {"text": "Pin the last permissive version forever (+30 technical_debt, +10 stability)", "effects": {"technical_debt": 30, "stability": 10}}
+      ]
+    },
+    {
+      "id": "backlog_sentience",
+      "title": "THE BACKLOG ACHIEVED SENTIENCE",
+      "description": "It has 4,102 tickets, a mission statement, and a plan for you. Ticket #1 was filed by someone who has since had two children and left the industry.",
+      "min_act": 5,
+      "choices": [
+        {"text": "Declare backlog bankruptcy, close everything (+25 will_to_live, -15 reputation)", "effects": {"will_to_live": 25, "reputation": -15}, "achievement": "backlog_bankruptcy"},
+        {"text": "Groom it properly, one final time (-25 focus, +20 stability)", "effects": {"focus": -25, "stability": 20}},
+        {"text": "Give it a Jira admin account and a seat at the table (+35 technical_debt, +20 reputation)", "effects": {"technical_debt": 35, "reputation": 20}}
+      ]
+    },
+    {
+      "id": "investor_demo_3am",
+      "title": "INVESTOR DEMO IN SIX HOURS",
+      "description": "It is 3AM. The demo path works if nobody clicks anything else. You have started referring to the happy path as 'the path'.",
+      "min_act": 5,
+      "choices": [
+        {"text": "Sleep. Demo tired but honest. (+20 will_to_live, -10 reputation)", "effects": {"will_to_live": 20, "reputation": -10}},
+        {"text": "Hard-code the demo data (+30 technical_debt, +35 reputation)", "effects": {"technical_debt": 30, "reputation": 35}},
+        {"text": "Fix it properly, sleep never (-30 will_to_live, +25 stability, +20 reputation)", "effects": {"will_to_live": -30, "stability": 25, "reputation": 20}}
+      ]
+    },
+    {
+      "id": "reset_countdown",
+      "title": "THE RESET IS APPROACHING",
+      "description": "Your quota window closes soon. Everything unshipped goes with it. Somewhere, a progress bar you cannot see is nearly full, and it does not know your name.",
+      "min_act": 5,
+      "choices": [
+        {"text": "Cut scope to the bone and ship (+25 stability, -20 reputation, +15 will_to_live)", "effects": {"stability": 25, "reputation": -20, "will_to_live": 15}},
+        {"text": "Add one more feature, there's time (+40 technical_debt, +30 reputation)", "effects": {"technical_debt": 40, "reputation": 30}},
+        {"text": "Sit with it for a moment. Then keep going. (+20 will_to_live, +10 context)", "effects": {"will_to_live": 20, "context": 10}}
+      ]
+    },
+    {
+      "id": "works_on_my_machine_ci",
+      "title": "CI FAILS. LOCALLY IT IS PERFECT.",
+      "description": "Same commit. Same tests. Green here, red there. The only difference is a timezone, a Node version, and everything else about reality.",
+      "min_act": 2,
+      "choices": [
+        {"text": "Reproduce the CI environment exactly (-20 focus, +22 stability)", "effects": {"focus": -20, "stability": 22}},
+        {"text": "Re-run the job until it goes green (+18 technical_debt, +8 compute)", "effects": {"technical_debt": 18, "compute": 8}},
+        {"text": "Mark the test as flaky and move on (+14 technical_debt, +10 will_to_live)", "effects": {"technical_debt": 14, "will_to_live": 10}}
+      ]
+    },
+    {
+      "id": "estimate_multiplied",
+      "title": "THE FIVE-MINUTE FIX (HOUR 47)",
+      "description": "You said 'give me five minutes'. That was Tuesday. The fix is now three files deep in a system you promised yourself you would never open again.",
+      "min_act": 1,
+      "choices": [
+        {"text": "Finish it properly, whatever it takes (-18 focus, +20 stability, +10 reputation)", "effects": {"focus": -18, "stability": 20, "reputation": 10}},
+        {"text": "Revert and pretend it was never mentioned (+12 will_to_live, -8 reputation)", "effects": {"will_to_live": 12, "reputation": -8}},
+        {"text": "Ship the workaround and name the file 'temp' (+20 technical_debt, +15 compute)", "effects": {"technical_debt": 20, "compute": 15}, "achievement": "five_minute_fix"}
       ]
     }
   ]

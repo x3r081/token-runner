@@ -1,15 +1,29 @@
 extends CanvasLayer
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
+const _ObjectiveWaypoint = preload("res://scripts/ui/objective_waypoint.gd")
 
 @onready var token_label: Label = $TopBar/HBox/ResourcesPanel/Resources/TokenBlock/TokenLabel
 @onready var compute_label: Label = $TopBar/HBox/ResourcesPanel/Resources/ComputeBlock/ComputeLabel
 @onready var focus_bar: ProgressBar = $TopBar/HBox/BarsPanel/Bars/FocusBlock/FocusBar
 @onready var hp_bar: ProgressBar = $TopBar/HBox/BarsPanel/Bars/HPBlock/HPBar
 @onready var quest_tracker: Label = $QuestPanel/Margin/VBox/QuestTracker
+@onready var next_action: Label = $QuestPanel/Margin/VBox/NextAction
+@onready var quest_name_label: Label = $QuestPanel/Margin/VBox/QuestName
 @onready var region_label: Label = $TopBar/HBox/RegionPanel/RegionBlock/RegionLabel
 @onready var region_sub: Label = $TopBar/HBox/RegionPanel/RegionBlock/RegionSub
 @onready var notification: Label = $Notification
+
+## The on-screen chevron that points at whatever the tracker is talking about.
+var _waypoint: Control
+var _action_tween: Tween
+var _last_action := ""
+var _last_action_shape := ""
+var _quest_ui_accum := 0.0
+## Rebuilding the tracker strings four times a second is smooth to read and
+## avoids allocating three Strings every single frame for a label nobody is
+## staring at that hard.
+const QUEST_UI_INTERVAL := 0.22
 
 var _notif_tween: Tween
 var _theme: Theme
@@ -58,6 +72,7 @@ func _ready() -> void:
 	$QuestPanel.theme = _theme
 	_dress_top_bar()
 	_dress_quest_panel()
+	_mount_waypoint()
 	ResourceManager.resource_changed.connect(_on_resource_changed)
 	ResourceManager.tokens_gained.connect(_on_tokens_gained)
 	ResourceManager.funny_price_adjustment.connect(_on_price_adjustment)
@@ -98,8 +113,28 @@ func _dress_top_bar() -> void:
 func _dress_quest_panel() -> void:
 	$QuestPanel.add_theme_stylebox_override("panel", _GameTheme.glass_box(_GameTheme.CYAN, 4.0))
 	var header: Label = $QuestPanel/Margin/VBox/QuestHeader
-	_GameTheme.style_heading(header, _GameTheme.CYAN, 13)
-	quest_tracker.add_theme_color_override("font_color", _GameTheme.TEXT)
+	_GameTheme.style_heading(header, _GameTheme.CYAN, 12)
+	# The headline: one concrete instruction, in the brightest thing on the panel.
+	next_action.add_theme_color_override("font_color", _GameTheme.CYAN_HOT)
+	next_action.add_theme_color_override("font_outline_color", Color(0.02, 0.024, 0.055, 0.9))
+	next_action.add_theme_constant_override("outline_size", 4)
+	quest_name_label.add_theme_color_override("font_color", _GameTheme.TEXT)
+	quest_tracker.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
+	# Clear the scene's placeholder copy so the first real update counts as a
+	# change (and so a stale "Talk to Claude" never survives into another region).
+	next_action.text = ""
+	quest_name_label.text = ""
+	quest_tracker.text = ""
+
+## The waypoint owns the world-space half of "where do I go"; it is mounted
+## first so every panel and modal draws over it, and it never eats input.
+func _mount_waypoint() -> void:
+	if get_node_or_null("ObjectiveWaypoint"):
+		return
+	_waypoint = _ObjectiveWaypoint.new()
+	_waypoint.name = "ObjectiveWaypoint"
+	add_child(_waypoint)
+	move_child(_waypoint, 0)
 
 ## One-time onboarding card: teaches controls AND states the goal/loop, because
 ## the boot sequence is comedy, not a tutorial. Shown when control is first given.
@@ -130,9 +165,11 @@ func show_intro_hint() -> void:
 	panel.add_child(vb)
 	_hint_label(vb, "WELCOME TO THE HACKATHON", 24, _GameTheme.CYAN, true)
 	_hint_label(vb, "GOAL: ship your Dream App before the RESET.\nCollect tokens -> upgrade the Dream App [B] -> meet its ship requirements -> Deploy.", 16, _GameTheme.TEXT)
+	_hint_label(vb, "NEVER WONDER WHERE TO GO", 18, _GameTheme.CYAN, true)
+	_hint_label(vb, "The cyan arrow always points at your current objective — it pins to the screen edge with a distance when the target is off-screen.\nThe panel bottom-left says the same thing in words, in case you'd rather read than look.", 15, _GameTheme.TEXT)
 	_hint_label(vb, "CONTROLS", 18, _GameTheme.AMBER, true)
-	_hint_label(vb, "WASD / Arrows  —  Move\nE  —  Interact / Talk (walk up to props & Claude)\n1  —  Prompt Blast (attack)      Shift  —  Dash (escape)\n2-5  —  Abilities (Cache, Rubber Duck, Stack Trace, Ctrl+Z undo)\nB  —  Dream App      M  —  Map      J  —  Quests      Esc  —  Pause", 15, _GameTheme.TEXT)
-	_hint_label(vb, "First up: talk to Claude at the desk, then grab some tokens.\n\n[E] / click to begin", 14, _GameTheme.TEXT_DIM)
+	_hint_label(vb, "WASD / Arrows  —  Move\nE  —  Interact / Talk (walk up to props & Claude)\n1  —  Prompt Blast (attack)      Shift  —  Dash (escape)\n2-5  —  Abilities (Cache, Rubber Duck, Stack Trace, Ctrl+Z undo)\nB  —  Dream App      M  —  Map      J  —  Quests      Esc  —  Pause\nH  —  WHAT AM I DOING?  (open any time, tells you where to go)", 15, _GameTheme.TEXT)
+	_hint_label(vb, "First up: follow the arrow to Claude, then grab some tokens.\nEstimated time: five minutes. Realistically: a weekend.\n\n[E] / click to begin", 14, _GameTheme.TEXT_DIM)
 	_GameTheme.open_panel(panel)
 	_GameTheme.stagger_rows(vb)
 	get_tree().create_timer(0.25).timeout.connect(func():
@@ -335,7 +372,10 @@ func _cooldown_frac(id: String) -> float:
 	return clampf(left / ceil_v, 0.0, 1.0)
 
 func _process(_delta: float) -> void:
-	_update_quest_tracker()
+	_quest_ui_accum += _delta
+	if _quest_ui_accum >= QUEST_UI_INTERVAL:
+		_quest_ui_accum = 0.0
+		_update_quest_tracker()
 	_update_ability_bar()
 	if _cycle_label:
 		var secs := CycleManager.seconds_left()
@@ -439,20 +479,99 @@ func _on_region_changed(region_id: String) -> void:
 func _format_region(id: String) -> String:
 	return id.replace("_", " ").capitalize()
 
+## Dry consolation when the quest system has genuinely run dry. Picked once per
+## session so the panel doesn't flicker through the whole bit every 0.2s.
+const NO_QUEST_JOKES := [
+	"Nothing tracked. Either you've won, or the backlog achieved self-awareness and quit.",
+	"Nothing tracked. The quest system is 'between priorities', like everyone else here.",
+	"Nothing tracked. Enjoy it; someone is definitely writing a ticket about this.",
+	"Nothing tracked. This is the calmest thing that will happen to you today.",
+]
+var _no_quest_joke := ""
+
+## The one line that fixes "I don't know what to do": a concrete NEXT ACTION,
+## plus how far and which way. Everything else on the panel is supporting cast.
 func _update_quest_tracker(_qid: String = "") -> void:
-	var active := QuestManager.get_active_quests()
-	if active.is_empty():
-		quest_tracker.text = "No active quests.\nTalk to Claude at the desk."
+	var obj := QuestManager.get_current_objective()
+	if obj.is_empty():
+		_set_next_action("→ Ship the Dream App. Somehow.")
+		quest_name_label.text = "No active quest"
+		if _no_quest_joke == "":
+			_no_quest_joke = NO_QUEST_JOKES[randi() % NO_QUEST_JOKES.size()]
+		quest_tracker.text = "%s\n  • [B] Dream App — spend tokens, meet the ship requirements\n  • Or take the portal and go disappoint someone new.\n  • Lost? Press [H]." % _no_quest_joke
 		return
-	var qid: String = active[0]
+	var qid := str(obj.get("quest_id", ""))
 	var info := QuestManager.get_quest_info(qid)
-	var text := "%s\n%s" % [info.get("name", ""), info.get("description", "")]
-	for obj in info.get("objectives", []):
-		if obj is Dictionary and obj.has("id"):
-			var prog: int = info.progress.get(obj.id, 0)
-			var target: int = obj.get("count", 1)
-			text += "\n  • [%d/%d] %s" % [prog, target, obj.get("text", obj.id)]
+	var action := str(obj.get("action", obj.get("text", "")))
+	# If the objective is in another region, the honest instruction is "get there
+	# first" — the waypoint is already pointing at the door. ("region" objectives
+	# already say "Travel to X"; prefixing those just stutters.)
+	var region := str(obj.get("region", ""))
+	if region != "" and region != GameManager.current_region \
+			and str(obj.get("kind", "")) != "region":
+		action = "Head to %s — %s" % [_format_region(region), action]
+	var where := _where_suffix()
+	_set_next_action("→ %s%s" % [action, where])
+	quest_name_label.text = str(obj.get("quest_name", info.get("name", qid)))
+	var text := ""
+	for o in info.get("objectives", []):
+		if not (o is Dictionary) or not o.has("id"):
+			continue
+		var prog: int = info.progress.get(o.id, 0)
+		var target: int = o.get("count", 1)
+		var done: bool = prog >= target
+		var mark := "✓" if done else ("▸" if o.id == obj.get("objective_id", "") else "•")
+		if text != "":
+			text += "\n"
+		text += "  %s [%d/%d] %s" % [mark, prog, target, o.get("text", o.id)]
 	quest_tracker.text = text
+
+## "  (28m · NE)" when the waypoint has a fix on something, "" otherwise.
+func _where_suffix() -> String:
+	if not is_instance_valid(_waypoint) or not _waypoint.has_method("readout"):
+		return ""
+	if not _waypoint.has_target() or _waypoint.is_fallback():
+		return ""
+	var r: String = _waypoint.readout()
+	if r == "":
+		return ""
+	return "  (%s)" % r
+
+## Swap the headline. Flashes whenever the instruction changes (including its
+## counter), but only announces a genuinely NEW instruction — otherwise picking
+## up ten tokens fires ten notifications on top of the ten pickup toasts.
+func _set_next_action(text: String) -> void:
+	if next_action.text == text:
+		return
+	next_action.text = text
+	# Ignore pure distance drift: only the instruction itself is newsworthy.
+	var core := text.split("  (")[0]
+	if core == _last_action:
+		return
+	var first := _last_action == ""
+	var shape := _action_shape(core)
+	var new_shape := shape != _last_action_shape
+	_last_action = core
+	_last_action_shape = shape
+	if _action_tween and _action_tween.is_valid():
+		_action_tween.kill()
+	_action_tween = create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_action_tween.tween_property(next_action, "modulate", Color(2.0, 2.4, 2.3, 1.0), _GameTheme.T_MICRO)
+	_action_tween.tween_property(next_action, "modulate", Color.WHITE, _GameTheme.T_STD)
+	# Don't stomp a toast that's mid-flight (a pickup, a quest completion, a
+	# reset warning); those outrank "here's your next chore".
+	if not first and new_shape and not notification.visible:
+		_show_notification("▸ NEXT: %s" % core.trim_prefix("→ "), _GameTheme.CYAN_HOT)
+
+## The instruction minus its counters: "Collect 7 more tokens" and "Collect 6
+## more tokens" are the same job, so they shouldn't re-announce themselves.
+func _action_shape(s: String) -> String:
+	var out := ""
+	for i in s.length():
+		var c := s[i]
+		if c < "0" or c > "9":
+			out += c
+	return out
 
 func _show_notification(text: String, color: Color) -> void:
 	notification.text = text

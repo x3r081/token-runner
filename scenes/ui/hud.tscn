@@ -125,8 +125,8 @@ anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 24.0
-offset_top = -160.0
-offset_right = 380.0
+offset_top = -228.0
+offset_right = 430.0
 offset_bottom = -24.0
 
 [node name="Margin" type="MarginContainer" parent="QuestPanel"]
@@ -138,16 +138,31 @@ theme_override_constants/margin_bottom = 10
 
 [node name="VBox" type="VBoxContainer" parent="QuestPanel/Margin"]
 layout_mode = 2
+theme_override_constants/separation = 4
 
 [node name="QuestHeader" type="Label" parent="QuestPanel/Margin/VBox"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "CURRENT OBJECTIVE"
+
+[node name="NextAction" type="Label" parent="QuestPanel/Margin/VBox"]
+custom_minimum_size = Vector2(370, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "→ Talk to Claude"
+autowrap_mode = 3
+
+[node name="QuestName" type="Label" parent="QuestPanel/Margin/VBox"]
+custom_minimum_size = Vector2(370, 0)
+layout_mode = 2
 theme_override_font_sizes/font_size = 13
-text = "ACTIVE QUEST"
+text = "Quest"
+autowrap_mode = 3
 
 [node name="QuestTracker" type="Label" parent="QuestPanel/Margin/VBox"]
-custom_minimum_size = Vector2(320, 0)
+custom_minimum_size = Vector2(370, 0)
 layout_mode = 2
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 13
 text = "Quest tracker"
 autowrap_mode = 3
 
@@ -157,13 +172,13 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -300.0
+offset_left = -340.0
 offset_top = -36.0
-offset_right = 300.0
+offset_right = 340.0
 offset_bottom = -12.0
 theme_override_font_sizes/font_size = 12
 theme_override_colors/font_color = Color(0.486, 0.545, 0.69, 0.7)
-text = "[E] Interact  ·  [B] Dream App  ·  [J] Quests  ·  [M] Map"
+text = "[E] Interact  ·  [Shift] Dash  ·  [B] Dream App  ·  [J] Quests  ·  [M] Map  ·  follow the cyan arrow"
 horizontal_alignment = 1
 
 [node name="Notification" type="Label" parent="."]
