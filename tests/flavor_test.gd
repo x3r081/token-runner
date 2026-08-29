@@ -58,6 +58,11 @@ func _run() -> void:
 		if popup:
 			_check("popup_has_fridge_title", popup.title_text == "Fridge")
 			_check("popup_body_nonempty", popup.body_text.length() > 10)
+			# Flavor popup pauses the game so you can't die while reading a joke.
+			_check("flavor_popup_pauses_game", get_tree().paused == true)
+			popup.queue_free()
+			await get_tree().process_frame
+			_check("flavor_popup_unpauses_on_close", get_tree().paused == false)
 
 	# Region flavor props are placed in their regions (spot-check a few).
 	const RB := preload("res://scripts/world/region_builder.gd")
