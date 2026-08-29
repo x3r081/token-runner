@@ -64,6 +64,35 @@ const FLAVOR := {
 	"prop_monitors": ["Battlestation", "Monitor 1: TOKEN BALANCE: dangerously low.\nMonitor 2: AI SUBSCRIPTIONS: 8 active.\nMonitor 3: MONTHLY SAVINGS FROM AI: -€713.\n\nThe math is not mathing."],
 	"prop_sticker": ["Laptop Lid", "Stickers: a raccoon, three defunct startups, and one that just says 'I USE ARCH BTW'.\n\nThe laptop runs, in fact, on spite."],
 	"prop_server": ["Server Rack", "A tower of consumer GPUs held together by zip ties and denial.\nGPU 3 is at 94\u00b0C and 'fine'.\nIt is not fine. It is space-heater-in-July fine."],
+
+	# --- Dependency District ---
+	"prop_node_modules": ["node_modules/", "1.2 GB. Four (4) files you use; forty thousand you pray never break.\nIt has its own gravity now. Small moons orbit it."],
+	"prop_leftpad": ["left-pad", "Eleven lines of code.\nOnce took down half the internet.\nStill more reliable than your auth service."],
+	"prop_lockfile": ["package-lock.json", "47,000 lines. Nobody has read it. Nobody ever will.\nIt is load-bearing folklore. Do not 'git blame' it. It blames back."],
+	# --- API Bazaar ---
+	"prop_api_stall": ["API Reseller Stall", "'FREE tier: 3 requests/month.\nPRO tier: also 3, but you feel better about it.'"],
+	"prop_status_page": ["Status Page", "\u2705 All systems operational.\n(This page is cached. From June. It is not June.)"],
+	"prop_pricing": ["Pricing Board", "Pay-as-you-go!\nGo where, exactly?\n...bankrupt. The answer is bankrupt."],
+	# --- Stack Overflow Ruins ---
+	"prop_gravestone": ["Gravestone", "Here lies a Question.\n'Closed as opinion-based.'\n2011 \u2013 2011. It had so much to ask."],
+	"prop_accepted": ["Accepted Answer", "Score: 4,201. Written in a language deprecated in 2014.\nStill the #1 result. Still the only thing that works."],
+	# --- Cloud District ---
+	"prop_invoice": ["Cloud Invoice", "This month: 'successful adoption.'\n\u20ac4,207.\nYou ran one (1) cron job. It printed 'hello'."],
+	"prop_dashboard": ["Cloud Dashboard", "94 services provisioned.\nYou use 2.\nThe other 92 are 'strategic'. And billing."],
+	# --- GPU Mines ---
+	"prop_rig": ["Mining Rig", "Hashing? Training? Rendering?\nHonestly nobody remembers anymore.\nIt is warm and it is expensive. That much is certain."],
+	"prop_fan": ["Cooling Fan", "Decibels: jet engine.\nEffectiveness: largely spiritual."],
+	# --- Open Source Wildlands ---
+	"prop_sponsor": ["Sponsor Button", "11 years. 40M downloads/month.\nSponsorship: $7/month and one (1) thumbs-up react.\nThe maintainer has seen things."],
+	"prop_issue": ["Open Issue #4092", "'URGENT: doesn't work.'\nNo repro. No version. No logs. No mercy.\nFiled 3 years ago. Assigned to: nobody. Ever."],
+	# --- Corporate Enterprise ---
+	"prop_mission": ["Mission Statement", "'To synergize AI-first paradigms at hyperscale.'\nFramed. Backlit. Gold leaf.\nMeans nothing. Cost \u20ac40k."],
+	"prop_kanban": ["Kanban Board", "'In Progress': 47 tickets.\n'Done': 0.\n'Blocked': everything, spiritually."],
+	# --- Production ---
+	"prop_pager": ["On-Call Pager", "3 missed pages.\nOne during your own wedding.\nIt buzzes again. It always buzzes again."],
+	"prop_runbook": ["Incident Runbook", "Step 1: Don't panic.\nStep 2: Panic.\nStep 3: Blame DNS.\nStep 4: It was DNS."],
+	# --- Token Vault ---
+	"prop_vault": ["Token Vault", "Balance: enough for one (1) frontier prompt, OR a week of the local 7B.\nChoose wisely. The vault is judging you."],
 }
 
 func _show_overlay(node: Node) -> void:

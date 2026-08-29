@@ -486,21 +486,72 @@ static func _region_portals(region_id: String) -> Array:
 			]
 		_: return []
 
+## Theme-specific environmental comedy props per region (reward exploration
+## everywhere, not just Localhost). Positions live in the walkable interior
+## (~128..1152 x, 128..832 y; only walls collide) and away from the central spawn.
+const REGION_FLAVOR := {
+	"dependency_district": [
+		["prop_node_modules", Vector2(300, 300), "node_modules"],
+		["prop_leftpad", Vector2(980, 320), "left-pad"],
+		["prop_lockfile", Vector2(520, 780), "package-lock.json"],
+	],
+	"api_bazaar": [
+		["prop_api_stall", Vector2(300, 320), "API reseller stall"],
+		["prop_status_page", Vector2(980, 340), "Status page"],
+		["prop_pricing", Vector2(560, 780), "Pricing board"],
+	],
+	"stackoverflow_ruins": [
+		["prop_gravestone", Vector2(320, 320), "Question gravestone"],
+		["prop_accepted", Vector2(960, 340), "Accepted answer"],
+	],
+	"cloud_district": [
+		["prop_invoice", Vector2(320, 320), "Cloud invoice"],
+		["prop_dashboard", Vector2(980, 340), "Cloud dashboard"],
+	],
+	"gpu_mines": [
+		["prop_rig", Vector2(320, 320), "Mining rig"],
+		["prop_fan", Vector2(980, 340), "Cooling fan"],
+	],
+	"open_source_wildlands": [
+		["prop_sponsor", Vector2(320, 320), "Sponsor button"],
+		["prop_issue", Vector2(980, 340), "Open issue #4092"],
+	],
+	"corporate_enterprise": [
+		["prop_mission", Vector2(320, 320), "Mission statement"],
+		["prop_kanban", Vector2(980, 340), "Kanban board"],
+	],
+	"production": [
+		["prop_pager", Vector2(320, 320), "On-call pager"],
+		["prop_runbook", Vector2(980, 340), "Incident runbook"],
+	],
+	"token_vault": [
+		["prop_vault", Vector2(360, 340), "Token vault"],
+	],
+}
+
 static func _add_interactables(region_id: String, props: Node2D, _spawn: Vector2) -> void:
 	var interact_scene := preload("res://scenes/world/generic_interactable.tscn")
 	match region_id:
-		"localhost":
-			_add_prop(props, interact_scene, "client_email", Vector2(900, 700), "Check client email")
-			_add_prop(props, interact_scene, "dream_app_terminal", Vector2(1400, 800), "Dream App Terminal")
-			_add_prop(props, interact_scene, "deploy_button", Vector2(1500, 900), "Deploy To Production")
 		"dependency_district":
-			_add_prop(props, interact_scene, "abandoned_package", Vector2(1000, 600), "Recover package")
+			_add_prop(props, interact_scene, "abandoned_package", Vector2(700, 620), "Recover package")
 		"api_bazaar":
-			_add_prop(props, interact_scene, "backup_server", Vector2(1400, 700), "Backup Server")
+			_add_prop(props, interact_scene, "backup_server", Vector2(760, 640), "Backup Server")
+	# Region flavor props (subtle markers; the floating [E] prompt points them out).
+	for entry in REGION_FLAVOR.get(region_id, []):
+		var pr = _add_prop(props, interact_scene, entry[0], entry[1], entry[2])
+		pr.one_shot = false
+		var rect := pr.get_node_or_null("ColorRect")
+		if rect:
+			rect.color = Color(0.42, 0.82, 0.88, 0.30)
+			rect.offset_left = -7.0
+			rect.offset_top = -7.0
+			rect.offset_right = 7.0
+			rect.offset_bottom = 7.0
 
-static func _add_prop(parent: Node2D, scene: PackedScene, id: String, pos: Vector2, text: String) -> void:
+static func _add_prop(parent: Node2D, scene: PackedScene, id: String, pos: Vector2, text: String) -> Node:
 	var node = scene.instantiate()
 	node.interact_id = id
 	node.interact_text = text
 	node.position = pos
 	parent.add_child(node)
+	return node
