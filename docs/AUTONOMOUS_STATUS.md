@@ -9,8 +9,21 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 36 — environmental comedy in every region. Next: more quest variety;
-per-region NPC reactivity; raise other regions toward Localhost's density.
+Iteration 37 — reactive archetype NPCs. Next: more quest variety with branching/
+failure states; raise other regions toward Localhost's furniture density.
+
+### Iteration 37 — Reactive dialogue for all archetype NPCs
+- The 9 regional NPCs were static; now each prepends an in-character, state-aware
+  quip to its greeting and evolves via a per-NPC talk counter — matching Claude's
+  aliveness across the roster. They react to technical debt, stability, deaths,
+  the cycle, tokens, deployed agents, and architecture choices. Examples: the
+  Maintainer ("You reek of technical debt. It's a bold cologne."); the Cloud
+  Salesperson gloats about your invoice iff you chose cloud hosting; the On-Call
+  Engineer reads your stability off the pager; the Junior Agent formed a Slack with
+  your other agents.
+- Verified live (Dependency District Maintainer reacting to high debt) + unit
+  tests (`dialogue_test` now 14 checks: reactive intro, correct speaker,
+  state-specific reaction, safe no-op for unknown NPCs). Full suite: **25 green**.
 
 ### Iteration 36 — Environmental comedy props in every region
 - Extended the FlavorPopup system beyond Localhost to **all 9 regions** (brief:
