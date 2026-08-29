@@ -2,18 +2,32 @@ extends Control
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 
+const _ArchDiagram = preload("res://scripts/ui/arch_diagram.gd")
+
 @onready var _panel: PanelContainer = $Panel
 @onready var _title: Label = $Panel/Margin/VBox/Title
 @onready var _subtitle: Label = $Panel/Margin/VBox/Subtitle
 @onready var _ship_btn: Button = $Panel/Margin/VBox/ShipBtn
 
+var _diagram: Control
+
 func _ready() -> void:
 	_apply_theme()
+	_setup_diagram()
 	_populate()
 	$Panel/Margin/VBox/CloseBtn.pressed.connect(queue_free)
 	$Panel/Margin/VBox/ShipBtn.pressed.connect(_on_ship)
 	_update_ship_status()
 	_start_hologram_pulse()
+
+## Live, procedurally-drawn architecture diagram that grows more ridiculous with
+## every upgrade/decision (shown near the top of the panel).
+func _setup_diagram() -> void:
+	_diagram = _ArchDiagram.new()
+	var vbox: VBoxContainer = $Panel/Margin/VBox
+	vbox.add_child(_diagram)
+	vbox.move_child(_diagram, 2)  # just under the subtitle
+	_diagram.refresh()
 
 func _apply_theme() -> void:
 	var theme := _GameTheme.create()
@@ -81,6 +95,8 @@ func _purchase(branch: String) -> void:
 		AudioManager.play_sfx("upgrade")
 		_populate()
 		_update_ship_status()
+		if is_instance_valid(_diagram):
+			_diagram.refresh()
 
 func _update_ship_status() -> void:
 	var req := DreamAppManager.get_ship_requirements()
