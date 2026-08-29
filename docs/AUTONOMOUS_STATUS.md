@@ -9,8 +9,23 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 47 — critical playtest + first-region difficulty-curve fix. Next:
-hand-crafted per-region furniture set-pieces; more quest categories.
+Iteration 48 — combat AIM-ASSIST (root cause of "unwinnable combat"). Next:
+confirm combat live; hand-crafted per-region furniture; more quest categories.
+
+### Iteration 48 — Aim-assist (the real fix for punishing combat)
+- A confirmation playtest of the It47 count reduction still failed combat ("couldn't
+  kill even ONE enemy, died repeatedly") — which finally exposed the ROOT cause:
+  attacks fired only in the player's 8-direction **facing** (last movement), so a
+  real player's shots mostly **missed** the moving enemies. (My earlier headless
+  "winnable" checks cheated by aiming perfectly each shot.)
+- Fix: `_fire_projectile` now **auto-targets the nearest living enemy** within 640px
+  (falls back to facing when none near). For an accessible comedy game the challenge
+  is kiting/resources, not twitch-aiming.
+- Verified headless: `region_winnable_test` rewritten to face the WRONG way and rely
+  solely on aim-assist — player clears the first region and survives, 3/3 stable.
+  Verified live (video review): projectiles fire toward enemies from all angles,
+  hit/knockback/pop; the stationary, wrong-facing player clears threats from every
+  side, no glitches. Full suite: **27 suites green**.
 
 ### Iteration 47 — Critical playtest (no soft-locks) + fair first combat region
 - Ran a harsh QA playtest. **No soft-locks, crashes, or unplayable states.** Core
