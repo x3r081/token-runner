@@ -97,6 +97,9 @@ jobs:
       - name: Run environmental flavor-prop regression test
         run: godot --headless --path . --scene tests/flavor_test.tscn
 
+      - name: Run region arrival-safety regression test
+        run: godot --headless --path . --scene tests/region_arrival_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 

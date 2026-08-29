@@ -285,19 +285,23 @@ func take_damage(amount: int) -> void:
 func _spawn_damage_number(amount: int) -> void:
 	var lbl := Label.new()
 	lbl.text = str(amount)
-	lbl.add_theme_font_size_override("font_size", 18)
+	lbl.add_theme_font_size_override("font_size", 26)
 	lbl.add_theme_color_override("font_color", Color(1.0, 0.92, 0.35))
-	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	lbl.add_theme_constant_override("outline_size", 5)
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	lbl.add_theme_constant_override("outline_size", 6)
 	lbl.z_index = 600
 	var parent := get_parent()
 	if not parent:
 		return
 	parent.add_child(lbl)
-	lbl.global_position = global_position + Vector2(randf_range(-10, 6), -28)
+	lbl.global_position = global_position + Vector2(randf_range(-12, 8), -40)
+	# Small "pop" then float up and fade — reads clearly even in busy fights.
+	lbl.scale = Vector2(0.6, 0.6)
 	var tw := lbl.create_tween()
-	tw.tween_property(lbl, "global_position", lbl.global_position + Vector2(0, -34), 0.6).set_ease(Tween.EASE_OUT)
-	tw.parallel().tween_property(lbl, "modulate:a", 0.0, 0.6)
+	tw.tween_property(lbl, "scale", Vector2(1.15, 1.15), 0.12).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lbl, "scale", Vector2(1.0, 1.0), 0.08)
+	tw.parallel().tween_property(lbl, "global_position", lbl.global_position + Vector2(0, -44), 0.7).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(lbl, "modulate:a", 0.0, 0.7)
 	tw.tween_callback(lbl.queue_free)
 
 func _hit_spark() -> void:

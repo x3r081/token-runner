@@ -338,7 +338,10 @@ static func _populate_region(region_id: String, props: Node2D, enemies: Node2D, 
 			en.enemy_type = e.type
 			en.max_hp = e.get("hp", 30)
 			en.is_boss = e.get("boss", false)
-			en.position = _random_pos(rng, spawn, 200)
+			# Place enemies beyond the enemy aggro radius (340) from the spawn so a
+			# player arriving (or respawning) gets a moment to orient and then
+			# CHOOSES to walk into combat — no fast-travel-into-a-swarm.
+			en.position = _random_pos(rng, spawn, 420)
 			enemies.add_child(en)
 	
 	# NPCs
