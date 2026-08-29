@@ -42,8 +42,35 @@ func _run() -> void:
 	world.show_overlay(probe)
 	_check("overlay_under_canvaslayer", probe.get_parent() is CanvasLayer)
 
+	# Onboarding hint: teaches controls + the goal, shown once.
+	_check("hud_has_intro_hint", world.hud.has_method("show_intro_hint"))
+	world.hud.show_intro_hint()
+	await get_tree().process_frame
+	var hint: Node = world.hud.get_node_or_null("IntroHint")
+	_check("intro_hint_shown", hint != null)
+	var txt := _collect_text(hint)
+	_check("intro_states_goal", txt.to_lower().contains("goal") and txt.to_lower().contains("dream app"))
+	_check("intro_lists_controls", txt.to_lower().contains("interact") and txt.to_lower().contains("dash"))
+	# Second call must not stack a duplicate.
+	world.hud.show_intro_hint()
+	await get_tree().process_frame
+	var count := 0
+	for c in world.hud.get_children():
+		if c.name == "IntroHint":
+			count += 1
+	_check("intro_hint_not_duplicated (%d)" % count, count == 1)
+
 	world.queue_free()
 	await get_tree().process_frame
+
+func _collect_text(n: Node, acc: String = "") -> String:
+	if n == null:
+		return acc
+	if n is Label:
+		acc += " " + n.text
+	for c in n.get_children():
+		acc = _collect_text(c, acc)
+	return acc
 
 func _check(label: String, condition: bool) -> void:
 	if condition:

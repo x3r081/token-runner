@@ -48,6 +48,72 @@ func _ready() -> void:
 	_setup_pause_button()
 	_update_all()
 
+## One-time onboarding card: teaches controls AND states the goal/loop, because
+## the boot sequence is comedy, not a tutorial. Shown when control is first given.
+var _intro_shown := false
+func show_intro_hint() -> void:
+	if _intro_shown or get_node_or_null("IntroHint"):
+		return
+	_intro_shown = true
+	var root := Control.new()
+	root.name = "IntroHint"
+	root.process_mode = Node.PROCESS_MODE_ALWAYS
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(root)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(dim)
+	var panel := PanelContainer.new()
+	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.09, 0.10, 0.14, 0.98)
+	sb.border_color = Color(0.35, 0.85, 0.75)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(10)
+	sb.set_content_margin_all(22)
+	panel.add_theme_stylebox_override("panel", sb)
+	root.add_child(panel)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 10)
+	vb.custom_minimum_size = Vector2(560, 0)
+	panel.add_child(vb)
+	_hint_label(vb, "WELCOME TO THE HACKATHON", 24, Color(0.4, 0.95, 0.85))
+	_hint_label(vb, "GOAL: ship your Dream App before the RESET.\nCollect tokens -> upgrade the Dream App [B] -> meet its ship requirements -> Deploy.", 16, Color(0.92, 0.94, 0.98))
+	_hint_label(vb, "CONTROLS", 18, Color(0.95, 0.8, 0.4))
+	_hint_label(vb, "WASD / Arrows  —  Move\nE  —  Interact / Talk (walk up to props & Claude)\n1  —  Prompt Blast (attack)      Shift  —  Dash (escape)\nB  —  Dream App      M  —  Map      J  —  Quests      Esc  —  Pause", 15, Color(0.85, 0.9, 0.95))
+	_hint_label(vb, "First up: talk to Claude at the desk, then grab some tokens.\n\n[E] / click to begin", 14, Color(0.6, 0.85, 0.8))
+	get_tree().create_timer(0.25).timeout.connect(func():
+		if is_instance_valid(root):
+			root.set_meta("armed", true))
+	root.gui_input.connect(func(e): _intro_dismiss(root, e))
+	set_process_input(true)
+	_intro_root = root
+
+var _intro_root: Control = null
+func _intro_dismiss(root: Control, e: InputEvent) -> void:
+	if e is InputEventMouseButton and e.pressed and root.get_meta("armed", false):
+		root.queue_free()
+
+func _input(event: InputEvent) -> void:
+	if is_instance_valid(_intro_root) and _intro_root.get_meta("armed", false):
+		if event.is_action_pressed("interact") or event.is_action_pressed("ui_accept") \
+				or event.is_action_pressed("ui_cancel"):
+			_intro_root.queue_free()
+			_intro_root = null
+			get_viewport().set_input_as_handled()
+
+func _hint_label(parent: Node, text: String, size: int, col: Color) -> void:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", col)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(560, 0)
+	parent.add_child(l)
+
 func _setup_pause_button() -> void:
 	var b := Button.new()
 	b.text = "\u2016"  # pause glyph

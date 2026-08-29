@@ -48,6 +48,8 @@ func _on_opening_finished() -> void:
 		player.can_move = true
 		if player.has_method("grant_spawn_grace"):
 			player.grant_spawn_grace()
+	if hud and hud.has_method("show_intro_hint") and GameManager.current_region == "localhost":
+		hud.show_intro_hint()
 	# Let the player explore briefly; Claude dialogue starts on first interact.
 	if SettingsManager.get_setting("music_enabled"):
 		AudioManager.enable_music()
