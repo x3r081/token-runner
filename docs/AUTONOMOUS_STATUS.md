@@ -9,8 +9,22 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 33 — visual fix (checkerboard rug) + movement red-herring ruled out.
-Next: combat balance across the run; more quest variety; per-region NPC flavour.
+Iteration 34 — environmental comedy props (exploration reward). Next: combat
+balance across the run; more quest variety; per-region NPC flavour.
+
+### Iteration 34 — Environmental interactable comedy props
+- Implemented the brief's "ENVIRONMENTAL HUMOR DENSITY": **10 interactable props**
+  in Localhost — fridge, coffee machine, deprecated plant, bed, server rack,
+  whiteboard, terminal (`npm audit`: 847 vulns / 0 addressed), router (it's always
+  DNS), battlestation monitors (−€713/mo AI savings), sticker-covered laptop.
+- New **FlavorPopup** UI: screen-space (via HUD), styled dark panel with teal
+  border + dimmed backdrop, closes on interact/click/esc (short arm-delay so the
+  opening [E] doesn't insta-close it). Subtle prop markers; the floating [E]
+  prompt points them out.
+- Verified live (video review): player approaches props, styled popups open/close
+  cleanly with readable jokes, no flicker/leftovers; scene reads polished.
+- Regression test `flavor_test` (6 checks: all 10 ids placed, interaction spawns
+  popup with correct title/body) wired into CI. Full suite: **24 suites green**.
 
 ### Iteration 33 — Rug redesign + movement investigation
 - **Ruled out a reported "player can't move right / dies on input" bug.** A GUI

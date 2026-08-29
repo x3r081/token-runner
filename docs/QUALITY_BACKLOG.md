@@ -69,8 +69,11 @@ every iteration by fresh playtesting. Priorities:
   Rollback, Ctrl+Z, Agent Swarm.
 - [x] Enemy behaviours: signature per-type behaviours + telegraphs (split, grow,
   429 pulse, blink), plus **boss** art + telegraphed slam + summons. *(It6, It17)*
-- [ ] Environmental interactables with readable comedy (monitors, fridge, plant,
-  whiteboard, router, terminal `npm audit`).
+- [x] Environmental interactables with readable comedy (monitors, fridge, plant,
+  whiteboard, router, terminal `npm audit`). *(It34: 10 interactable props in
+  Localhost — fridge, coffee, plant, bed, server, whiteboard, terminal, router,
+  monitors, laptop sticker — each with a styled [E] FlavorPopup. Regression test
+  + CI. Verified live via video review.)*
 - [ ] HUD to polished indie quality.
 - [x] Conservative, validated, normalized audio: silent-by-default, conservative
   volumes, **Master hard limiter**, verified no near-full-scale samples. *(It16)*
