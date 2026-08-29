@@ -185,13 +185,22 @@ func _on_quest_completed(quest_id: String, _rewards: Dictionary) -> void:
 func _on_achievement(_id: String, name: String, desc: String) -> void:
 	_show_notification("🏆 %s\n%s" % [name, desc], Color(1.0, 0.82, 0.25))
 
+const REGION_SUBTITLES := {
+	"localhost": "3AM Coder Apartment",
+	"dependency_district": "node_modules event horizon",
+	"stackoverflow_ruins": "Ancient wisdom, mostly deprecated",
+	"api_bazaar": "Everything's for sale (per request)",
+	"cloud_district": "Someone else's computer",
+	"open_source_wildlands": "Maintained by one exhausted volunteer",
+	"corporate_enterprise": "Please raise a ticket",
+	"gpu_mines": "94°C and climbing",
+	"production": "DO NOT TOUCH",
+	"token_vault": "The reserves (do not spend all at once)",
+}
+
 func _on_region_changed(region_id: String) -> void:
 	region_label.text = _format_region(region_id)
-	match region_id:
-		"localhost":
-			region_sub.text = "3AM Coder Apartment"
-		_:
-			region_sub.text = "Region under construction"
+	region_sub.text = REGION_SUBTITLES.get(region_id, "Region under construction")
 
 func _format_region(id: String) -> String:
 	return id.replace("_", " ").capitalize()

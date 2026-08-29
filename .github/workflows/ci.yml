@@ -85,6 +85,9 @@ jobs:
       - name: Run UI overlay (screen-space) regression test
         run: godot --headless --path . --scene tests/ui_overlay_test.tscn
 
+      - name: Run world-map fast-travel regression test
+        run: godot --headless --path . --scene tests/map_travel_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 
