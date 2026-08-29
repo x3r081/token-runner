@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://wintest01"]
+
+[ext_resource type="Script" path="res://tests/win_test.gd" id="1"]
+
+[node name="WinTest" type="Node"]
+script = ExtResource("1")

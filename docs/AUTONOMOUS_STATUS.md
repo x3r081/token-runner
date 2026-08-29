@@ -9,7 +9,7 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 24 — **P0 progression dead-end fixed** (couldn't leave Localhost).
+Iteration 25 — end-to-end completability guard (the game is winnable).
 Next: continued interactive playtests (mid/late game, combat feel); more quest
 variety; per-region NPC flavour.
 
@@ -313,6 +313,15 @@ variety; per-region NPC flavour.
 - Regression test `tests/progression_test.tscn` (4/4): first region unlocked, the
   exit portal spawns, travel works, and quest rewards keep unlocking later
   regions. Wired into CI.
+
+### Iteration 25 — Completability guard (game is winnable)
+- Audited the win path: a sensible upgrade loadout costs ~485 tokens, far below
+  what quest rewards alone provide, and the `deploy_button` triggers victory when
+  `can_ship`. So the game is completable end-to-end (given the progression fix).
+- Regression test `tests/win_test.tscn` (9/9): buying two tiers across the core
+  branches meets every ship requirement (features 18, stability 18, ai/infra
+  tiers), `can_ship` is true, deploying reaches VICTORY with results + the Ship
+  It achievement. Guards against an unwinnable game. Wired into CI.
 
 ## Verified test commands
 

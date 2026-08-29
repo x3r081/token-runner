@@ -79,6 +79,9 @@ jobs:
       - name: Run progression (region unlock/travel) regression test
         run: godot --headless --path . --scene tests/progression_test.tscn
 
+      - name: Run win-condition completability regression test
+        run: godot --headless --path . --scene tests/win_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 
