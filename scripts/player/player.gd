@@ -329,6 +329,12 @@ func _fire_projectile(type: String, damage: int, pierce: bool = false) -> void:
 func apply_external_knockback(impulse: Vector2) -> void:
 	_ext_impulse = impulse
 
+## Brief invulnerability when the player gains control, so the opening isn't an
+## immediate pile-on while they learn the controls.
+func grant_spawn_grace(seconds: float = 2.5) -> void:
+	is_invincible = true
+	invincibility.start(seconds)
+
 ## Effective Prompt Blast token cost under the current model (for HUD/tests).
 func prompt_cost() -> int:
 	return int(ceil(5.0 * ModelManager.cost_mult()))

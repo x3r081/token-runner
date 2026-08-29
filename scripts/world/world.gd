@@ -25,6 +25,8 @@ func _ready() -> void:
 	else:
 		if player and "can_move" in player:
 			player.can_move = true
+			if player.has_method("grant_spawn_grace"):
+				player.grant_spawn_grace()
 
 func _start_opening_sequence() -> void:
 	var intro := preload("res://scenes/ui/opening_sequence.tscn").instantiate()
@@ -42,6 +44,8 @@ func _on_opening_finished() -> void:
 	GameManager.show_opening_sequence = false
 	if player and "can_move" in player:
 		player.can_move = true
+		if player.has_method("grant_spawn_grace"):
+			player.grant_spawn_grace()
 	# Let the player explore briefly; Claude dialogue starts on first interact.
 	if SettingsManager.get_setting("music_enabled"):
 		AudioManager.enable_music()
@@ -94,6 +98,8 @@ func _set_ambient(region_id: String) -> void:
 func _on_region_changed(region_id: String) -> void:
 	_load_region(region_id)
 	QuestManager.on_region_entered(region_id)
+	if player and player.has_method("grant_spawn_grace"):
+		player.grant_spawn_grace(1.8)
 
 func on_region_changed(region_id: String) -> void:
 	_on_region_changed(region_id)
