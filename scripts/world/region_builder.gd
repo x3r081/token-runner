@@ -39,6 +39,7 @@ static func _build_region_static(parent: Node2D, region_id: String) -> Dictionar
 	_build_walls_themed(parent, theme, w, h)
 	_build_structures(parent, theme)
 	_build_region_detail(parent, theme, w, h)
+	_build_region_ambient(parent, theme, w, h)
 	_build_region_lights(parent, theme)
 	_build_region_signs(parent, theme)
 
@@ -209,6 +210,53 @@ static func _build_region_detail(parent: Node2D, theme: Dictionary, w: int, h: i
 		var m := Color(clampf(wall_c.r + shade, 0, 1), clampf(wall_c.g + shade, 0, 1), clampf(wall_c.b + shade, 0, 1))
 		_put(z, tex_name, p, _depth(p.y, 20.0 * sc), sc, m)
 
+## Thematic ambient particles for atmosphere/depth: drifting motes everywhere,
+## rising embers in the "hot" regions, gold sparkles in the vault. Cheap, dynamic,
+## and reads as intentional mood rather than clutter. Behind gameplay (low z).
+static func _build_region_ambient(parent: Node2D, theme: Dictionary, w: int, h: int) -> void:
+	var glow: Color = theme.get("glow", Color(0.6, 0.7, 0.9))
+	var style: String = theme.get("ambient", "motes")
+	var p := CPUParticles2D.new()
+	p.name = "Ambient"
+	p.position = Vector2(w * 0.5, h * 0.5)
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	p.emission_rect_extents = Vector2(w * 0.5 - 40, h * 0.5 - 40)
+	p.z_index = -40
+	p.amount = 60
+	match style:
+		"embers":
+			# Rise from the floor upward (negative Y is up). Emit low so the rise
+			# is unmistakable, and keep them a strong saturated orange.
+			p.lifetime = 3.0
+			p.position.y += h * 0.28
+			p.emission_rect_extents = Vector2(w * 0.5 - 40, h * 0.22)
+			p.gravity = Vector2(0, -70)
+			p.initial_velocity_min = 30.0
+			p.initial_velocity_max = 70.0
+			p.direction = Vector2(0, -1)
+			p.spread = 18.0
+			p.scale_amount_min = 2.5
+			p.scale_amount_max = 4.5
+			p.color = Color(1.0, 0.45, 0.12, 0.9)
+		"sparkle":
+			p.lifetime = 2.4
+			p.gravity = Vector2.ZERO
+			p.initial_velocity_min = 4.0
+			p.initial_velocity_max = 16.0
+			p.scale_amount_min = 1.5
+			p.scale_amount_max = 3.5
+			p.color = Color(1.0, 0.9, 0.4, 0.75)
+		_:  # gentle drifting motes
+			p.lifetime = 6.0
+			p.gravity = Vector2(0, -6)
+			p.initial_velocity_min = 3.0
+			p.initial_velocity_max = 12.0
+			p.spread = 180.0
+			p.scale_amount_min = 1.5
+			p.scale_amount_max = 3.0
+			p.color = Color(glow.r, glow.g, glow.b, 0.35)
+	parent.add_child(p)
+
 static func _build_region_lights(parent: Node2D, theme: Dictionary) -> void:
 	for lp in theme.get("lights", []):
 		var light := PointLight2D.new()
@@ -347,7 +395,7 @@ static func _region_theme(region_id: String) -> Dictionary:
 			structs += _clu(1050, 250, "struct_tower", 3, 0.9, Color(0.7, 0.5, 0.45), 70)
 			structs += _clu(300, 770, "struct_crate", 4, 0.9, Color(0.7, 0.55, 0.45), 70)
 			return {
-				"floor": Color(0.55, 0.42, 0.4), "wall": Color(0.7, 0.55, 0.5), "glow": Color(1.0, 0.5, 0.3),
+				"floor": Color(0.55, 0.42, 0.4), "wall": Color(0.7, 0.55, 0.5), "glow": Color(1.0, 0.5, 0.3), "ambient": "embers",
 				"lights": [Vector2(240, 240), Vector2(1050, 250)], "structs": structs,
 				"signs": [
 					{"p": Vector2(560, 150), "t": "GPU go brrr", "c": Color(1.0, 0.6, 0.35)},
@@ -362,7 +410,7 @@ static func _region_theme(region_id: String) -> Dictionary:
 			]
 			structs += _clu(260, 770, "struct_crate", 3, 0.9, Color(0.65, 0.45, 0.42), 60)
 			return {
-				"floor": Color(0.55, 0.38, 0.38), "wall": Color(0.72, 0.5, 0.5), "glow": Color(1.0, 0.35, 0.3),
+				"floor": Color(0.55, 0.38, 0.38), "wall": Color(0.72, 0.5, 0.5), "glow": Color(1.0, 0.35, 0.3), "ambient": "embers",
 				"lights": [Vector2(640, 260), Vector2(260, 260), Vector2(1040, 260)], "structs": structs,
 				"signs": [
 					{"p": Vector2(470, 150), "t": "PRODUCTION \u2014 DO NOT TOUCH", "c": Color(1.0, 0.4, 0.35)},
@@ -375,7 +423,7 @@ static func _region_theme(region_id: String) -> Dictionary:
 			structs += _clu(260, 760, "struct_orb", 2, 0.6, Color(1.0, 0.88, 0.4), 60)
 			structs += _clu(1040, 760, "struct_orb", 2, 0.6, Color(1.0, 0.82, 0.35), 60)
 			return {
-				"floor": Color(0.58, 0.52, 0.38), "wall": Color(0.75, 0.68, 0.45), "glow": Color(1.0, 0.85, 0.35),
+				"floor": Color(0.58, 0.52, 0.38), "wall": Color(0.75, 0.68, 0.45), "glow": Color(1.0, 0.85, 0.35), "ambient": "sparkle",
 				"lights": [Vector2(260, 240), Vector2(1040, 240), Vector2(640, 500)], "structs": structs,
 				"signs": [
 					{"p": Vector2(540, 150), "t": "TOKEN RESERVES", "c": Color(1.0, 0.9, 0.4)},
