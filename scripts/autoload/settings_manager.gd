@@ -95,4 +95,5 @@ func get_setting_label(key: String) -> String:
 		"music_volume": return "Lo-fi beats to ignore production alerts."
 		"music_enabled": return "Off by default. Your ears thanked us."
 		"sfx_volume": return "Token sounds. Cash register optional."
+		"graphics_quality": return "Full turns on god rays, portal lensing and the heat shimmer. Reduced turns them off and nobody has to know."
 		_: return ""

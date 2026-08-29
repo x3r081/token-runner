@@ -131,7 +131,7 @@ static func hit_stop(tree: SceneTree, time_scale := 0.05, duration := 0.04) -> v
 
 ## One-shot particle burst, parented to `parent` (not the dying thing) so it
 ## outlives its cause; self-frees via `finished`. Overbright colors welcome.
-static func burst(parent: Node, pos: Vector2, color: Color, count: int = 12, speed_max: float = 220.0, tex: Texture2D = null, grav := Vector2.ZERO) -> void:
+static func burst(parent: Node, pos: Vector2, color: Color, count: int = 12, speed_max: float = 220.0, tex: Texture2D = null, grav := Vector2.ZERO, z: int = 560) -> void:
 	if parent == null or not parent.is_inside_tree():
 		return
 	var p := CPUParticles2D.new()
@@ -145,7 +145,7 @@ static func burst(parent: Node, pos: Vector2, color: Color, count: int = 12, spe
 	p.initial_velocity_max = speed_max
 	p.gravity = grav
 	p.color = color
-	p.z_index = 560
+	p.z_index = z
 	if tex:
 		p.texture = tex
 		p.material = additive_material()
@@ -160,7 +160,7 @@ static func burst(parent: Node, pos: Vector2, color: Color, count: int = 12, spe
 
 ## Expanding overbright ring flash (fx_glow_dot). Silently skips when the art
 ## is missing; fades and frees itself.
-static func flash(parent: Node, pos: Vector2, color: Color, start_scale := 0.4, end_scale := 2.6, duration := 0.25) -> void:
+static func flash(parent: Node, pos: Vector2, color: Color, start_scale := 0.4, end_scale := 2.6, duration := 0.25, z: int = 560) -> void:
 	if parent == null or not parent.is_inside_tree():
 		return
 	var tex := glow_dot()
@@ -171,7 +171,7 @@ static func flash(parent: Node, pos: Vector2, color: Color, start_scale := 0.4, 
 	s.material = additive_material()
 	s.modulate = Color(color.r * 2.2, color.g * 2.2, color.b * 2.2, 0.9)
 	s.scale = Vector2.ONE * start_scale
-	s.z_index = 560
+	s.z_index = z
 	parent.add_child(s)
 	s.global_position = pos
 	var tw := s.create_tween()

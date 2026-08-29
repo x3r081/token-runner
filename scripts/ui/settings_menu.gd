@@ -9,7 +9,7 @@ const SUBTITLES := [
 	"Everything below actually works. We were as surprised as you.",
 	"No telemetry, no account, no cookie banner. Revolutionary.",
 	"Zero settings here are placeholders. That is the whole flex.",
-	"Six options. Shipped. Documented. A personal best.",
+	"Seven options. Shipped. Documented. A personal best.",
 ]
 
 ## label node -> settings key. Drives both the "Name — quip" text and tooltips.
@@ -69,9 +69,38 @@ func _ready() -> void:
 	$Margin/VBox/SFXSlider.value_changed.connect(func(v): SettingsManager.set_setting("sfx_volume", v))
 	$Margin/VBox/FullscreenBtn.toggled.connect(func(v): SettingsManager.set_setting("fullscreen", v))
 	$Margin/VBox/CameraShakeBtn.toggled.connect(func(v): SettingsManager.set_setting("camera_shake", v))
+	_build_quality_row()
 	$Margin/VBox/CloseBtn.pressed.connect(queue_free)
 	$Margin/VBox/CameraShakeLabel.tooltip_text = SettingsManager.get_setting_label("camera_shake")
 	_GameTheme.open_panel(self)
+
+## Graphics quality had a real effect and no control: at Reduced the atmosphere
+## collapses to the single multiply-blend floor quad and portals skip their
+## screen-reading lens (and the back-buffer copy that feeds it). Built in code
+## so settings_menu.tscn keeps every node name the rest of the UI relies on.
+## Takes effect on the next region you walk into — said out loud, because a
+## setting that looks broken until you move is a setting people report.
+func _build_quality_row() -> void:
+	var vbox: VBoxContainer = $Margin/VBox
+	var lbl := Label.new()
+	lbl.name = "QualityLabel"
+	lbl.text = "Graphics — %s" % SettingsManager.get_setting_label("graphics_quality")
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.add_theme_font_size_override("font_size", 13)
+	lbl.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
+	vbox.add_child(lbl)
+	vbox.move_child(lbl, vbox.get_child_count() - 2)
+	var opt := OptionButton.new()
+	opt.name = "QualityOption"
+	opt.add_item("Full — every light we own", 1)
+	opt.add_item("Reduced — the fans get a night off", 0)
+	opt.select(0 if int(SettingsManager.get_setting("graphics_quality")) >= 1 else 1)
+	opt.tooltip_text = "Applies to the next region you enter."
+	opt.item_selected.connect(func(i: int) -> void:
+		SettingsManager.set_setting("graphics_quality", opt.get_item_id(i))
+	)
+	vbox.add_child(opt)
+	vbox.move_child(opt, vbox.get_child_count() - 2)
 
 ## One dry line under the title. Also, quietly, the truth: changes apply live.
 func _build_subtitle() -> void:

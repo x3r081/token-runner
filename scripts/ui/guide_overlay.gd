@@ -54,6 +54,12 @@ const PROP_NAMES := {
 	"free_tokens_ad": "the suspicious pop-up ad",
 	"agent_terminal": "the autonomous agent terminal",
 	"broken_service": "the broken /checkout service",
+	"prop_lockfile": "the package-lock.json",
+	"prop_node_modules": "the node_modules drift",
+	"prop_leftpad": "the left-pad marker",
+	"prop_kanban": "the Kanban board",
+	"prop_rig": "the mining rig",
+	"prop_fan": "the cooling fan",
 }
 
 const ENEMY_NAMES := {
@@ -107,6 +113,9 @@ const LOOP_LINES: Array[String] = [
 const CONTROLS_LINE := "WASD / Arrows move  ·  [E] interact & talk  ·  [1] Prompt Blast  ·  [Shift] dash  ·  [2]-[5] abilities  ·  [T] swap model  ·  [B] Dream App  ·  [J] quests  ·  [M] map & fast travel  ·  [Esc] pause  ·  [H] this screen"
 
 ## Escalating idle nudges: concerned, never condescending. Punch up, or at us.
+## The ladder only ever climbs — that escalation IS the joke — and every rung
+## still names the key, because a nudge that doesn't tell you what to press is
+## just a notification.
 const NUDGES: Array[String] = [
 	"Stuck? Press [H].",
 	"Still circling. [H] says what to do and, more usefully, where.",
@@ -115,7 +124,10 @@ const NUDGES: Array[String] = [
 	"Press [H]. I'm not worried. I'm logging it, but I'm not worried.",
 	"You have explored significantly more than you have accomplished. [H].",
 	"[H] for a plan. Wandering is a valid strategy in other, kinder games.",
+	"This is now the longest anyone has spent in this room, including the person who built it. [H].",
+	"[H]. I have re-read the objective on your behalf. It has not changed.",
 	"Hour four on the same three floor tiles. [H], for both our sakes.",
+	"I've started narrating your movement to myself. Please press [H] so I can stop.",
 ]
 
 var _open := false
@@ -356,6 +368,7 @@ func _rebuild() -> void:
 	_section_objective()
 	_section_loop()
 	_section_requirements()
+	_section_diagnosis()
 	_section_nudges()
 
 func _section_objective() -> void:
@@ -376,6 +389,97 @@ func _section_objective() -> void:
 	_line("→  %s" % text, 18, _GameTheme.WHITE_HOT)
 	_line("Quest: %s — %s" % [str(quest.get("name", "?")), str(quest.get("description", ""))], 13, _GameTheme.TEXT_DIM)
 	_line("WHERE: %s" % _where_for(obj, quest), 15, _GameTheme.CYAN_HOT)
+
+## The numbers that are quietly steering this run, each with a one-line verdict.
+## The value column always carries the fact; the verdict column carries the joke.
+## Nothing here is decoration — every row is a number the player can move.
+func _section_diagnosis() -> void:
+	_gap()
+	_head("THE STATE OF YOU — numbers that are already steering this run", _GameTheme.MAGENTA)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 16)
+	grid.add_theme_constant_override("v_separation", 3)
+	_content.add_child(grid)
+	for row: Array in _diagnosis_rows():
+		var col: Color = row[3]
+		_cell(grid, String(row[0]), 14, _GameTheme.TEXT_DIM)
+		_cell(grid, String(row[1]), 15, col)
+		# The verdict column wraps: the scroll view has horizontal scrolling
+		# disabled, so an unwrapped sentence here would simply be cut off.
+		_cell_wrap(grid, String(row[2]), 13, _GameTheme.TEXT_DIM, 452.0)
+
+## [label, value, verdict, value_color]. Rows that are only interesting when
+## they're going wrong (agents, focus, will to live) are omitted when they aren't.
+func _diagnosis_rows() -> Array:
+	var out: Array = []
+	var tokens := int(ResourceManager.get_value("tokens"))
+	var debt := int(ResourceManager.get_value("technical_debt"))
+	var stability := int(ResourceManager.get_value("stability"))
+	var focus := int(ResourceManager.get_value("focus"))
+	var wtl := int(ResourceManager.get_value("will_to_live"))
+	var deaths: int = GameManager.death_count
+	var tiers := int(DreamAppManager.get_totals().get("total_tiers", 0))
+	var agents: int = AgentManager.active_count() if AgentManager else 0
+	var surcharge := int(round((DreamAppManager.debt_cost_multiplier() - 1.0) * 100.0))
+
+	var tok_note := "enough to keep moving"
+	if tokens < 20:
+		tok_note = "broke. Gold pickups are on the floor; enemies drop more"
+	elif tokens >= 250:
+		tok_note = "hoarding. Tokens do nothing in a pocket. [B] converts them into an app"
+	out.append(["Tokens", str(tokens), tok_note,
+		_GameTheme.RED if tokens < 20 else _GameTheme.GOLD])
+
+	var up_note := "each one moves a requirement below"
+	if tiers == 0:
+		up_note = "you own none. This is the one thing blocking the ending. [B]"
+	elif tiers >= 12:
+		up_note = "genuinely well equipped. Suspicious. Keep going"
+	out.append(["Upgrades bought", str(tiers), up_note,
+		_GameTheme.RED if tiers == 0 else _GameTheme.ACID])
+
+	var debt_note := "harmless, for now"
+	if debt >= 60:
+		debt_note = "every price is +%d%%. It compounds. It does not forgive" % surcharge
+	elif debt >= 25:
+		debt_note = "quietly adding +%d%% to every price you will ever see" % surcharge
+	out.append(["Technical debt", str(debt), debt_note,
+		_GameTheme.RED if debt >= 60 else (_GameTheme.AMBER if debt >= 25 else _GameTheme.TEXT)])
+
+	var stab_note := "shippable range"
+	if stability <= 30:
+		stab_note = "one incident from a bad night. Buy Stability in [B]"
+	elif stability <= 60:
+		stab_note = "wobbly — and it is a ship requirement, so not optional"
+	out.append(["Stability", str(stability), stab_note,
+		_GameTheme.RED if stability <= 30 else _GameTheme.TEXT])
+
+	var death_note := "clean run so far"
+	if deaths >= 5:
+		death_note = "you lose only time. [Shift] dashes; enemies give up if you outrun them"
+	elif deaths >= 1:
+		death_note = "respawn is free. Ctrl+Z, but for your entire body"
+	out.append(["Deaths tonight", str(deaths), death_note,
+		_GameTheme.RED if deaths >= 5 else _GameTheme.TEXT])
+
+	out.append(["Cycle", "%d · %ds left" % [CycleManager.cycle, CycleManager.seconds_left()],
+		"the reset refills quotas and shuffles prices. Purchases survive",
+		_GameTheme.AMBER if CycleManager.seconds_left() <= int(CycleManager.WARN_AT) else _GameTheme.TEXT])
+
+	if agents > 0:
+		out.append(["Agents deployed", str(agents),
+			"working autonomously and confidently, in that order",
+			_GameTheme.VIOLET])
+	if focus <= 35:
+		out.append(["Focus", str(focus),
+			"abilities cost focus. Coffee restores it: find the machine, [E]",
+			_GameTheme.AMBER])
+	if wtl <= 40:
+		out.append(["Will to live", str(wtl),
+			"cosmetic. Mostly. It is also the game gently asking after you",
+			_GameTheme.AMBER])
+	return out
 
 func _section_loop() -> void:
 	_gap()
@@ -449,6 +553,16 @@ func _cell(grid: GridContainer, text: String, size: int, col: Color) -> void:
 	l.add_theme_color_override("font_color", col)
 	grid.add_child(l)
 
+## Grid cell that wraps inside a fixed column width instead of widening the grid.
+func _cell_wrap(grid: GridContainer, text: String, size: int, col: Color, width: float) -> void:
+	var l := Label.new()
+	l.text = text
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(width, 0)
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", col)
+	grid.add_child(l)
+
 func _gap() -> void:
 	var s := HSeparator.new()
 	s.add_theme_constant_override("separation", 12)
@@ -476,7 +590,14 @@ func _current_objective() -> Dictionary:
 func _where_for(obj: Dictionary, quest: Dictionary) -> String:
 	var kind := str(obj.get("type", ""))
 	var target := str(obj.get("target", ""))
-	var home := str(quest.get("region", GameManager.current_region))
+	# The quest's own "region" is where the GIVER stands, which is not always
+	# where the work is: context_window_full is handed out in Cloud District and
+	# its boss only spawns in the Token Vault. QuestManager.objective_region()
+	# resolves that from the world's real spawn table — use it, or the guide
+	# sends the player to a room the objective cannot be completed in.
+	var home := QuestManager.objective_region(str(quest.get("id", "")), obj)
+	if home == "":
+		home = str(quest.get("region", GameManager.current_region))
 	if kind == "talk":
 		var who := DialogueManager.get_npc_name(target)
 		var npc := _find_npc(target)
@@ -543,6 +664,8 @@ func _nudges() -> Array[String]:
 	var totals: Dictionary = DreamAppManager.get_totals()
 	var tiers := int(totals.get("total_tiers", 0))
 
+	var deaths: int = GameManager.death_count
+
 	if _combat_nearby():
 		out.append("Something is chewing on you. [1] Prompt Blast, [Shift] to dash out, or just leave — enemies give up if you outrun them.")
 	if DreamAppManager.can_ship():
@@ -551,10 +674,14 @@ func _nudges() -> Array[String]:
 		out.append("You haven't talked to anybody yet. NPCs with a floating gold [!] are holding your quests hostage. [E] frees them.")
 	if tiers == 0:
 		out.append("You own zero upgrades. Your Dream App is currently a README with feelings. Press [B]; Infrastructure tier 1 costs about 10 tokens.")
+	if deaths >= 4:
+		out.append("You have died %d times. Dying costs you nothing but momentum, so this is a pacing note, not a scolding: [Shift] dashes through things, and you can simply walk away from a fight." % deaths)
 	if tokens < 30:
 		out.append("You have %d tokens, which buys roughly one opinion. Gold pickups are on the floor; enemies drop them when they stop existing." % tokens)
 	if debt >= 60:
-		out.append("Technical debt is %d, so every upgrade costs about %d%% more. Compound interest, but for decisions." % [debt, int(round((DreamAppManager.debt_cost_multiplier() - 1.0) * 100.0))])
+		out.append("Technical debt is %d, so every upgrade costs about %d%% more. Compound interest, but for decisions. Nothing removes it. Spend earlier next time." % [debt, int(round((DreamAppManager.debt_cost_multiplier() - 1.0) * 100.0))])
+	if tokens >= 250 and tiers < 6:
+		out.append("You are holding %d tokens and %d upgrades. Tokens do nothing in your pocket except lose value at the reset. [B] converts them into an ending." % [tokens, tiers])
 	if focus <= 35 and coffee > 0:
 		out.append("Focus is at %d. You are holding %d coffee. These two facts are related; find the coffee machine and press [E]." % [focus, coffee])
 	if CycleManager.seconds_left() <= int(CycleManager.WARN_AT):
@@ -563,9 +690,43 @@ func _nudges() -> Array[String]:
 		out.append("Localhost is safe-ish: the two bugs live over by the exit on the right. Everything else here is furniture with jokes on it.")
 	if out.size() < 2:
 		out.append("Press [J] for the quest log — it lists who gives what, and where they stand.")
+	if out.size() < 3:
+		out.append("Walk past an NPC and they will say something unprompted. It is usually about you. It is usually accurate.")
 	if out.is_empty():
 		out.append("Nothing is on fire. Follow the objective at the top; if it names someone, that someone is standing in a room you can walk to.")
 	return out.slice(0, 3)
+
+## The idle toast alternates between the escalating ladder (the running gag) and
+## a line aimed at whatever is actually wrong right now (the useful part). Both
+## always name a key.
+func _toast_line() -> String:
+	var ladder: String = NUDGES[mini(_nudge_level, NUDGES.size() - 1)]
+	var state := _state_nudge()
+	_nudge_level += 1
+	if state != "" and _nudge_level % 2 == 0:
+		return state
+	return ladder
+
+## One short, specific "here is your actual problem" line, or "" when the run is
+## not visibly in trouble. Short enough for a 380px toast.
+func _state_nudge() -> String:
+	var tokens := int(ResourceManager.get_value("tokens"))
+	var debt := int(ResourceManager.get_value("technical_debt"))
+	var tiers := int(DreamAppManager.get_totals().get("total_tiers", 0))
+	var deaths: int = GameManager.death_count
+	if DreamAppManager.can_ship():
+		return "It is shippable. Localhost → Deploy button → [E]. [H] if you want the checklist again."
+	if not _has_talked_to_anyone():
+		return "Nobody has been talked to yet. Find a floating gold [!] and press [E]. [H] says where."
+	if tiers == 0:
+		return "Still zero upgrades. [B] opens the Dream App console — that is the whole game. [H] for the rest."
+	if tokens < 20:
+		return "%d tokens. Gold pickups are on the floor and enemies drop more. [H] points at the nearest one." % tokens
+	if deaths >= 4:
+		return "%d deaths. You can walk away from any fight; nothing chases forever. [H] has the plan." % deaths
+	if debt >= 60:
+		return "Technical debt %d is inflating every price. Buy sooner rather than better. [H] for details." % debt
+	return ""
 
 func _has_talked_to_anyone() -> bool:
 	for qid in QuestManager.quest_progress:
@@ -782,8 +943,7 @@ func _show_toast() -> void:
 	if not is_instance_valid(_toast):
 		return
 	_toast_visible = true
-	_toast_label.text = NUDGES[mini(_nudge_level, NUDGES.size() - 1)]
-	_nudge_level += 1
+	_toast_label.text = _toast_line()
 	_toast.visible = true
 	_toast.modulate.a = 0.0
 	if _toast_tween and _toast_tween.is_valid():

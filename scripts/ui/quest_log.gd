@@ -49,6 +49,12 @@ const PROP_NAMES := {
 	"client_email": "the laptop (client email)",
 	"abandoned_package": "the abandoned package",
 	"backup_server": "the backup server",
+	"prop_lockfile": "the package-lock.json",
+	"prop_node_modules": "the node_modules drift",
+	"prop_leftpad": "the left-pad marker",
+	"prop_kanban": "the Kanban board",
+	"prop_rig": "the mining rig",
+	"prop_fan": "the cooling fan",
 }
 
 ## One line per quest. Brutally accurate beats random; the instruction lives in
@@ -69,6 +75,9 @@ const QUEST_FLAVOUR := {
 	"junior_agent": "It was 100% confident. That's the part that should worry you.",
 	"merge_conflict_hell": "Two branches, one file, three weeks, zero survivors.",
 	"context_window_full": "You pasted the entire repo. The model has seen things.",
+	"supply_chain": "Eleven lines of code, one unpaid weekend, and every build on Earth.",
+	"scope_control": "Nobody added the work. It arrived, gradually, while everyone agreed.",
+	"thermal_shift": "94 degrees, held together with zip ties and a cone in the asset register.",
 }
 
 func _ready() -> void:
@@ -201,7 +210,8 @@ func _row(parent: Node, text: String, size: int, col: Color, heading := false) -
 ## The single physical action that advances this quest, phrased as an order.
 func _next_step(info: Dictionary) -> String:
 	var progress: Dictionary = info.get("progress", {})
-	var region := str(info.get("region", GameManager.current_region))
+	var qid := str(info.get("id", ""))
+	var fallback := str(info.get("region", GameManager.current_region))
 	for obj in info.get("objectives", []):
 		if not (obj is Dictionary):
 			continue
@@ -209,6 +219,13 @@ func _next_step(info: Dictionary) -> String:
 		var prog := int(progress.get(str(od.get("id", "")), 0))
 		var need := int(od.get("count", 1))
 		if prog < need:
+			# Per OBJECTIVE, not per quest: the quest's region is where the giver
+			# stands. THE INFINITE CONTEXT's quest is given in Cloud District and
+			# the boss is only ever in the Token Vault, so a quest-level region
+			# here would print "travel to Cloud District" and strand the player.
+			var region := QuestManager.objective_region(qid, od)
+			if region == "":
+				region = fallback
 			return _step_text(od, prog, need, region)
 	return "Everything's ticked. It should close itself; if not, that's a bug and you know whose."
 

@@ -25,7 +25,7 @@
     },
     "install_node": {
       "name": "Install Node (Five Minutes, Tops)",
-      "description": "It's one command. It has never once been one command. The district is through the portal east of your apartment.",
+      "description": "It's one command. It has never once been one command. The district is through the portal east of your apartment, and it has weather.",
       "region": "dependency_district",
       "prerequisites": ["tiny_change"],
       "objectives": [
@@ -34,6 +34,19 @@
         {"id": "find_package", "type": "interact", "target": "abandoned_package", "count": 1, "text": "Find the crate in the district marked 'Recover package' and interact with it"}
       ],
       "rewards": {"tokens": 200, "compute": 15, "unlock_region": "stackoverflow_ruins"},
+      "giver": "maintainer"
+    },
+    "supply_chain": {
+      "name": "Eleven Lines Of Someone Else's Weekend",
+      "description": "Before you build anything on top of this district, find out what is actually holding it up. Spoiler: one stranger, one lockfile, and a folder with its own gravity.",
+      "region": "dependency_district",
+      "prerequisites": ["install_node"],
+      "objectives": [
+        {"id": "read_lockfile", "type": "interact", "target": "prop_lockfile", "count": 1, "text": "Read the package-lock.json in the Dependency District (walk onto it, press [E])"},
+        {"id": "read_modules", "type": "interact", "target": "prop_node_modules", "count": 1, "text": "Inspect the node_modules drift in the same district"},
+        {"id": "read_leftpad", "type": "interact", "target": "prop_leftpad", "count": 1, "text": "Pay respects at the left-pad marker, also in the Dependency District"}
+      ],
+      "rewards": {"context": 25, "reputation": 20, "achievement": "supply_chain_scholar"},
       "giver": "maintainer"
     },
     "stackoverflow_pilgrimage": {
@@ -51,7 +64,7 @@
     },
     "one_more_api_call": {
       "name": "One More API Call",
-      "description": "Just the one. Then you'll stop. You have said this before, out loud, to a person. The Bazaar is east of the Ruins.",
+      "description": "Just the one. Then you'll stop. You have said this before, out loud, to a person. The Bazaar is east of the Ruins and it is always Friday there.",
       "region": "api_bazaar",
       "prerequisites": ["stackoverflow_pilgrimage"],
       "objectives": [
@@ -64,7 +77,7 @@
     },
     "cloud_migration": {
       "name": "We Should Move To The Cloud",
-      "description": "Nobody can say why. Everyone agrees. Cloud. Something extremely expensive is drifting around that district.",
+      "description": "Nobody can say why. Everyone agrees. Cloud. Something extremely expensive is drifting around that district and it knows your name.",
       "region": "cloud_district",
       "prerequisites": ["one_more_api_call"],
       "objectives": [
@@ -101,6 +114,18 @@
       "rewards": {"tokens": 600, "reputation": 50, "unlock_region": "gpu_mines"},
       "giver": "svp_ai"
     },
+    "scope_control": {
+      "name": "Scope Is A Verb Now",
+      "description": "Nobody added the extra work. It arrived. Four separate Scope Creeps are loose on the office floor and the Kanban board has a column called 'Almost Done' with nine cards in it.",
+      "region": "corporate_enterprise",
+      "prerequisites": ["license_puzzle"],
+      "objectives": [
+        {"id": "cut_scope", "type": "defeat", "target": "scope_creep", "count": 4, "text": "Defeat 4 Scope Creeps drifting around Corporate Enterprise (leave and return to restock)"},
+        {"id": "read_kanban", "type": "interact", "target": "prop_kanban", "count": 1, "text": "Read the Kanban board on the office floor (walk onto it, press [E])"}
+      ],
+      "rewards": {"tokens": 380, "focus": 20, "achievement": "scope_is_a_verb"},
+      "giver": "svp_ai"
+    },
     "gpu_rush": {
       "name": "Mine Your Own Business",
       "description": "Acquire compute. Avoid thermal throttling. Question every choice that led you into a 94-degree room.",
@@ -112,6 +137,19 @@
         {"id": "defeat_leak", "type": "defeat", "target": "memory_leak", "count": 3, "text": "Plug 3 Memory Leaks drifting deeper in the mine"}
       ],
       "rewards": {"compute": 80, "tokens": 400, "unlock_region": "production"},
+      "giver": "gpu_foreman"
+    },
+    "thermal_shift": {
+      "name": "Thermal Headroom (There Is None)",
+      "description": "The foreman wants a second pair of eyes on the floor before the next shift. Rig 12 melted a hole in the concrete last week. There is a cone on it. The cone is in the asset register.",
+      "region": "gpu_mines",
+      "prerequisites": ["enterprise_ready"],
+      "objectives": [
+        {"id": "check_rig", "type": "interact", "target": "prop_rig", "count": 1, "text": "Inspect the mining rig in the GPU Mines (walk onto it, press [E])"},
+        {"id": "check_fan", "type": "interact", "target": "prop_fan", "count": 1, "text": "Inspect the cooling fan on the far side of the mine"},
+        {"id": "plug_leaks", "type": "defeat", "target": "memory_leak", "count": 2, "text": "Plug 2 Memory Leaks while you're down there"}
+      ],
+      "rewards": {"compute": 60, "will_to_live": 8, "achievement": "thermal_headroom"},
       "giver": "gpu_foreman"
     },
     "production_down": {
@@ -129,7 +167,7 @@
     },
     "ship_dream_app": {
       "name": "Deploy On A Friday",
-      "description": "The reset is coming and the app is 'done enough', which has historically meant the same thing.",
+      "description": "The reset is coming and the app is 'done enough', which has historically meant the same thing it means today.",
       "region": "localhost",
       "prerequisites": ["production_down"],
       "objectives": [
@@ -152,7 +190,7 @@
     },
     "junior_agent": {
       "name": "The Agent Optimized The Database",
-      "description": "Somebody gave an autonomous agent production credentials on a Friday. That somebody was you.",
+      "description": "Somebody gave an autonomous agent production credentials on a Friday. That somebody was you. It is 100% confident and would like to know if it can do more.",
       "region": "api_bazaar",
       "prerequisites": ["one_more_api_call"],
       "objectives": [

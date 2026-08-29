@@ -9,63 +9,125 @@ script = ExtResource("1")
 anchors_preset = 10
 anchor_right = 1.0
 offset_left = 24.0
-offset_top = 16.0
+offset_top = 14.0
 offset_right = -24.0
-offset_bottom = 88.0
+offset_bottom = 86.0
+mouse_filter = 2
 
 [node name="HBox" type="HBoxContainer" parent="TopBar"]
 layout_mode = 2
+mouse_filter = 2
 theme_override_constants/separation = 16
 
 [node name="ResourcesPanel" type="PanelContainer" parent="TopBar/HBox"]
 layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
 
 [node name="Resources" type="HBoxContainer" parent="TopBar/HBox/ResourcesPanel"]
 layout_mode = 2
-theme_override_constants/separation = 24
+mouse_filter = 2
+theme_override_constants/separation = 20
 
 [node name="TokenBlock" type="VBoxContainer" parent="TopBar/HBox/ResourcesPanel/Resources"]
+custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
 
 [node name="TokenTitle" type="Label" parent="TopBar/HBox/ResourcesPanel/Resources/TokenBlock"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 11
-theme_override_colors/font_color = Color(1, 0.827, 0.302, 0.7)
+theme_override_font_sizes/font_size = 10
+theme_override_colors/font_color = Color(1, 0.827, 0.302, 0.65)
 text = "TOKENS"
 
 [node name="TokenLabel" type="Label" parent="TopBar/HBox/ResourcesPanel/Resources/TokenBlock"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 22
 theme_override_colors/font_color = Color(1, 0.827, 0.302, 1)
 text = "0"
 
 [node name="ComputeBlock" type="VBoxContainer" parent="TopBar/HBox/ResourcesPanel/Resources"]
+custom_minimum_size = Vector2(66, 0)
 layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
 
 [node name="ComputeTitle" type="Label" parent="TopBar/HBox/ResourcesPanel/Resources/ComputeBlock"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 11
-theme_override_colors/font_color = Color(0.239, 0.608, 1, 0.7)
+theme_override_font_sizes/font_size = 10
+theme_override_colors/font_color = Color(0.239, 0.608, 1, 0.65)
 text = "COMPUTE"
 
 [node name="ComputeLabel" type="Label" parent="TopBar/HBox/ResourcesPanel/Resources/ComputeBlock"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 22
 theme_override_colors/font_color = Color(0.635, 0.808, 1, 1)
+text = "0"
+
+[node name="ContextBlock" type="VBoxContainer" parent="TopBar/HBox/ResourcesPanel/Resources"]
+custom_minimum_size = Vector2(66, 0)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="ContextTitle" type="Label" parent="TopBar/HBox/ResourcesPanel/Resources/ContextBlock"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+theme_override_colors/font_color = Color(0.545, 0.361, 0.965, 0.75)
+text = "CONTEXT"
+
+[node name="ContextLabel" type="Label" parent="TopBar/HBox/ResourcesPanel/Resources/ContextBlock"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(0.71, 0.6, 0.99, 1)
+text = "0"
+
+[node name="DebtBlock" type="VBoxContainer" parent="TopBar/HBox/ResourcesPanel/Resources"]
+custom_minimum_size = Vector2(62, 0)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="DebtTitle" type="Label" parent="TopBar/HBox/ResourcesPanel/Resources/DebtBlock"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 10
+theme_override_colors/font_color = Color(1, 0.278, 0.341, 0.65)
+text = "DEBT TAX"
+
+[node name="DebtLabel" type="Label" parent="TopBar/HBox/ResourcesPanel/Resources/DebtBlock"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(1, 0.42, 0.46, 1)
 text = "0"
 
 [node name="RegionPanel" type="PanelContainer" parent="TopBar/HBox"]
 layout_mode = 2
 size_flags_horizontal = 3
+mouse_filter = 2
 
 [node name="RegionBlock" type="VBoxContainer" parent="TopBar/HBox/RegionPanel"]
 layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 1
+alignment = 1
 
 [node name="RegionLabel" type="Label" parent="TopBar/HBox/RegionPanel/RegionBlock"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 23
 text = "Localhost"
 horizontal_alignment = 1
+
+[node name="RuleRow" type="CenterContainer" parent="TopBar/HBox/RegionPanel/RegionBlock"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="RegionRule" type="ColorRect" parent="TopBar/HBox/RegionPanel/RegionBlock/RuleRow"]
+custom_minimum_size = Vector2(190, 2)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.141, 0.941, 0.863, 0.55)
 
 [node name="RegionSub" type="Label" parent="TopBar/HBox/RegionPanel/RegionBlock"]
 layout_mode = 2
@@ -76,61 +138,92 @@ horizontal_alignment = 1
 
 [node name="BarsPanel" type="PanelContainer" parent="TopBar/HBox"]
 layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
 
 [node name="Bars" type="VBoxContainer" parent="TopBar/HBox/BarsPanel"]
-custom_minimum_size = Vector2(220, 0)
+custom_minimum_size = Vector2(322, 0)
 layout_mode = 2
-theme_override_constants/separation = 6
+mouse_filter = 2
+theme_override_constants/separation = 7
 
 [node name="HPBlock" type="HBoxContainer" parent="TopBar/HBox/BarsPanel/Bars"]
 layout_mode = 2
+mouse_filter = 2
 theme_override_constants/separation = 8
 
 [node name="HPLabel" type="Label" parent="TopBar/HBox/BarsPanel/Bars/HPBlock"]
-custom_minimum_size = Vector2(28, 0)
+custom_minimum_size = Vector2(30, 0)
 layout_mode = 2
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 10
 theme_override_colors/font_color = Color(0.486, 0.545, 0.69, 1)
 text = "HP"
+vertical_alignment = 1
 
 [node name="HPBar" type="ProgressBar" parent="TopBar/HBox/BarsPanel/Bars/HPBlock"]
-custom_minimum_size = Vector2(180, 14)
+custom_minimum_size = Vector2(160, 13)
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 4
+mouse_filter = 2
 max_value = 100.0
 value = 100.0
 show_percentage = false
+
+[node name="HPValue" type="Label" parent="TopBar/HBox/BarsPanel/Bars/HPBlock"]
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(1, 0.604, 0.478, 1)
+text = "100"
+horizontal_alignment = 2
+vertical_alignment = 1
 
 [node name="FocusBlock" type="HBoxContainer" parent="TopBar/HBox/BarsPanel/Bars"]
 layout_mode = 2
+mouse_filter = 2
 theme_override_constants/separation = 8
 
 [node name="FocusLabel" type="Label" parent="TopBar/HBox/BarsPanel/Bars/FocusBlock"]
-custom_minimum_size = Vector2(28, 0)
+custom_minimum_size = Vector2(30, 0)
 layout_mode = 2
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 10
 theme_override_colors/font_color = Color(0.486, 0.545, 0.69, 1)
 text = "FOC"
+vertical_alignment = 1
 
 [node name="FocusBar" type="ProgressBar" parent="TopBar/HBox/BarsPanel/Bars/FocusBlock"]
-custom_minimum_size = Vector2(180, 10)
+custom_minimum_size = Vector2(160, 10)
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 4
+mouse_filter = 2
 max_value = 100.0
 value = 100.0
 show_percentage = false
+
+[node name="FocusValue" type="Label" parent="TopBar/HBox/BarsPanel/Bars/FocusBlock"]
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.49, 1, 0.941, 1)
+text = "100"
+horizontal_alignment = 2
+vertical_alignment = 1
 
 [node name="QuestPanel" type="PanelContainer" parent="."]
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 24.0
-offset_top = -228.0
-offset_right = 430.0
+offset_top = -232.0
+offset_right = 434.0
 offset_bottom = -24.0
+mouse_filter = 2
 
 [node name="Margin" type="MarginContainer" parent="QuestPanel"]
 layout_mode = 2
+mouse_filter = 2
 theme_override_constants/margin_left = 12
 theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 12
@@ -138,6 +231,7 @@ theme_override_constants/margin_bottom = 10
 
 [node name="VBox" type="VBoxContainer" parent="QuestPanel/Margin"]
 layout_mode = 2
+mouse_filter = 2
 theme_override_constants/separation = 4
 
 [node name="QuestHeader" type="Label" parent="QuestPanel/Margin/VBox"]
@@ -146,21 +240,21 @@ theme_override_font_sizes/font_size = 12
 text = "CURRENT OBJECTIVE"
 
 [node name="NextAction" type="Label" parent="QuestPanel/Margin/VBox"]
-custom_minimum_size = Vector2(370, 0)
+custom_minimum_size = Vector2(374, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "→ Talk to Claude"
 autowrap_mode = 3
 
 [node name="QuestName" type="Label" parent="QuestPanel/Margin/VBox"]
-custom_minimum_size = Vector2(370, 0)
+custom_minimum_size = Vector2(374, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "Quest"
 autowrap_mode = 3
 
 [node name="QuestTracker" type="Label" parent="QuestPanel/Margin/VBox"]
-custom_minimum_size = Vector2(370, 0)
+custom_minimum_size = Vector2(374, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
 text = "Quest tracker"
@@ -172,26 +266,27 @@ anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -340.0
-offset_top = -36.0
-offset_right = 340.0
+offset_left = -360.0
+offset_top = -34.0
+offset_right = 360.0
 offset_bottom = -12.0
+mouse_filter = 2
 theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.486, 0.545, 0.69, 0.7)
-text = "[E] Interact  ·  [Shift] Dash  ·  [B] Dream App  ·  [J] Quests  ·  [M] Map  ·  follow the cyan arrow"
+theme_override_colors/font_color = Color(0.486, 0.545, 0.69, 0.72)
+text = "[E] Interact  ·  [Shift] Dash  ·  [B] Dream App  ·  [J] Quests  ·  [M] Map  ·  [H] What am I doing?"
 horizontal_alignment = 1
 
 [node name="Notification" type="Label" parent="."]
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -240.0
+offset_left = -180.0
 offset_top = 120.0
-offset_right = 240.0
-offset_bottom = 200.0
-theme_override_font_sizes/font_size = 22
+offset_right = 180.0
+offset_bottom = 148.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 17
 theme_override_colors/font_outline_color = Color(0.02, 0.024, 0.055, 0.9)
-theme_override_constants/outline_size = 6
+theme_override_constants/outline_size = 3
 text = ""
-horizontal_alignment = 1
-autowrap_mode = 2
+text_overrun_behavior = 3

@@ -82,6 +82,23 @@ func _gather_save_data() -> Dictionary:
 		"dream_app": DreamAppManager.purchased,
 		"achievements": AchievementManager.unlocked,
 		"settings": SettingsManager.settings,
+		# Run state that is neither a resource nor a quest. Without these,
+		# Continue re-ran finished storylines, forgot every decision the world
+		# was supposed to remember, reset the cycle clock to 1 and wiped the
+		# subscription, the deployed agents and the architecture you chose.
+		"story_flags": GameManager.story_flags,
+		"events": EventManager.save_state(),
+		"cycle": {
+			"cycle": CycleManager.cycle,
+			"time_left": CycleManager.time_left,
+			"price_index": CycleManager.price_index,
+		},
+		"model_index": ModelManager.index,
+		"agents": AgentManager.agents,
+		"architecture": {
+			"flags": ArchitectureManager.flags,
+			"ridiculousness": ArchitectureManager.ridiculousness,
+		},
 	}
 
 func _apply_save_data(data: Dictionary) -> void:
@@ -103,3 +120,16 @@ func _apply_save_data(data: Dictionary) -> void:
 	QuestManager.completed_quests.assign(data.get("completed_quests", []))
 	DreamAppManager.purchased = data.get("dream_app", {})
 	AchievementManager.unlocked.assign(data.get("achievements", []))
+	# All additive and all defaulted: an older save simply keeps the fresh-run
+	# values these managers already reset themselves to.
+	GameManager.story_flags = data.get("story_flags", {})
+	EventManager.load_state(data.get("events", {}))
+	var cyc: Dictionary = data.get("cycle", {})
+	CycleManager.cycle = int(cyc.get("cycle", CycleManager.cycle))
+	CycleManager.time_left = float(cyc.get("time_left", CycleManager.time_left))
+	CycleManager.price_index = float(cyc.get("price_index", CycleManager.price_index))
+	ModelManager.index = int(data.get("model_index", ModelManager.index))
+	AgentManager.agents = (data.get("agents", []) as Array).duplicate(true)
+	var arch: Dictionary = data.get("architecture", {})
+	ArchitectureManager.flags = arch.get("flags", ArchitectureManager.flags)
+	ArchitectureManager.ridiculousness = int(arch.get("ridiculousness", ArchitectureManager.ridiculousness))

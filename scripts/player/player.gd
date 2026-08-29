@@ -54,6 +54,28 @@ var _light: PointLight2D
 var _dust: CPUParticles2D
 var _flash_tween: Tween
 var _ghost_t := 0.0
+## Spectacle rig (scripts/player/ability_fx.gd): rim halo, motion lean, rewind
+## buffer and the six ability signatures. Always null-checked — a stripped test
+## scene or a missing FX library must never break movement or damage.
+var _fx: AbilityFx
+## Cache (ability 2) runs its own clock so the hex bubble matches the window it
+## actually represents, instead of riding the shared i-frame timer that dashes
+## and hurt-frames also poke.
+const CACHE_DURATION := 1.5
+var _cache_t := 0.0
+## Crits: 14% of shots land as a hard hit. Purely additive damage — it can only
+## make a fight shorter, never longer.
+const CRIT_CHANCE := 0.14
+const CRIT_MULT := 2.0
+## One-shot pose frames (spritesheet rows 4-5). `_pose_t` is a lockout so the
+## walk/idle animator does not stamp over a cast or a recoil the same frame it
+## started; `_cast_t` drives the two-stage wind-up -> release pair. Both are
+## only ever armed when the animation actually exists, so the legacy 4-frame
+## fallback sheet keeps behaving exactly as before.
+const CAST_WINDUP := 0.09
+const CAST_RELEASE := 0.18
+var _pose_t := 0.0
+var _cast_t := 0.0
 
 func _ready() -> void:
 	add_to_group("player")
@@ -73,6 +95,10 @@ func _ready() -> void:
 ## up dust while moving. Missing art degrades to generated textures, never errors.
 func _setup_fx() -> void:
 	_light = FxLib.point_light(self, Color(1.0, 0.93, 0.82), 0.55, 3.4, Vector2(0, -12))
+	# A desk lamp at 3am is never perfectly steady. Engine-side loop, no cost.
+	var lamp := _light.create_tween().set_loops()
+	lamp.tween_property(_light, "energy", 0.62, 1.7).set_trans(Tween.TRANS_SINE)
+	lamp.tween_property(_light, "energy", 0.50, 2.3).set_trans(Tween.TRANS_SINE)
 	_dust = CPUParticles2D.new()
 	_dust.emitting = false
 	_dust.amount = 12
@@ -95,6 +121,10 @@ func _setup_fx() -> void:
 		_dust.scale_amount_min = 1.4
 		_dust.scale_amount_max = 2.6
 	add_child(_dust)
+	_fx = AbilityFx.new()
+	_fx.name = "AbilityFx"
+	add_child(_fx)
+	_fx.setup(self, sprite)
 
 func _set_dust(on: bool) -> void:
 	if _dust and _dust.emitting != on:
@@ -108,7 +138,12 @@ func _setup_prompt() -> void:
 	_prompt_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	_prompt_label.add_theme_constant_override("outline_size", 5)
 	_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_prompt_label.z_index = 500
+	# Absolute, not relative. The player y-sorts (z_index = int(y)), so a
+	# relative z would slide the prompt around the readout band as you walk
+	# up and down the room instead of pinning it above world plates (1150)
+	# and below combat damage text (1220).
+	_prompt_label.z_as_relative = false
+	_prompt_label.z_index = CombatFx.Z_TEXT - 10
 	_prompt_label.visible = false
 	_prompt_label.modulate.a = 0.0
 	add_child(_prompt_label)
@@ -123,7 +158,12 @@ func _update_prompt(delta: float = 0.016) -> void:
 		if closest.has_method("get_prompt"):
 			text = closest.get_prompt()
 		_prompt_label.text = "[E] %s" % text
-		_prompt_label.position = (closest.global_position - global_position) + Vector2(-70, -64)
+		# NPCs own the space above their heads now: npc.gd puts the nameplate at
+		# y -106..-86 and stacks bark bubbles above that. -64 landed the prompt
+		# across the sprite's chest and under the plate. Put it below the feet
+		# for a person, keep the old offset for scenery, which has nothing there.
+		var lift := 34.0 if "npc_id" in closest else -64.0
+		_prompt_label.position = (closest.global_position - global_position) + Vector2(-70, lift)
 		_prompt_label.custom_minimum_size = Vector2(140, 0)
 	# Fade in/out instead of popping, so the prompt feels like UI, not a strobe.
 	var a := move_toward(_prompt_label.modulate.a, 1.0 if wants else 0.0, delta * 7.0)
@@ -163,6 +203,11 @@ func _setup_sprite_frames() -> void:
 		"idle_side": [12], "walk_side": [13, 14, 15, 16],
 		"hurt": [18], "celebrate": [19], "phone_idle": [20],
 		"laptop_idle": [21], "coffee_idle": [22], "panic_idle": [23],
+		# Rows 4-5: combat poses. Indices 0-23 above are frozen.
+		"dash_down": [24], "dash_up": [25], "dash_side": [26],
+		"cast_down": [27], "cast_up": [28], "cast_side": [29],
+		"cast_release_down": [30], "cast_release_up": [31], "cast_release_side": [32],
+		"hurt_up": [33], "hurt_side": [34], "celebrate_side": [35],
 	}
 	for anim_name in anims:
 		frames.add_animation(anim_name)
@@ -204,9 +249,15 @@ func _physics_process(delta: float) -> void:
 	_duck_cd = maxf(0.0, _duck_cd - delta)
 	_trace_cd = maxf(0.0, _trace_cd - delta)
 	_ctrlz_cd = maxf(0.0, _ctrlz_cd - delta)
+	_tick_pose(delta)
 	_track_hp_history(delta)
+	_tick_cache(delta)
 	_ext_impulse = _ext_impulse.move_toward(Vector2.ZERO, 1300.0 * delta)
 	_update_prompt(delta)
+	if _fx:
+		# Uses last frame's velocity for the motion lean — one frame of lag on a
+		# 4-degree tilt is invisible, and it keeps this call allocation-free.
+		_fx.sample(delta, velocity / SPEED)
 	if not can_move or GameManager.state != GameManager.GameState.PLAYING or EventManager.has_active_event():
 		velocity = Vector2.ZERO
 		_set_dust(false)
@@ -216,14 +267,17 @@ func _physics_process(delta: float) -> void:
 	if _dash_timer > 0.0:
 		_dash_timer -= delta
 		velocity = _dash_dir * DASH_SPEED
-		# Overbright cyan afterimages trailing the dash (3-4 over its duration).
+		# Chromatic afterimages trailing the dash (5-6 over its duration).
 		_ghost_t -= delta
 		if _ghost_t <= 0.0:
-			_ghost_t += DASH_DURATION / 4.0
+			_ghost_t += DASH_DURATION / 5.0
 			_spawn_dash_ghost()
+		_play_facing_anim("dash")
 		_set_dust(true)
 		move_and_slide()
 		GameManager.player_position = global_position
+		if _dash_timer <= 0.0 and _fx:
+			_fx.dash_end()
 		return
 	var input_dir := Vector2(
 		Input.get_axis("move_left", "move_right"),
@@ -237,7 +291,8 @@ func _physics_process(delta: float) -> void:
 		if _walk_timer > 0.12:
 			_walk_timer = 0.0
 			_walk_frame = (_walk_frame + 1) % 4
-		_play_facing_anim("walk")
+		if _pose_t <= 0.0:
+			_play_facing_anim("walk")
 		idle_timer.start(randf_range(10.0, 18.0))
 		sprite.position.y = _spr_base_y  # walk frames carry the motion
 		_set_dust(true)
@@ -245,7 +300,8 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		_set_dust(false)
 		if not sprite.animation in ["phone_idle", "laptop_idle", "coffee_idle", "panic_idle"]:
-			_play_facing_anim("idle")
+			if _pose_t <= 0.0:
+				_play_facing_anim("idle")
 			# Subtle breathing so the player doesn't look frozen while idle.
 			_idle_breath_t += delta
 			sprite.position.y = _spr_base_y + sin(_idle_breath_t * 2.6) * 1.6
@@ -268,6 +324,31 @@ func _play_facing_anim(prefix: String) -> void:
 	if sprite.sprite_frames.has_animation(anim):
 		if sprite.animation != anim:
 			sprite.play(anim)
+
+## Advances the one-shot pose clocks. The cast pose runs a wind-up frame and
+## then a release frame (the one carrying the muzzle flash and follow-through);
+## `_pose_t` mirrors whatever is left so walk/idle stay out of the way.
+func _tick_pose(delta: float) -> void:
+	if _cast_t > 0.0:
+		_cast_t = maxf(0.0, _cast_t - delta)
+		var want := "cast_%s" % _facing_dir
+		if _cast_t <= CAST_RELEASE:
+			want = "cast_release_%s" % _facing_dir
+		if sprite.sprite_frames and sprite.sprite_frames.has_animation(want) \
+				and sprite.animation != want:
+			sprite.play(want)
+		_pose_t = maxf(_pose_t, _cast_t)
+		return
+	_pose_t = maxf(0.0, _pose_t - delta)
+
+## Arm the cast pose — no-op on the legacy sheet, which has no such frames.
+func _play_cast_pose() -> void:
+	if sprite.sprite_frames == null:
+		return
+	if not sprite.sprite_frames.has_animation("cast_%s" % _facing_dir):
+		return
+	_cast_t = CAST_WINDUP + CAST_RELEASE
+	_pose_t = _cast_t
 
 func _on_idle_timer() -> void:
 	if not can_move or velocity != Vector2.ZERO:
@@ -321,18 +402,24 @@ func _use_ability(ability: String) -> void:
 			ResourceManager.modify("tokens", -cost)
 			var dmg := int(round(25.0 * ModelManager.dmg_mult()))
 			# Low-reliability models can hallucinate: the blast fizzles.
+			var weak := false
 			if randf() > ModelManager.reliability():
 				dmg = maxi(1, int(dmg * 0.2))
+				weak = true
 				GameManager.record_stat("reloads_detected")
-			_fire_projectile("prompt_blast", dmg)
+			_fire_projectile("prompt_blast", dmg, false, weak)
+			_play_cast_pose()
 			ability_cooldown.start(0.8)
 		"cache":
 			if ResourceManager.get_value("compute") < 3:
 				return
 			ResourceManager.modify("compute", -3)
 			is_invincible = true
-			invincibility.start(1.5)
+			invincibility.start(CACHE_DURATION)
 			ability_cooldown.start(3.0)
+			_cache_t = CACHE_DURATION
+			if _fx:
+				_fx.open_cache(Color("#24F0DC"))
 		"rubber_duck":
 			# Explain the bug to the duck: nearby enemies freeze (you found it).
 			if _duck_cd > 0.0 or ResourceManager.get_value("context") < 5:
@@ -347,6 +434,7 @@ func _use_ability(ability: String) -> void:
 			ResourceManager.modify("tokens", -10)
 			_trace_cd = 1.6
 			_fire_projectile("stack_trace", 22, true)
+			_play_cast_pose()
 		"ctrl_z":
 			# Undo: restore the HP you had a couple seconds ago (panic recovery).
 			if _ctrlz_cd > 0.0 or ResourceManager.get_value("context") < 4:
@@ -356,10 +444,22 @@ func _use_ability(ability: String) -> void:
 				return  # nothing to undo
 			ResourceManager.modify("context", -4)
 			_ctrlz_cd = CTRLZ_COOLDOWN
+			var before := hp
 			hp = mini(prev, MAX_HP)
 			health_changed.emit(hp, MAX_HP)
-			_ctrl_z_effect()
+			_ctrl_z_effect(hp - before)
 	AudioManager.play_sfx("ability")
+
+## The Cache bubble owns its own clock, so it pops exactly when the window it
+## represents ends — even if a dash or a hurt-frame restarted the shared timer.
+func _tick_cache(delta: float) -> void:
+	if _cache_t <= 0.0:
+		return
+	_cache_t -= delta
+	if _cache_t <= 0.0:
+		_cache_t = 0.0
+		if _fx:
+			_fx.close_cache()
 
 ## Sample HP each frame on a monotonic clock; keep only the last few seconds.
 func _track_hp_history(delta: float) -> void:
@@ -378,12 +478,16 @@ func _hp_from_ago(seconds: float) -> int:
 			best = int(entry[1])
 	return best
 
-func _ctrl_z_effect() -> void:
-	# A green "undo" pulse.
+## Undo, but for your entire body: a green pulse on the sprite plus the full
+## rewind sequence (ghosts running backwards down your own path, a clock
+## unwinding, the restored HP counted back on).
+func _ctrl_z_effect(healed: int = 0) -> void:
 	sprite.modulate = Color(0.5, 1.6, 0.7)
 	var tw := create_tween()
 	tw.tween_property(sprite, "modulate", Color.WHITE, 0.4)
 	particles.emitting = true
+	if _fx:
+		_fx.cast_ctrl_z(maxi(0, healed))
 
 const RUBBER_DUCK_RADIUS := 180.0
 
@@ -393,6 +497,8 @@ func _rubber_duck() -> void:
 			if global_position.distance_to(e.global_position) < RUBBER_DUCK_RADIUS:
 				e.stun(1.8)
 	particles.emitting = true
+	if _fx:
+		_fx.cast_rubber_duck(RUBBER_DUCK_RADIUS)
 
 func _start_dash() -> void:
 	if _dash_cd > 0.0 or not can_move:
@@ -407,11 +513,17 @@ func _start_dash() -> void:
 	invincibility.start(DASH_DURATION + 0.12)
 	_force_push()
 	particles.emitting = true
+	if _fx:
+		_fx.dash_burst(_dash_dir)
 	AudioManager.play_sfx("ability")
 
 ## A fading snapshot of the current sprite frame, tinted overbright cyan so the
-## dash leaves a neon smear through the dark.
+## dash leaves a neon smear through the dark. The FX rig upgrades this to a pair
+## of chromatically-offset ghosts; the legacy single ghost is the fallback.
 func _spawn_dash_ghost() -> void:
+	if _fx:
+		_fx.dash_ghost(_dash_dir)
+		return
 	var parent := get_parent()
 	if parent == null or sprite.sprite_frames == null:
 		return
@@ -463,14 +575,27 @@ func _aim_dir() -> Vector2:
 		return (nearest.global_position - global_position).normalized()
 	return facing if facing != Vector2.ZERO else Vector2.RIGHT
 
-func _fire_projectile(type: String, damage: int, pierce: bool = false) -> void:
+## Spawn a bolt and play the ability's signature. `weak` is the hallucination
+## misfire (the model was extremely confident and extremely wrong); `crit` is
+## rolled here so every shot — including scripted ones — can land hard.
+func _fire_projectile(type: String, damage: int, pierce: bool = false, weak: bool = false) -> void:
 	var dir := _aim_dir()
+	var crit := not weak and randf() < CRIT_CHANCE
+	if crit:
+		damage = int(round(float(damage) * CRIT_MULT))
 	var proj_scene := preload("res://scenes/combat/projectile.tscn")
 	var proj = proj_scene.instantiate()
 	proj.setup(dir, damage, type)
 	proj.pierce = pierce
+	proj.weak = weak
+	proj.crit = crit
 	proj.global_position = global_position + dir * 20
 	get_tree().current_scene.add_child(proj)
+	if _fx:
+		if type == "stack_trace":
+			_fx.cast_stack_trace(dir, Color("#FF2D95"), 760.0)
+		else:
+			_fx.cast_prompt_blast(dir, ModelManager.color(), weak)
 
 func apply_external_knockback(impulse: Vector2) -> void:
 	_ext_impulse = impulse
@@ -502,11 +627,22 @@ func ability_ready(id: String) -> bool:
 
 func take_damage(amount: int, _source: String = "") -> void:
 	if is_invincible:
+		# A hit that landed on the Cache bubble instead of you. Say so — an
+		# ability the player can't see working is an ability they stop using.
+		if _cache_t > 0.0 and _fx:
+			_fx.ping_cache()
 		return
 	hp -= amount
 	health_changed.emit(hp, MAX_HP)
-	if sprite.sprite_frames.has_animation("hurt"):
-		sprite.play("hurt")
+	if _fx:
+		_fx.hurt(amount, _threat_dir())
+	var hurt_anim := "hurt_%s" % _facing_dir
+	if not sprite.sprite_frames.has_animation(hurt_anim):
+		hurt_anim = "hurt"
+	if sprite.sprite_frames.has_animation(hurt_anim):
+		sprite.play(hurt_anim)
+		_cast_t = 0.0
+		_pose_t = 0.30
 	# Overbright red flash + a camera kick: pain must read instantly, mid-chaos.
 	if _flash_tween:
 		_flash_tween.kill()
@@ -524,12 +660,33 @@ func take_damage(amount: int, _source: String = "") -> void:
 	if hp <= 0:
 		_die()
 
+## Which way the pain came from, for the recoil. Cheapest correct answer: the
+## nearest living enemy. Falls back to "straight at you" when nothing is close.
+func _threat_dir() -> Vector2:
+	var nearest: Node2D = null
+	var best := 220.0
+	for e in get_tree().get_nodes_in_group("enemy"):
+		if is_instance_valid(e) and not e.get("_dying"):
+			var d: float = global_position.distance_to(e.global_position)
+			if d < best:
+				best = d
+				nearest = e
+	if nearest:
+		return (global_position - nearest.global_position).normalized()
+	return Vector2.ZERO
+
 func heal(amount: int) -> void:
 	hp = mini(hp + amount, MAX_HP)
 	health_changed.emit(hp, MAX_HP)
 
+## Death flow is UNCHANGED and still fully synchronous — trauma, `died`, then
+## GameManager.handle_player_death() in that exact order (see
+## tests/death_respawn_test.gd). The cinematic is cosmetic and self-cleaning:
+## it never awaits, never pauses, and never sits between those calls.
 func _die() -> void:
 	FxLib.add_trauma(get_tree(), 0.6)
+	if _fx:
+		_fx.death_sequence()
 	died.emit()
 	GameManager.handle_player_death()
 
@@ -538,12 +695,33 @@ func respawn(pos: Vector2) -> void:
 	hp = MAX_HP
 	health_changed.emit(hp, MAX_HP)
 	can_move = true
+	# Undo every cosmetic the death sequence applied, so you never respawn
+	# tilted, tinted, shielded or mid-recoil.
+	_cache_t = 0.0
+	_dash_timer = 0.0
+	_pose_t = 0.0
+	_cast_t = 0.0
+	_ext_impulse = Vector2.ZERO
+	if _flash_tween:
+		_flash_tween.kill()
+	if is_instance_valid(sprite):
+		sprite.modulate = Color.WHITE
+		sprite.rotation = 0.0
+		sprite.position = Vector2(0, _spr_base_y)
+	if _fx:
+		_fx.reset_cosmetics()
+	if is_instance_valid(sprite) and sprite.sprite_frames:
+		_play_facing_anim("idle")
 
 func _on_resource_changed(name: String, old_val: float, new_val: float) -> void:
 	if name == "tokens" and new_val > old_val:
 		particles.emitting = true
-		if sprite.sprite_frames.has_animation("celebrate"):
-			sprite.play("celebrate")
+		var cheer := "celebrate_side" if _facing_dir == "side" else "celebrate"
+		if not sprite.sprite_frames.has_animation(cheer):
+			cheer = "celebrate"
+		if sprite.sprite_frames.has_animation(cheer):
+			sprite.play(cheer)
+			_pose_t = 0.6
 			await get_tree().create_timer(0.6).timeout
 			_play_facing_anim("idle")
 

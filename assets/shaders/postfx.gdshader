@@ -2,6 +2,16 @@ shader_type canvas_item;
 // Full-screen post-processing: vignette + chromatic aberration + film grain
 // + subtle scanlines + neon color grade. Apply to a screen-covering ColorRect
 // in a CanvasLayer BETWEEN the world and the HUD.
+//
+// STRESS is the comedy channel. As technical debt climbs, the frame itself
+// starts to lose its composure: saturation drains except in the reds, the
+// corners heat up and breathe, the grain and fringing thicken, and past the
+// halfway mark the odd scanline slips sideways as though the compositor had
+// also stopped caring. At stress = 0 every one of those terms multiplies out to
+// nothing, so a clean run gets the clean grade.
+//
+// wash_amount/wash_color is a one-shot flash for incidents — seeded to 0 and
+// pulsed by postfx_layer.pulse().
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 uniform float intensity : hint_range(0.0, 1.0) = 1.0;
@@ -16,6 +26,10 @@ uniform float saturation : hint_range(0.0, 2.0) = 1.16;
 // Gentle S-curve applied after the lift. The lift is what stops shadows going
 // dead black; without a counter-curve it also turns the whole frame into haze.
 uniform float contrast : hint_range(0.0, 0.6) = 0.12;
+uniform float stress : hint_range(0.0, 1.0) = 0.0;
+uniform vec3 stress_tint = vec3(1.0, 0.55, 0.50);
+uniform vec4 wash_color : source_color = vec4(1.0, 0.28, 0.32, 1.0);
+uniform float wash_amount : hint_range(0.0, 1.0) = 0.0;
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -25,9 +39,19 @@ void fragment() {
 	vec2 uv = SCREEN_UV;
 	vec2 center = uv - 0.5;
 	float dist = length(center);
+	float st = clamp(stress, 0.0, 1.0);
+	float breathe = 0.62 + 0.38 * sin(TIME * 2.3);
 
-	// Chromatic aberration, stronger at edges.
-	vec2 ca = center * dist * aberration * 0.004 * intensity;
+	// Past the halfway mark, the occasional scanline slips sideways. Quadratic
+	// in stress so a moderately indebted run never sees it at all.
+	float slice = floor(uv.y * 44.0);
+	float tick = floor(TIME * 11.0);
+	float glitch = step(0.988, hash(vec2(slice, tick))) * st * st;
+	uv.x += (hash(vec2(slice, tick + 3.0)) - 0.5) * 0.014 * glitch;
+
+	// Chromatic aberration, stronger at edges — and stronger under stress.
+	float aberr = aberration * (1.0 + st * 0.9);
+	vec2 ca = center * dist * aberr * 0.004 * intensity;
 	float r = textureLod(screen_tex, uv + ca, 0.0).r;
 	float g = textureLod(screen_tex, uv, 0.0).g;
 	float b = textureLod(screen_tex, uv - ca, 0.0).b;
@@ -40,7 +64,11 @@ void fragment() {
 	vec3 lowc = clamp(col, vec3(0.0), vec3(1.0));
 	col += (lowc * lowc * (3.0 - 2.0 * lowc) - lowc) * contrast * intensity;
 	float luma = dot(col, vec3(0.299, 0.587, 0.114));
-	col = mix(vec3(luma), col, mix(1.0, saturation, intensity));
+	float sat = saturation * mix(1.0, 0.76, st);
+	col = mix(vec3(luma), col, mix(1.0, sat, intensity));
+	// Colour drains toward the tint rather than toward grey: the frame goes
+	// feverish, not dead.
+	col = mix(col, col * stress_tint, st * 0.30);
 
 	// Scanlines — extremely subtle.
 	float scan = sin(uv.y * scanline_count * 3.14159);
@@ -48,11 +76,16 @@ void fragment() {
 
 	// Film grain (animated).
 	float gr = hash(uv * vec2(1920.0, 1080.0) + fract(TIME) * 61.7) - 0.5;
-	col += gr * grain_amount * intensity;
+	col += gr * grain_amount * (1.0 + st * 0.9) * intensity;
 
-	// Vignette.
+	// Vignette, plus a slow hot pulse in the corners once debt is real.
 	float vig = smoothstep(0.85, 0.25, dist);
-	col *= mix(1.0, vig, vignette_strength * intensity);
+	float vamt = clamp(vignette_strength + st * 0.10 * breathe, 0.0, 1.0);
+	col *= mix(1.0, vig, vamt * intensity);
+	col += stress_tint * (1.0 - vig) * st * 0.09 * breathe;
+
+	// Incident flash.
+	col += wash_color.rgb * wash_color.a * wash_amount;
 
 	COLOR = vec4(col, 1.0);
 }

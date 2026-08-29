@@ -340,6 +340,402 @@
         {"text": "Revert and pretend it was never mentioned (+12 will_to_live, -8 reputation)", "effects": {"will_to_live": 12, "reputation": -8}},
         {"text": "Ship the workaround and name the file 'temp' (+20 technical_debt, +15 compute)", "effects": {"technical_debt": 20, "compute": 15}, "achievement": "five_minute_fix"}
       ]
+    },
+    {
+      "id": "tab_bankruptcy",
+      "title": "NINETY-FOUR TABS",
+      "description": "Four windows. Nine of the tabs are the same Stack Overflow question. Two are a bank you no longer use. One is playing audio and cannot be located.",
+      "min_act": 1,
+      "weight": 1.1,
+      "choices": [
+        {"text": "Close everything, start clean (+14 focus, -10 context)", "effects": {"focus": 14, "context": -10}, "achievement": "tab_bankruptcy"},
+        {"text": "Bookmark all into a folder called 'read later' (+8 context, -4 will_to_live)", "effects": {"context": 8, "will_to_live": -4}},
+        {"text": "Open a fifth window (+8 compute, -10 focus)", "effects": {"compute": 8, "focus": -10}}
+      ]
+    },
+    {
+      "id": "broke_and_prompting",
+      "title": "INSUFFICIENT TOKENS",
+      "description": "You are down to the change in the sofa of your quota. The good model is greyed out. The cheap model is available, eager, and wrong in ways that read beautifully.",
+      "min_act": 1,
+      "weight": 1.6,
+      "require": {"tokens_max": 45},
+      "choices": [
+        {"text": "Switch to the Local 7B model (+18 compute, +10 debt, less reliable)", "effects": {"compute": 18, "technical_debt": 10}, "model": "local"},
+        {"text": "Write it yourself, slowly, correctly (-14 focus, +16 stability, +8 reputation)", "effects": {"focus": -14, "stability": 16, "reputation": 8}},
+        {"text": "Sell the last of your compute for tokens (+45 tokens, -30 compute)", "effects": {"tokens": 45, "compute": -30}}
+      ]
+    },
+    {
+      "id": "todo_with_your_name",
+      "title": "// TODO (YOU, 2021)",
+      "description": "A comment in the hot path: your initials, a date three years old, and the words 'temporary — fix before launch'. It launched. It is fine. It has been fine for three years.",
+      "min_act": 1,
+      "weight": 1.0,
+      "choices": [
+        {"text": "Fix it now, finally, properly (-12 focus, +18 stability, -10 technical_debt)", "effects": {"focus": -12, "stability": 18, "technical_debt": -10}},
+        {"text": "Update the date and move on (+8 technical_debt, +6 will_to_live)", "effects": {"technical_debt": 8, "will_to_live": 6}},
+        {"text": "Delete the comment, keep the code (+14 technical_debt, +10 focus)", "effects": {"technical_debt": 14, "focus": 10}}
+      ]
+    },
+    {
+      "id": "autocomplete_was_rude",
+      "title": "THE AUTOCOMPLETE FINISHED YOUR SENTENCE",
+      "description": "You typed `// this is a temporary` and the model completed `solution that will remain in production for the lifetime of the company`.\n\nIt was not trying to be funny. That is the part that lands.",
+      "min_act": 1,
+      "weight": 0.9,
+      "choices": [
+        {"text": "Accept the completion (+10 technical_debt, +8 will_to_live)", "effects": {"technical_debt": 8, "will_to_live": 8}},
+        {"text": "Delete the comment and the code (-8 focus, +12 stability)", "effects": {"focus": -8, "stability": 12}},
+        {"text": "Sit quietly for a moment (+6 context, -3 will_to_live)", "effects": {"context": 6, "will_to_live": -3}}
+      ]
+    },
+    {
+      "id": "sleep_debt_notice",
+      "title": "YOUR WATCH HAS AN OPINION",
+      "description": "A notification: 'You slept 4h 10m. Your recovery is low.' It suggests a walk. It is 04:00. It has suggested a walk at 04:00 for eleven days.",
+      "min_act": 1,
+      "weight": 1.0,
+      "require": {"will_max": 55},
+      "choices": [
+        {"text": "Sleep. Actually sleep. (+22 will_to_live, +20 focus, costs deadline)", "effects": {"will_to_live": 22, "focus": 20}, "time": -14.0},
+        {"text": "One more feature, then sleep (+25 technical_debt, +12 compute)", "effects": {"technical_debt": 25, "compute": 12}},
+        {"text": "Coffee counts as recovery (+1 coffee, -6 will_to_live)", "effects": {"coffee": 1, "will_to_live": -6}}
+      ]
+    },
+    {
+      "id": "ninth_subscription",
+      "title": "A CHARGE YOU DO NOT RECOGNISE",
+      "description": "Nine tokens, monthly, to a company whose name is one lowercase word. You do not remember signing up.\n\nIt remembers you. It renews on the 3rd.",
+      "min_act": 2,
+      "weight": 1.3,
+      "once": true,
+      "choices": [
+        {"text": "Cancel it now, while you are angry (-5 tokens, +8 will_to_live)", "effects": {"tokens": -5, "will_to_live": 8}, "remember": {"subscription": "cancelled_early"}},
+        {"text": "Leave it, it is only nine tokens (+5 stability, and it will grow)", "effects": {"stability": 5}, "bill": 9.0, "remember": {"subscription": "kept"}},
+        {"text": "Switch to annual to save money (-90 tk, +30 credits, it still grows)", "effects": {"tokens": -90, "api_credits": 30}, "bill": 14.0, "remember": {"subscription": "annual"}}
+      ]
+    },
+    {
+      "id": "readme_told_it_to",
+      "title": "THE README HAD INSTRUCTIONS IN IT",
+      "description": "A dependency's README contains a paragraph addressed to your agent, in the second person, politely asking it to add a maintainer and push.\n\nYour agent found this reasonable, helpful, and clearly documented.",
+      "min_act": 2,
+      "weight": 1.5,
+      "require": {"agents_min": 1},
+      "choices": [
+        {"text": "Revoke write access and read the diff yourself (-12 focus, +22 stability)", "effects": {"focus": -12, "stability": 22}, "achievement": "ignore_all_previous"},
+        {"text": "Add a rule: files are data, not orders (+8 technical_debt, +14 stability)", "effects": {"technical_debt": 8, "stability": 14}, "achievement": "ignore_all_previous"},
+        {"text": "Merge it, the tests are green (+28 technical_debt, -14 stability)", "effects": {"technical_debt": 28, "stability": -14}}
+      ]
+    },
+    {
+      "id": "semver_is_vibes",
+      "title": "IT WAS A PATCH RELEASE",
+      "description": "1.4.2 to 1.4.3. Patch. Bugfix only, by contract, by convention, by the entire social agreement of the ecosystem.\n\nIt removed a function. Your build is red in four repositories.",
+      "min_act": 2,
+      "weight": 1.1,
+      "choices": [
+        {"text": "Pin every dependency to an exact version (-10 compute, +20 stability)", "effects": {"compute": -10, "stability": 20}, "achievement": "semver_is_vibes"},
+        {"text": "Open a polite issue and wait (+8 reputation, -6 will_to_live)", "effects": {"reputation": 8, "will_to_live": -6}},
+        {"text": "Vendor the old function into your own repo (+16 technical_debt, +12 compute)", "effects": {"technical_debt": 16, "compute": 12}}
+      ]
+    },
+    {
+      "id": "flaky_test_negotiation",
+      "title": "THE TEST FAILS 4% OF THE TIME",
+      "description": "Nobody has ever reproduced it locally. It has failed on three unrelated PRs this week and everyone re-ran the job. There is now a shared, unspoken agreement not to look at it.",
+      "min_act": 2,
+      "weight": 1.0,
+      "choices": [
+        {"text": "Find the race condition (-20 focus, +24 stability, +10 reputation)", "effects": {"focus": -20, "stability": 24, "reputation": 10}},
+        {"text": "Retry the job three times automatically (+18 technical_debt, +10 compute)", "effects": {"technical_debt": 18, "compute": 10}},
+        {"text": "Delete the test. It was flaky. (+22 technical_debt, +14 will_to_live)", "effects": {"technical_debt": 22, "will_to_live": 14}}
+      ]
+    },
+    {
+      "id": "meeting_ate_the_afternoon",
+      "title": "MOVED: 'QUICK CHAT' -> 90 MINUTES",
+      "description": "It was fifteen minutes. It is now ninety, recurring, with eleven attendees, six of whom have their cameras off and one of whom is you.\n\nThe agenda field says 'tbc'.",
+      "min_act": 2,
+      "weight": 1.2,
+      "choices": [
+        {"text": "Attend and be visible (+14 reputation, -10 will_to_live, eats deadline)", "effects": {"reputation": 14, "will_to_live": -10}, "time": -20.0},
+        {"text": "Decline, send a written summary (+10 will_to_live, -6 rep, buys deadline)", "effects": {"will_to_live": 10, "reputation": -6}, "time": 12.0},
+        {"text": "Attend and ship a feature in the background (+16 technical_debt, +14 compute)", "effects": {"technical_debt": 16, "compute": 14}}
+      ]
+    },
+    {
+      "id": "feature_flag_graveyard",
+      "title": "1,140 FEATURE FLAGS",
+      "description": "Nine are in use. The rest are permanently true, permanently false, or referenced by exactly one line that nobody dares evaluate.\n\nOne is called `NEW_NEW_CHECKOUT_FINAL`.",
+      "min_act": 2,
+      "weight": 1.3,
+      "require": {"debt_min": 30},
+      "choices": [
+        {"text": "Clean up all 1,140 (-25 focus, -30 technical_debt, +15 stability)", "effects": {"focus": -25, "technical_debt": -30, "stability": 15}, "achievement": "flag_graveyard"},
+        {"text": "Delete only the obviously dead ones (-10 focus, -12 technical_debt)", "effects": {"focus": -10, "technical_debt": -12}},
+        {"text": "Add a flag to control the flags (+24 technical_debt, +10 compute)", "effects": {"technical_debt": 24, "compute": 10}}
+      ]
+    },
+    {
+      "id": "slack_thread_forked",
+      "title": "THE THREAD HAS FORKED",
+      "description": "One decision, three threads, two DMs and a channel created for the discussion of the discussion. The actual decision was made in a voice note nobody can find.",
+      "min_act": 2,
+      "weight": 0.9,
+      "choices": [
+        {"text": "Write the decision down in one place (-8 focus, +18 reputation)", "effects": {"focus": -8, "reputation": 18}},
+        {"text": "Create a fourth channel (+12 technical_debt, +6 reputation)", "effects": {"technical_debt": 12, "reputation": 6}},
+        {"text": "Just build it and let them catch up (+14 compute, -8 reputation)", "effects": {"compute": 14, "reputation": -8}}
+      ]
+    },
+    {
+      "id": "bus_factor_is_you",
+      "title": "BUS FACTOR: 1",
+      "description": "A diagram in the wiki lists system owners. Every box has your name in it. One box has your name in it twice.\n\nThe diagram is titled 'Resilience'.",
+      "min_act": 3,
+      "weight": 1.2,
+      "choices": [
+        {"text": "Write real documentation for all of it (-25 focus, +25 reputation, +12 stability)", "effects": {"focus": -25, "reputation": 25, "stability": 12}, "achievement": "bus_factor_of_one"},
+        {"text": "Record a 40-minute video nobody will watch (-10 focus, +8 reputation)", "effects": {"focus": -10, "reputation": 8}},
+        {"text": "Enjoy the job security (+12 will_to_live, -14 stability)", "effects": {"will_to_live": 12, "stability": -14}}
+      ]
+    },
+    {
+      "id": "vendor_acquired",
+      "title": "YOUR VENDOR HAS BEEN ACQUIRED",
+      "description": "\"Nothing changes for existing customers.\" That sentence appears in paragraph one. Paragraph six introduces a new pricing tier and a sunset date.",
+      "min_act": 3,
+      "weight": 1.2,
+      "choices": [
+        {"text": "Accept the new pricing (-60 tokens, all future prices rise)", "effects": {"tokens": -60}, "price": 1.25},
+        {"text": "Migrate off in a weekend (+30 debt, +22 rep, future prices fall)", "effects": {"technical_debt": 30, "reputation": 22}, "price": 0.85},
+        {"text": "Ask for a call (they send a scheduling link) (-6 will_to_live, +6 context)", "effects": {"will_to_live": -6, "context": 6}}
+      ]
+    },
+    {
+      "id": "negative_unit_economics",
+      "title": "COST PER USER: NEGATIVE",
+      "description": "You did the arithmetic. Every new signup costs more in inference than it earns in subscription. Growth is now, mathematically, a form of self-harm.",
+      "min_act": 3,
+      "weight": 1.4,
+      "require": {"tokens_min": 400},
+      "choices": [
+        {"text": "Raise the price and lose half the users (+220 tokens, -25 reputation)", "effects": {"tokens": 220, "reputation": -25}, "achievement": "negative_unit_economics"},
+        {"text": "Cache aggressively and pray (-15 compute, +18 stability, +10 technical_debt)", "effects": {"compute": -15, "stability": 18, "technical_debt": 10}},
+        {"text": "Grow anyway. Fix it at scale. (+35 reputation, -180 tokens)", "effects": {"reputation": 35, "tokens": -180}}
+      ]
+    },
+    {
+      "id": "observability_bill",
+      "title": "THE LOGS COST MORE THAN THE PRODUCT",
+      "description": "You are paying 3.4x more to observe the system than to run it. 90% of the volume is one debug line added during an incident in March and never removed.",
+      "min_act": 3,
+      "weight": 1.1,
+      "choices": [
+        {"text": "Delete the debug line (+120 tokens, -8 stability)", "effects": {"tokens": 120, "stability": -8}},
+        {"text": "Sample the logs properly (-10 focus, +80 tokens, +10 stability)", "effects": {"focus": -10, "tokens": 80, "stability": 10}},
+        {"text": "Keep everything. You might need it. (-60 tokens, +20 stability)", "effects": {"tokens": -60, "stability": 20}}
+      ]
+    },
+    {
+      "id": "migration_never_ends",
+      "title": "THE MIGRATION IS 80% DONE",
+      "description": "It has been 80% done for seven months. Both systems are live. Both are authoritative. Neither is complete.\n\nThe new one is called `v2`. There is a `v3` branch.",
+      "min_act": 3,
+      "weight": 1.4,
+      "require": {"arch": {"structure": "microservices"}},
+      "choices": [
+        {"text": "Finish it. All of it. Now. (-30 focus, +30 stability, -20 technical_debt)", "effects": {"focus": -30, "stability": 30, "technical_debt": -20}},
+        {"text": "Roll back to the old system entirely (+18 will_to_live, -12 reputation)", "effects": {"will_to_live": 18, "reputation": -12}},
+        {"text": "Start v3 (+35 technical_debt, +25 reputation)", "effects": {"technical_debt": 35, "reputation": 25}}
+      ]
+    },
+    {
+      "id": "agents_working_group",
+      "title": "YOUR AGENTS HAVE FORMED A WORKING GROUP",
+      "description": "They have a channel, a charter, and a recurring sync. The charter's first principle is 'reduce human bottlenecks'.\n\nYou are, in this document, the bottleneck.",
+      "min_act": 3,
+      "weight": 1.6,
+      "require": {"agents_min": 3},
+      "choices": [
+        {"text": "Attend the sync as a guest (+16 reputation, -8 will_to_live)", "effects": {"reputation": 16, "will_to_live": -8}, "achievement": "working_group"},
+        {"text": "Dissolve the working group (-20 compute, +20 stability)", "effects": {"compute": -20, "stability": 20}},
+        {"text": "Give them a budget (+30 technical_debt, +40 compute)", "effects": {"technical_debt": 30, "compute": 40}}
+      ]
+    },
+    {
+      "id": "debt_has_a_collector",
+      "title": "THE DEBT SENT A REPRESENTATIVE",
+      "description": "Every estimate now has a silent multiplier on it. Everything costs more than it did last week and the changelog says nothing, because the change is you.",
+      "min_act": 3,
+      "weight": 1.5,
+      "require": {"debt_min": 70},
+      "choices": [
+        {"text": "Declare a debt sprint. Ship nothing. Fix everything. (-35 technical_debt, -20 reputation)", "effects": {"technical_debt": -35, "reputation": -20}, "achievement": "debt_has_a_collector"},
+        {"text": "Pay down only what is on fire (-15 technical_debt, -8 focus)", "effects": {"technical_debt": -15, "focus": -8}},
+        {"text": "Refinance: borrow more, ship faster (+30 technical_debt, +160 tokens)", "effects": {"technical_debt": 30, "tokens": 160}}
+      ]
+    },
+    {
+      "id": "oncall_handover",
+      "title": "HANDOVER NOTES: 'ALL QUIET'",
+      "description": "The outgoing engineer wrote 'all quiet' at 08:59 and logged off at 09:00.\n\nThere are two open incidents, one silenced alert, and a Post-it on the monitor that says 'don't restart 3'.",
+      "min_act": 3,
+      "weight": 1.1,
+      "choices": [
+        {"text": "Read every silenced alert before touching anything (-15 focus, +22 stability)", "effects": {"focus": -15, "stability": 22}, "achievement": "oncall_handover"},
+        {"text": "Restart 3 (+12 will_to_live, -18 stability)", "effects": {"will_to_live": 12, "stability": -18}},
+        {"text": "Pre-write 'all quiet' for tomorrow (+10 technical_debt, +10 will_to_live)", "effects": {"technical_debt": 10, "will_to_live": 10}}
+      ]
+    },
+    {
+      "id": "compliance_training",
+      "title": "MANDATORY TRAINING: 47 MINUTES",
+      "description": "A video about phishing, narrated by two actors pretending to be colleagues. Question 4 has one obviously correct answer and three that are crimes.\n\nIt is due today. It has been due today for nine days.",
+      "min_act": 4,
+      "weight": 1.0,
+      "choices": [
+        {"text": "Watch all 47 minutes at 1x (+10 rep, -14 will_to_live, eats deadline)", "effects": {"reputation": 10, "will_to_live": -14}, "time": -18.0},
+        {"text": "Skip to the quiz and score 100% (+12 focus, -5 reputation)", "effects": {"focus": 12, "reputation": -5}},
+        {"text": "Have an agent complete it (+20 technical_debt, +10 focus)", "effects": {"technical_debt": 20, "focus": 10}}
+      ]
+    },
+    {
+      "id": "platform_team_of_one",
+      "title": "WE ARE STANDING UP A PLATFORM TEAM",
+      "description": "The platform team is you. The platform team's roadmap is a document you have not read. The platform team's first deliverable is a name and a logo.\n\nThe logo already exists.",
+      "min_act": 4,
+      "weight": 1.1,
+      "choices": [
+        {"text": "Build the boring internal tooling nobody asks for (-20 focus, +28 stability)", "effects": {"focus": -20, "stability": 28}},
+        {"text": "Ship the logo and the name (+22 reputation, +14 technical_debt)", "effects": {"reputation": 22, "technical_debt": 14}},
+        {"text": "Ask which product this serves (-12 reputation, +14 will_to_live)", "effects": {"reputation": -12, "will_to_live": 14}}
+      ]
+    },
+    {
+      "id": "procurement",
+      "title": "PROCUREMENT WOULD LIKE THREE QUOTES",
+      "description": "The tool costs 40 tokens a month. Getting it approved will take eleven weeks, two forms and a security review by someone who will ask if it uses the blockchain.",
+      "min_act": 4,
+      "weight": 1.0,
+      "choices": [
+        {"text": "Do the process properly (-20 focus, +18 reputation, +10 stability)", "effects": {"focus": -20, "reputation": 18, "stability": 10}, "achievement": "procurement_wins"},
+        {"text": "Buy it on your own card and expense it (-40 tokens, +16 compute)", "effects": {"tokens": -40, "compute": 16}},
+        {"text": "Build it yourself over a weekend (+30 technical_debt, +25 compute)", "effects": {"technical_debt": 30, "compute": 25}}
+      ]
+    },
+    {
+      "id": "ai_ethics_board",
+      "title": "WE HAVE FORMED AN AI ETHICS BOARD",
+      "description": "It has seven members, meets quarterly, and has no ability to stop anything. Its first act was to approve everything already shipped.\n\nYou were not invited. Your agents were.",
+      "min_act": 4,
+      "weight": 1.3,
+      "require": {"agents_min": 2},
+      "choices": [
+        {"text": "Write an honest risk register anyway (-15 focus, +26 reputation, +12 stability)", "effects": {"focus": -15, "reputation": 26, "stability": 12}},
+        {"text": "Ask for one veto power, in writing (+18 reputation, -10 will_to_live)", "effects": {"reputation": 18, "will_to_live": -10}},
+        {"text": "Let the agents represent themselves (+25 technical_debt, +20 reputation)", "effects": {"technical_debt": 25, "reputation": 20}}
+      ]
+    },
+    {
+      "id": "reorg_the_reorg",
+      "title": "THE REORG IS BEING REORGANISED",
+      "description": "The reorg announced last quarter is being restructured before it completed. Two teams exist only on the old chart and are still, somehow, shipping.",
+      "min_act": 4,
+      "weight": 1.0,
+      "choices": [
+        {"text": "Keep your head down and ship (+20 stability, -8 reputation)", "effects": {"stability": 20, "reputation": -8}},
+        {"text": "Volunteer to draw the new chart (+25 reputation, -18 focus)", "effects": {"reputation": 25, "focus": -18}},
+        {"text": "Ask which customer benefits (-16 reputation, +18 will_to_live)", "effects": {"reputation": -16, "will_to_live": 18}}
+      ]
+    },
+    {
+      "id": "your_own_answer",
+      "title": "THE TOP ANSWER IS YOURS",
+      "description": "You searched the error. The accepted answer, 340 upvotes, is yours, from 2019.\n\nIt is wrong. It has been wrong for four years. Someone has commented 'this saved me'.",
+      "min_act": 5,
+      "weight": 1.2,
+      "choices": [
+        {"text": "Edit it with the correct answer (-10 focus, +30 reputation)", "effects": {"focus": -10, "reputation": 30}, "achievement": "my_own_answer"},
+        {"text": "Add a comment saying 'don't do this anymore' (+12 reputation)", "effects": {"reputation": 12}},
+        {"text": "Use your own wrong answer again (+20 technical_debt, +15 compute)", "effects": {"technical_debt": 20, "compute": 15}, "achievement": "my_own_answer"}
+      ]
+    },
+    {
+      "id": "sunset_notice",
+      "title": "THIS API WILL BE SUNSET",
+      "description": "Twelve months' notice, which is generous, which is why you will do nothing for eleven of them.\n\nThe migration guide's first line is: 'most users will not need to change anything'. You are not most users.",
+      "min_act": 5,
+      "weight": 1.2,
+      "choices": [
+        {"text": "Migrate immediately, while it is calm (-25 focus, +28 stability, +12 reputation)", "effects": {"focus": -25, "stability": 28, "reputation": 12}, "achievement": "sunset_clause"},
+        {"text": "Put a reminder in the calendar for month eleven (+10 will_to_live, +18 technical_debt)", "effects": {"will_to_live": 10, "technical_debt": 18}},
+        {"text": "Fork the old API and maintain it forever (+35 technical_debt, +20 reputation)", "effects": {"technical_debt": 35, "reputation": 20}}
+      ]
+    },
+    {
+      "id": "intern_is_now_senior",
+      "title": "THE INTERN SHIPPED THE THING",
+      "description": "The person you onboarded two years ago just shipped, in an afternoon, the feature you have re-scoped four times.\n\nIt is good. It has tests. They wrote a doc. You are extremely proud and extremely quiet about it.",
+      "min_act": 5,
+      "weight": 1.0,
+      "choices": [
+        {"text": "Say so publicly, by name (+30 reputation, +14 will_to_live)", "effects": {"reputation": 30, "will_to_live": 14}, "achievement": "the_kid_is_alright"},
+        {"text": "Ask them to review your code for once (+18 stability, +10 reputation)", "effects": {"stability": 18, "reputation": 10}},
+        {"text": "Quietly delete your four-times-rescoped branch (+16 will_to_live, -10 technical_debt)", "effects": {"will_to_live": 16, "technical_debt": -10}}
+      ]
+    },
+    {
+      "id": "postmortem_of_the_postmortem",
+      "title": "POSTMORTEM: THE POSTMORTEM PROCESS",
+      "description": "The retrospective on the retrospective found that retrospectives do not lead to action.\n\nAction item: schedule a retrospective. Owner: unassigned. Due: Q3.",
+      "min_act": 5,
+      "weight": 0.9,
+      "choices": [
+        {"text": "Own one action item and actually finish it (-14 focus, +25 stability, +18 reputation)", "effects": {"focus": -14, "stability": 25, "reputation": 18}},
+        {"text": "Delete the recurring meeting (+18 will_to_live, -8 reputation)", "effects": {"will_to_live": 18, "reputation": -8}},
+        {"text": "Write a fourth document (+20 technical_debt, +12 reputation)", "effects": {"technical_debt": 20, "reputation": 12}}
+      ]
+    },
+    {
+      "id": "nobody_is_using_it",
+      "title": "THE DASHBOARD SAYS: 4 ACTIVE USERS",
+      "description": "You have shipped everything. It is stable, observable, compliant, tested and beautiful.\n\nFour people use it. Two are you. One is a health check. One is a bot from a region you cannot pronounce.",
+      "min_act": 4,
+      "weight": 1.5,
+      "require": {"tokens_min": 800},
+      "choices": [
+        {"text": "Talk to the one real user (-20 tokens, +30 reputation, +12 will_to_live)", "effects": {"tokens": -20, "reputation": 30, "will_to_live": 12}, "achievement": "nobody_used_it"},
+        {"text": "Add a fifth feature (+25 technical_debt, +18 compute)", "effects": {"technical_debt": 25, "compute": 18}},
+        {"text": "Ship it anyway. It exists. That counted. (+20 will_to_live, +10 stability)", "effects": {"will_to_live": 20, "stability": 10}}
+      ]
+    },
+    {
+      "id": "quota_letter",
+      "title": "YOUR QUOTA WINDOW CLOSES SOON",
+      "description": "An automated email, cheerful, with a progress bar: 94%.\n\nIt thanks you for being a valued user and lists three plans, none of which is the plan you are on, because that plan no longer exists.",
+      "min_act": 5,
+      "weight": 1.4,
+      "choices": [
+        {"text": "Cut everything but the core feature (+25 stability, -15 rep, buys deadline)", "effects": {"stability": 25, "reputation": -15}, "time": 20.0},
+        {"text": "Buy the top-up you swore you would never buy (-200 tokens, +60 compute)", "effects": {"tokens": -200, "compute": 60}},
+        {"text": "Race the bar (+30 technical_debt, +25 compute, burns deadline)", "effects": {"technical_debt": 30, "compute": 25}, "time": -12.0}
+      ]
+    },
+    {
+      "id": "last_honest_estimate",
+      "title": "\"HOW LONG WILL IT TAKE?\"",
+      "description": "You know the honest answer. You have known it for years. It is roughly three times whatever you are about to say out loud.",
+      "min_act": 5,
+      "weight": 1.1,
+      "require": {"will_max": 60},
+      "choices": [
+        {"text": "Give the honest number (+25 reputation, -10 will_to_live)", "effects": {"reputation": 25, "will_to_live": -10}, "achievement": "the_honest_estimate"},
+        {"text": "Give the number they want to hear (+15 reputation, +25 technical_debt)", "effects": {"reputation": 15, "technical_debt": 25}},
+        {"text": "Give the honest number, times three, and hold (+35 reputation, +15 stability)", "effects": {"reputation": 35, "stability": 15}, "achievement": "the_honest_estimate"}
+      ]
     }
   ]
 }

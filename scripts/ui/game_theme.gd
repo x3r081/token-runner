@@ -244,7 +244,7 @@ static func attach_hover_motion(ctrl: Control, amount: float = 1.02) -> void:
 static func _hover_scale(ctrl: Control, target: Vector2) -> void:
 	if not is_instance_valid(ctrl) or not ctrl.is_inside_tree():
 		return
-	var old = ctrl.get_meta("_hover_tw", null)
+	var old: Variant = ctrl.get_meta("_hover_tw") if ctrl.has_meta("_hover_tw") else null
 	if old is Tween and (old as Tween).is_valid():
 		(old as Tween).kill()
 	var t := ctrl.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)

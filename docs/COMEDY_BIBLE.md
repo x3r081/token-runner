@@ -39,7 +39,12 @@ If a line would be ambiguous to a first-time player, the joke loses. Always.
 | Pause quips + "while you are here" reminder | `scripts/ui/pause_menu.gd` | reminder = region + tracked objective + key list |
 | Sarcastic-but-honest settings | `scripts/ui/settings_menu.gd` | quips come from `SettingsManager.get_setting_label()` |
 | Incident ticket dressing | `scripts/ui/event_popup.gd` | INC number derived from event id (stable per incident) |
-| Prop flavor + escalation | `scripts/world/generic_interactable.gd` | `FLAVOR: id -> [title, body_1, body_2, ...]` |
+| Prop flavor + escalation | `scripts/world/generic_interactable.gd` | `FLAVOR: id -> [title, body_1, body_2, ...]` plus `_state_note()`, which reacts to the live run |
+| NPC idle barks | `scripts/world/npc.gd` | `_bark_pool()` / `_claude_barks()`; throttled, state-aware, no interaction needed |
+| Archetype greeting quips | `scripts/autoload/dialogue_manager.gd` | `_reactive_intro()`, weighted so the most damning true line wins |
+| Claude's memory + "since we last spoke" | `scripts/autoload/dialogue_manager.gd` | `build_claude_lines()` / `_since_last_talk()` |
+| Prop popup presentation | `scripts/ui/flavor_popup.gd` | typewriter reveal, type-sigil plate, category accent |
+| Guide diagnosis + idle toast | `scripts/ui/guide_overlay.gd` | `_diagnosis_rows()` (numbers + verdicts), `_toast_line()` |
 | Upgrade framing, ship checklist, receipts | `scripts/ui/dream_app_panel.gd` | |
 | Region subtitles, locked taunts | `scripts/ui/map_panel.gd` | |
 | Dialogue continue phrasings, choice nudges | `scripts/ui/dialogue_ui.gd` | every variant still means "advance" |
@@ -83,7 +88,51 @@ no-repeat guarantee is the whole reason repeated screens stay funny.
 - **Undo, but for your entire body.** Ctrl+Z is the respawn key, and the death
   screen never lets that pun go.
 
+### Established in the reactive-world pass (keep consistent)
+- **The world is watching, and it is taking notes.** NPCs bark unprompted when
+  you walk past. The line is about *this* run — your debt, your deaths, your
+  deployed agents, your architecture — not about NPC life in general. The gag
+  only works if it is throttled: one bark per approach, a ~17s per-NPC cooldown,
+  and a global 3.2s gap so a crowded room never turns into a chorus.
+- **Claude has been in the room the whole time.** He opens with what changed
+  while you were gone ("Since we last spoke you have died three times. I didn't
+  move. Neither did the README."). He is a roommate, not a tutorial: fond,
+  unimpressed, and keeping a chart.
+- **The prop that empties.** Repeat-visiting a prop changes the *object*, not
+  just the joke: the fridge counts down its energy drinks, the whiteboard grows
+  arrows as your architecture gets worse, the plant tracks your technical debt,
+  the vault does the subtraction between your balance and the cheapest upgrade.
+  The state note is always literally true — that is why it lands.
+- **The verdict column.** The [H] guide's "THE STATE OF YOU" table prints the
+  number, then a dry verdict beside it. The number is the information; the
+  verdict is the joke. Never swap them.
+- **Type sigils.** Every prop popup is stamped with a one-or-two character type
+  code (`≈` kitchen, `>_` code, `#` hardware, `¶` paper, `€` money, `!` incident,
+  `*` nature, `§` data) in its category colour. Decorative, so it can be pure
+  bit — but keep the mapping stable, it is becoming a visual language.
+- **The nudge ladder only climbs.** Idle toasts alternate: one rung of the
+  escalating "I am not worried, I am logging it" ladder, then one line aimed at
+  your actual current problem. Both always name a key.
+
 ## NPC Personalities
+
+Each entry now has TWO registers, and they must not drift:
+
+- **Bark** (`npc.gd`, floating, unprompted, no interaction) — at most two short
+  lines, ~44 characters each. It is an overheard remark, not a speech.
+- **Greeting quip** (`dialogue_manager.gd _reactive_intro`) — one sentence,
+  state-aware, prepended to the authored JSON greeting. This one may be longer
+  and may name numbers.
+
+Both escalate: barks read `_passes` (how many times you have walked into their
+bubble), greeting quips read `npc_talks[npc_id]`.
+
+### Claude (Your Roommate) — the whole game's voice
+Has watched the entire night happen from a terminal he cannot leave. Fond,
+unimpressed, and quietly keeping records. Never encouraging; often correct.
+His barks are the running tally ("Lap 4 past my desk. We could just talk. [E]."),
+his greetings are the diff since you last spoke. He is allowed to be worried
+about you. He is not allowed to be sentimental about it for more than one line.
 
 ### Stack Overflow Hermit
 Ancient wisdom, outdated answers. Signs off every sentence with "marked as duplicate."
@@ -104,6 +153,18 @@ Buzzwords only. Has never written code. Demands AI strategy by Friday.
 Autonomous, enthusiastic, catastrophically wrong. Needs escorting.
 (Punch at the *autonomy hype*, never at juniors. The agent is a product
 decision that went wrong, not a person who is bad at their job.)
+Exclamation marks are permitted ONLY here — its cheerfulness is the joke, and it
+is the single exception to the "exhausted, not shouting" rule.
+
+### GPU Mine Foreman
+Occupational-safety voice applied to a shed full of consumer hardware. Every
+problem is thermal, structural or emotional; every fix is a zip tie. Deadpan
+about numbers that should alarm him ("Rig four's been hot since February.").
+
+### On-Call Engineer
+Hour thirty-eight. Has named the bugs. Speaks in incident grammar and blames DNS
+out loud while already checking DNS. Never bitter at people — only at the
+escalation policy, which lists him four times.
 
 ## Quest Naming Convention
 `[Relatable Pain] + [Understatement or Absurd Stakes]`
@@ -145,6 +206,11 @@ Reference energy — every new tip must clear this bar:
   the decision.
 
 ## Ideas Queue
+- ~~NPCs react to the run state without being talked to~~ — shipped as barks
+- ~~Claude remembers what changed while you were away~~ — `_since_last_talk()`
+- ~~Props react to the run, not just to the visit count~~ — `_state_note()`
+- Barks that reference the LAST bark ("as I was saying")
+- A prop that reacts to a bark it overheard (the fridge has opinions about Claude)
 - NPC notices save reload (fourth-wall, Act 2)
 - Boss complains about difficulty slider
 - Item description admits dev ran out of ideas (secret item)

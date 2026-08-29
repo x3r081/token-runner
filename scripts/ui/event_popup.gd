@@ -78,6 +78,12 @@ func _on_event(event_id: String, description: String) -> void:
 	if is_instance_valid(_footer_label):
 		_footer_label.text = _Comedy.pick("incident_footer", _Comedy.INCIDENT_FOOTER)
 	var choices: Array = ev.get("choices", [])
+	# This popup renders exactly three buttons. A fourth choice used to vanish
+	# without a word — that is how "Ask the AI" and "Roll back EVERYTHING" spent
+	# a release being unreachable. Say so loudly instead of silently dropping it.
+	if choices.size() > 3:
+		push_error("event_popup: '%s' has %d choices; only the first 3 can be shown. %s"
+			% [str(ev.get("id", "?")), choices.size(), str(choices.slice(3))])
 	for i in 3:
 		if i < choices.size():
 			choice_buttons[i].visible = true

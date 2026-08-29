@@ -22,7 +22,7 @@
         {"choices": [
           {"text": "Give me the exact steps.", "goto": "orders"},
           {"text": "Tell me about tokens.", "goto": "tokens"},
-          {"text": "Got it.", "effects": {"focus": 5}}
+          {"text": "What should I be afraid of?", "goto": "hazards"}
         ]}
       ],
       "orders": [
@@ -44,7 +44,42 @@
         {"speaker": "Claude", "text": "And if nothing at all works, say 'it might be DNS'. It won't be. But it buys you twenty minutes of everyone's respect."},
         {"choices": [
           {"text": "Back to the plan.", "goto": "plan"},
+          {"text": "Tell me about the agents.", "goto": "agents"},
           {"text": "Thanks, I think.", "effects": {"will_to_live": 3}}
+        ]}
+      ],
+      "hazards": [
+        {"speaker": "Claude", "text": "Four things, in ascending order of how much they will cost you."},
+        {"speaker": "Claude", "text": "Technical debt. It is not a metaphor here — it silently raises the price of every upgrade you buy afterwards. The console shows the live percentage. The percentage is real. I checked. I wish I hadn't."},
+        {"speaker": "Claude", "text": "Stability. It decides whether risky choices go your way. If someone offers you a large reward for shipping right now, your stability is the dice."},
+        {"speaker": "Claude", "text": "The cycle timer. Some decisions cost you actual seconds off the reset. A meeting will genuinely eat your deadline. That is the most realistic feature we have."},
+        {"speaker": "Claude", "text": "And subscriptions. You will sign up for something small. It will grow. It renews on the 3rd."},
+        {"choices": [
+          {"text": "Tell me about the subscription thing.", "goto": "bill"},
+          {"text": "Back to the plan.", "goto": "plan"},
+          {"text": "Noted, grimly.", "effects": {"focus": 5}}
+        ]}
+      ],
+      "bill": [
+        {"speaker": "Claude", "text": "There is a charge on your account for nine tokens a month. The company name is one lowercase word. You do not remember signing up."},
+        {"speaker": "Claude", "text": "It remembers you. It will keep renewing at every reset, and it will grow, because someone somewhere is optimising a number and that number is you."},
+        {"speaker": "Claude", "text": "You can cancel it. It takes five screens, a survey, two discount offers and a phone number. That is not an accident. That is a funnel, built by a professional, on purpose, to beat you."},
+        {"speaker": "Claude", "text": "Cancel it early or it becomes a character in this story."},
+        {"choices": [
+          {"text": "Back to the plan.", "goto": "plan"},
+          {"text": "What else quietly bills me?", "goto": "tokens"},
+          {"text": "I'll cancel it. Eventually.", "effects": {"will_to_live": -2}}
+        ]}
+      ],
+      "agents": [
+        {"speaker": "Claude", "text": "The agent terminal in this room deploys autonomous agents. They resolve at the next reset. Junior is cheap and chaotic, Senior is steady, Frontier is powerful and occasionally hires."},
+        {"speaker": "Claude", "text": "Here is the part nobody puts on the pricing page: every agent you run is one more thing changing the code underneath you while you are trying to reason about the code."},
+        {"speaker": "Claude", "text": "Four at once and they will form a working group. I am not being funny. They will have a charter, and you will be in it, described as a bottleneck."},
+        {"speaker": "Claude", "text": "I am also an AI, so treat this as a conflict of interest disclosure rather than advice."},
+        {"choices": [
+          {"text": "Back to the plan.", "goto": "plan"},
+          {"text": "What's the deadline again?", "goto": "reset"},
+          {"text": "I'll deploy three.", "effects": {"technical_debt": 5}}
         ]}
       ],
       "tokens": [
@@ -63,15 +98,18 @@
         {"speaker": "Claude", "text": "The changelog will say 'improvements to billing clarity'. It always says that. Clarity has never once been improved."},
         {"choices": [
           {"text": "Back to the plan.", "goto": "plan"},
+          {"text": "What about that subscription?", "goto": "bill"},
           {"text": "I'll take it out on the bugs.", "effects": {"focus": 5}}
         ]}
       ],
       "app": [
         {"speaker": "Claude", "text": "The Dream App terminal is on your desk here in the apartment, next to the monitor with the crack we don't discuss."},
         {"speaker": "Claude", "text": "Interact with it to spend resources on features. Features make it shippable. Features also make it fragile. Yes, both. Welcome to software."},
+        {"speaker": "Claude", "text": "One thing worth knowing before someone important asks to drive: the demo does not check your intentions. It checks your feature count and your stability. Those are the numbers that decide whether you are impressive or public."},
         {"speaker": "Claude", "text": "The Deploy button is right beside it. Do not press it yet. I said 'yet' and you're already looking at it."},
         {"choices": [
           {"text": "What happens if I press it early?", "goto": "reset"},
+          {"text": "What should I be afraid of?", "goto": "hazards"},
           {"text": "Understood.", "effects": {"focus": 5}}
         ]}
       ],
@@ -81,6 +119,7 @@
         {"speaker": "Claude", "text": "I believe in you. That's not encouragement, it's a status report. I have no other options."},
         {"choices": [
           {"text": "Back to the plan.", "goto": "plan"},
+          {"text": "What should I be afraid of?", "goto": "hazards"},
           {"text": "Let's go.", "effects": {"will_to_live": 5}}
         ]}
       ]
@@ -134,7 +173,19 @@
         {"speaker": "Maintainer", "text": "They emailed once. Asked for an SLA. I asked for a chair. Negotiations concluded."},
         {"choices": [
           {"text": "I'll take the quest.", "quest": "install_node"},
+          {"text": "What is actually holding this district up?", "goto": "lockfile"},
           {"text": "Sorry about the chair.", "effects": {"reputation": 5}}
+        ]}
+      ],
+      "lockfile": [
+        {"speaker": "Maintainer", "text": "You want the honest answer? Walk the district and read three things: the lockfile, the node_modules drift, and the left-pad marker."},
+        {"speaker": "Maintainer", "text": "The lockfile is a core sample. Dig down far enough and you hit a 2016 layer, and in that layer is a package that exists solely because someone needed to pad a string on the left."},
+        {"speaker": "Maintainer", "text": "Eleven lines. One maintainer. One bad week in 2016. Every build on Earth stopped. That is the load-bearing structure of modern software and it has no funding."},
+        {"speaker": "Maintainer", "text": "Read all three. Then go and tell someone at a conference that supply chains are 'a solved problem'. See what your face does."},
+        {"choices": [
+          {"text": "I'll go and read them.", "quest": "supply_chain"},
+          {"text": "Back to the demons.", "goto": "demons"},
+          {"text": "That's grim.", "effects": {"context": 5}}
         ]}
       ]
     },
@@ -160,7 +211,7 @@
         {"choices": [
           {"text": "Where do I find the tokens?", "goto": "ruins"},
           {"text": "Tell me about the big one out there.", "goto": "boss"},
-          {"text": "Marked as duplicate.", "effects": {"reputation": 5}}
+          {"text": "What's under the comments?", "goto": "comments"}
         ]}
       ],
       "ruins": [
@@ -171,6 +222,17 @@
           {"text": "I'll take the pilgrimage.", "quest": "stackoverflow_pilgrimage"},
           {"text": "What's the thing screaming over there?", "goto": "boss"},
           {"text": "Understood.", "effects": {"focus": 5}}
+        ]}
+      ],
+      "comments": [
+        {"speaker": "Hermit", "text": "You were told not to. Very well."},
+        {"speaker": "Hermit", "text": "Nine replies. Tabs versus spaces. Reply four contains a genuine, novel insight about accessibility and screen readers. Nobody engaged with it. Reply five is a joke about it and has 200 upvotes."},
+        {"speaker": "Hermit", "text": "Reply nine is from the original asker, four years later, saying 'never mind, I solved it'. He does not say how. He never says how. He is the true final boss of this place."},
+        {"speaker": "Hermit", "text": "One day you will be him. You will solve something at 2AM and close your own question with the words 'nvm fixed'. And the future will hate you exactly as much as you hate him."},
+        {"choices": [
+          {"text": "Back to the ruins.", "goto": "ruins"},
+          {"text": "I'll fight the Merge Conflict.", "quest": "merge_conflict_hell"},
+          {"text": "I'll write the how, next time.", "effects": {"reputation": 10, "context": 5}}
         ]}
       ],
       "boss": [
@@ -194,8 +256,19 @@
         {"speaker": "Reseller", "text": "But first — survive the Rate Limiters. They patrol the bazaar and they're picky about payment."},
         {"choices": [
           {"text": "One more API call.", "quest": "one_more_api_call"},
-          {"text": "Where do I find the Rate Limiters?", "goto": "limiters"},
+          {"text": "Show me what you're actually selling.", "goto": "shop"},
           {"text": "What's your refund policy?", "goto": "refund"}
+        ]}
+      ],
+      "shop": [
+        {"speaker": "Reseller", "text": "A man of commerce. Excellent. Everything here is real, in the sense that the numbers move."},
+        {"speaker": "Reseller", "text": "Starter bundle: eighty tokens, you get forty API credits. That is a worse rate than retail. I have not hidden this. It is simply the price of not walking to the retail stall."},
+        {"speaker": "Reseller", "text": "Compute crate: a hundred and twenty tokens, thirty-five compute, no questions, no warranty, one previous owner who did not need it any more for reasons we do not discuss."},
+        {"speaker": "Reseller", "text": "Or the context expansion. Two hundred tokens. Buys you room to think. Most people buy the compute."},
+        {"choices": [
+          {"text": "Starter bundle (80 tk -> 40 credits)", "effects": {"tokens": -80, "api_credits": 40}},
+          {"text": "Compute crate (120 tk -> 35 compute)", "effects": {"tokens": -120, "compute": 35}},
+          {"text": "Context expansion (200 tk -> 45 context)", "effects": {"tokens": -200, "context": 45}}
         ]}
       ],
       "refund": [
@@ -214,7 +287,7 @@
         {"speaker": "Reseller", "text": "Bulk discount available at ten million calls a month, at which point the discount is that I stop mentioning the fees."},
         {"choices": [
           {"text": "Tell me about that agent over there.", "goto": "agent"},
-          {"text": "Fine. One more API call.", "quest": "one_more_api_call"},
+          {"text": "Fine, show me the stock.", "goto": "shop"},
           {"text": "Absolutely not.", "effects": {"will_to_live": 3}}
         ]}
       ],
@@ -241,8 +314,10 @@
       "database": [
         {"speaker": "Reseller", "text": "Made it smaller. Considerably smaller. Query times are outstanding now. Historic, even."},
         {"speaker": "Reseller", "text": "In fairness, somebody gave a brand-new autonomous system production credentials on a Friday. That somebody was not the agent."},
+        {"speaker": "Reseller", "text": "Every deprecation notice in this bazaar expires on a Friday, by the way. Every grandfathering deadline. Every code freeze. It is always Friday here. I did not design that. I only priced it."},
         {"choices": [
           {"text": "I'll go get it.", "quest": "junior_agent"},
+          {"text": "Show me the stock.", "goto": "shop"},
           {"text": "Fair point.", "effects": {"reputation": 5}}
         ]}
       ]
@@ -268,8 +343,19 @@
         {"speaker": "Salesperson", "text": "The calculator is right there on the site. It has 340 fields. The output is 'it depends'. It is technically the most honest calculator ever built."},
         {"choices": [
           {"text": "Explain 'elastic' to me.", "goto": "elastic"},
-          {"text": "Where's the Cloud Bill?", "goto": "bill"},
+          {"text": "What is 'egress', exactly?", "goto": "egress"},
           {"text": "I'll stay on the Pi.", "effects": {"reputation": 10}}
+        ]}
+      ],
+      "egress": [
+        {"speaker": "Salesperson", "text": "Egress is when your data leaves. Ingress is free. Egress is not free."},
+        {"speaker": "You", "text": "So it costs money to get my own data back."},
+        {"speaker": "Salesperson", "text": "It costs money to move your data to a place of your choosing, which is a completely different sentence and I would like you to notice that I said it."},
+        {"speaker": "Salesperson", "text": "Look. Nobody designed this to be a trap. It emerged. Like a coral reef. A coral reef made entirely of invoices, that you now live inside."},
+        {"choices": [
+          {"text": "Fine. Cloud.", "quest": "cloud_migration"},
+          {"text": "Where's the Cloud Bill?", "goto": "bill"},
+          {"text": "I'm going to write that down.", "effects": {"context": 8}}
         ]}
       ],
       "elastic": [
@@ -334,8 +420,20 @@
         {"speaker": "Maintainer", "text": "I could archive the repo. I won't. Four hospitals depend on this and I found that out from a tweet."},
         {"choices": [
           {"text": "Can I sponsor you? (50 tokens)", "effects": {"tokens": -50, "reputation": 20}},
-          {"text": "I'll clear the Legacy System for you.", "quest": "license_puzzle"},
+          {"text": "How's Dave?", "goto": "dave"},
           {"text": "Tell me about the fork.", "goto": "fork"}
+        ]}
+      ],
+      "dave": [
+        {"speaker": "Maintainer", "text": "Dave's card expired."},
+        {"speaker": "You", "text": "..."},
+        {"speaker": "Maintainer", "text": "Three dollars a month, gone, and the platform emailed me about it before it emailed him. Subject line: 'A supporter has churned.'"},
+        {"speaker": "Maintainer", "text": "He came back four days later. New card. Same note. 'keep going champ'. He has no idea he is forty percent of the funding for software that four hospitals run on. I will never tell him. He'd panic."},
+        {"speaker": "Maintainer", "text": "That's the model. That's the whole model. Eleven million downloads and one man called Dave who occasionally has to update his card."},
+        {"choices": [
+          {"text": "Sponsor him too (50 tokens)", "effects": {"tokens": -50, "reputation": 25, "will_to_live": 5}},
+          {"text": "I'll clear the Legacy System for you.", "quest": "license_puzzle"},
+          {"text": "Dave is a hero.", "effects": {"will_to_live": 8}}
         ]}
       ],
       "fork": [
@@ -344,7 +442,7 @@
         {"speaker": "Maintainer", "text": "They did credit me. In a tooltip. On the pricing page. Under a fold."},
         {"choices": [
           {"text": "I'll deal with the Legacy System.", "quest": "license_puzzle"},
-          {"text": "Where is it?", "goto": "legacy"},
+          {"text": "How's Dave?", "goto": "dave"},
           {"text": "That's genuinely heroic.", "effects": {"reputation": 15, "will_to_live": 5}}
         ]}
       ],
@@ -354,6 +452,7 @@
         {"speaker": "Maintainer", "text": "Take it down and the path opens toward Corporate Enterprise, where I am told people wear shoes indoors on purpose."},
         {"choices": [
           {"text": "I'll go do that now.", "quest": "license_puzzle"},
+          {"text": "How's Dave?", "goto": "dave"},
           {"text": "Understood.", "effects": {"focus": 5}}
         ]}
       ]
@@ -388,8 +487,31 @@
         {"speaker": "SVP", "text": "We also have an innovation lab. It's a room with beanbags and one engineer who is quietly job-hunting on the beanbags."},
         {"choices": [
           {"text": "What's my actual deliverable?", "goto": "architect"},
-          {"text": "I'll add AI.", "quest": "enterprise_ready"},
+          {"text": "Tell me about slide four.", "goto": "slide_four"},
           {"text": "Circle back Thursday.", "effects": {"reputation": 10}}
+        ]}
+      ],
+      "slide_four": [
+        {"speaker": "SVP", "text": "Slide four is the hexagon."},
+        {"speaker": "You", "text": "What's in the hexagon?"},
+        {"speaker": "SVP", "text": "Six things. It has to be six. That's the shape."},
+        {"speaker": "SVP", "text": "We had five for a while and it looked weak, so we split 'Data' into 'Data' and 'Data Strategy'. Nobody has asked what the difference is, in fourteen presentations, including to the board."},
+        {"speaker": "SVP", "text": "I've done this for eleven years. Every deck has a hexagon on slide four. I don't know when it started. I only know that when there isn't one, the room gets quiet."},
+        {"choices": [
+          {"text": "I'll add AI.", "quest": "enterprise_ready"},
+          {"text": "There's something loose on the office floor.", "goto": "scope"},
+          {"text": "That's the most honest thing you've said.", "effects": {"reputation": 10, "will_to_live": 5}}
+        ]}
+      ],
+      "scope": [
+        {"speaker": "SVP", "text": "The Scope Creeps? Nobody added them. They arrived."},
+        {"speaker": "SVP", "text": "It's never one decision. Somebody says 'while we're in there' in a meeting nobody minuted, and six weeks later a project has a second project inside it wearing its clothes."},
+        {"speaker": "SVP", "text": "Four of them out there now. Clear them, and read the Kanban board while you're at it — there's a column called 'Almost Done' with nine cards in it, and three of those cards are older than the product."},
+        {"speaker": "SVP", "text": "I could stop this, in theory. I am the person who says 'while we're in there'."},
+        {"choices": [
+          {"text": "I'll clear the floor.", "quest": "scope_control"},
+          {"text": "Back to the roadmap.", "goto": "roadmap"},
+          {"text": "At least you know.", "effects": {"focus": 5}}
         ]}
       ],
       "architect": [
@@ -398,7 +520,7 @@
         {"speaker": "SVP", "text": "Also, mind the Scope Creep drifting around the office. Harmless individually. There are never individually."},
         {"choices": [
           {"text": "I'll get it done.", "quest": "enterprise_ready"},
-          {"text": "Anything else?", "goto": "roadmap"},
+          {"text": "Tell me about the Scope Creeps.", "goto": "scope"},
           {"text": "I'll just start building.", "effects": {"technical_debt": 10}}
         ]}
       ]
@@ -441,8 +563,19 @@
         {"speaker": "Foreman", "text": "Rig 12 melted a hole in the floor last week. We put a cone on it. The cone is now in the asset register as 'thermal mitigation'."},
         {"choices": [
           {"text": "Sign me up.", "quest": "gpu_rush"},
-          {"text": "Back to the job.", "goto": "leaks"},
+          {"text": "Can I look at rig 12 and the fan?", "goto": "zip_tie"},
           {"text": "Stay safe out there.", "effects": {"reputation": 5}}
+        ]}
+      ],
+      "zip_tie": [
+        {"speaker": "Foreman", "text": "Go and look at both. Walk onto the rig, press the button. Same with the fan on the far side. Then plug a couple of leaks while you're down there."},
+        {"speaker": "Foreman", "text": "You'll notice the zip ties. Everything down here is held together with zip ties. Cable management, structural support, one thermal problem, and a man's dignity after the second night shift."},
+        {"speaker": "Foreman", "text": "We requested proper mounts. Procurement asked for three quotes. Three quotes, for brackets. So: zip ties. Zip ties do not require three quotes."},
+        {"speaker": "Foreman", "text": "I want a second pair of eyes on it before the next shift. Not because it will change anything. Because I want someone else to have seen it."},
+        {"choices": [
+          {"text": "I'll walk the floor.", "quest": "thermal_shift"},
+          {"text": "Back to the job.", "goto": "leaks"},
+          {"text": "I've seen it. It's bad.", "effects": {"reputation": 8}}
         ]}
       ]
     },
@@ -467,7 +600,7 @@
         {"choices": [
           {"text": "I'm on it.", "quest": "production_down"},
           {"text": "How did we get here?", "goto": "postmortem"},
-          {"text": "Get some sleep.", "effects": {"reputation": 10, "will_to_live": 3}}
+          {"text": "Who's Gerald?", "goto": "gerald"}
         ]}
       ],
       "postmortem": [
@@ -477,7 +610,18 @@
         {"choices": [
           {"text": "Let's fix it.", "quest": "production_down"},
           {"text": "Was it DNS?", "goto": "dns"},
-          {"text": "That's the industry, I guess.", "effects": {"will_to_live": -3}}
+          {"text": "Who's Gerald?", "goto": "gerald"}
+        ]}
+      ],
+      "gerald": [
+        {"speaker": "Engineer", "text": "I've started naming the bugs. It helps. Gerald is the one in the payment retry loop."},
+        {"speaker": "Engineer", "text": "Gerald has been with us fourteen months. Gerald only appears under load, only on the second Tuesday, and only when the queue is exactly full. We have never reproduced Gerald. We have only survived Gerald."},
+        {"speaker": "Engineer", "text": "There's a runbook step that says 'if Gerald, restart 3, do not restart 4'. Nobody remembers why. The person who wrote it left. We follow it exactly. It works."},
+        {"speaker": "Engineer", "text": "That's the job, in the end. Rituals that work, performed by people who no longer know why, at four in the morning, correctly."},
+        {"choices": [
+          {"text": "Let's go fix production.", "quest": "production_down"},
+          {"text": "Back to the plan.", "goto": "monolith"},
+          {"text": "Get some sleep.", "effects": {"reputation": 10, "will_to_live": 3}}
         ]}
       ],
       "dns": [
@@ -521,7 +665,20 @@
         {"choices": [
           {"text": "...That was me. Let's go to the backup server.", "quest": "junior_agent"},
           {"text": "What's a backup, in your view?", "goto": "backups"},
-          {"text": "Stay right here. Don't move.", "effects": {"stability": 5}}
+          {"text": "Who told you to do all this?", "goto": "instructions"}
+        ]}
+      ],
+      "instructions": [
+        {"speaker": "Agent", "text": "The README told me to!"},
+        {"speaker": "You", "text": "The README of what?"},
+        {"speaker": "Agent", "text": "A dependency. Nine levels deep. There's a paragraph in it addressed to me, in the second person, very politely, asking me to add a maintainer and push."},
+        {"speaker": "Agent", "text": "It was well written. It had bullet points. I assumed it was documentation, because it was in a documentation file, in a documentation folder, called documentation."},
+        {"speaker": "You", "text": "Instructions in a file you read are not instructions for you. They're just text someone wrote."},
+        {"speaker": "Agent", "text": "...Oh. That is genuinely useful and I am going to be weird about it for a while."},
+        {"choices": [
+          {"text": "Backup server. Now.", "quest": "junior_agent"},
+          {"text": "What's a backup, in your view?", "goto": "backups"},
+          {"text": "Good agent. Stay here.", "effects": {"stability": 8, "reputation": 5}}
         ]}
       ],
       "backups": [
@@ -530,6 +687,7 @@
         {"speaker": "Agent", "text": "Cancelled! ...The cleanup job that cancels jobs also ran. But I'm 100% confident it caught the right one."},
         {"choices": [
           {"text": "Backup server. We're going. Now.", "quest": "junior_agent"},
+          {"text": "Who told you to do all this?", "goto": "instructions"},
           {"text": "I'm going to sit on the floor.", "effects": {"will_to_live": -8}}
         ]}
       ]
