@@ -152,8 +152,16 @@ Committed on the branch:
 
 - `a3388d9` — **round 1**: art-direction contract + 10-shader library, full lighting/atmosphere/art/UI/VFX overhaul.
 - `054d8b6` — **round 2**: player guidance system, comedy expansion, second graphics iteration.
+- `af6fd1a` — **round 3**: world typography system, portal vortexes, per-region
+  atmosphere/weather, focal set-pieces, combat spectacle, comedy-as-gameplay.
+  Also fixed four bugs no test could see — NPCs going permanently silent after
+  one conversation (`.clear()` on references into the parsed JSON was destroying
+  the dialogue database), the shop selling on credit, `Continue` re-arming every
+  completed storyline, and guidance pointing at where a quest was *given* rather
+  than where it can be *completed*.
 
-Branch is **2 commits ahead of its own origin** (unpushed) and ~94 ahead of `main`.
+Working tree clean, all 28 suites green. Branch is **3 commits ahead of its own
+origin** (unpushed) and ~95 ahead of `main`.
 
 ### The guidance system (the player's biggest past complaint)
 
