@@ -103,6 +103,9 @@ jobs:
       - name: Run animation (liveliness) regression test
         run: godot --headless --path . --scene tests/animation_test.tscn
 
+      - name: Run first-region winnability regression test
+        run: godot --headless --path . --scene tests/region_winnable_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 

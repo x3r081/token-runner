@@ -468,7 +468,10 @@ static func _region_enemies(region_id: String) -> Array:
 		"localhost":
 			return [{"type": "bug", "count": 3, "hp": 20}]
 		"dependency_district":
-			return [{"type": "dependency_demon", "count": 4}, {"type": "null_reference", "count": 3}]
+			# First combat region: a fair, winnable introduction (Localhost has 2).
+			# 7 here was a difficulty spike a new player couldn't clear before the
+			# swarm wore them down. Later regions ramp back up.
+			return [{"type": "dependency_demon", "count": 2}, {"type": "null_reference", "count": 2}]
 		"stackoverflow_ruins":
 			return [{"type": "bug", "count": 3}, {"type": "merge_conflict", "count": 1, "hp": 80, "boss": true}]
 		"api_bazaar":
