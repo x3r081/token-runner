@@ -41,6 +41,9 @@ var _boss_tele := 0.0
 var _dying := false
 var _home := Vector2.ZERO
 var _aggroed := false
+var _anim_t := 0.0
+var _spr_base_y := 0.0
+var _spr_base_scale := Vector2.ONE
 
 func _ready() -> void:
 	add_to_group("enemy")
@@ -55,6 +58,9 @@ func _ready() -> void:
 	_base_scale = scale
 	_special_cd = randf_range(2.5, 4.5)
 	_home = global_position
+	_spr_base_y = sprite.position.y
+	_spr_base_scale = sprite.scale
+	_anim_t = randf() * TAU  # desync the herd so they don't bob in lockstep
 	# Bosses own their arena — they always engage once you're in the room.
 	if is_boss:
 		aggro_radius = 900.0
@@ -66,6 +72,32 @@ func _ready() -> void:
 
 func stun(duration: float) -> void:
 	_stun_time = maxf(_stun_time, duration)
+
+## Procedural liveliness: idle enemies breathe; moving enemies scuttle-hop and
+## waddle. Runs every frame (independent of the physics early-returns) so even
+## dormant/telegraphing enemies never look like frozen stickers.
+func _process(delta: float) -> void:
+	if not is_instance_valid(sprite):
+		return
+	_anim_t += delta
+	if _stun_time > 0.0:
+		# Stunned: a dizzy wobble.
+		sprite.position.y = _spr_base_y
+		sprite.rotation = sin(_anim_t * 22.0) * 0.18
+		sprite.scale = _spr_base_scale
+		return
+	if velocity.length() > 12.0:
+		# Scuttle: a springy hop with squash-and-stretch and a waddle.
+		var hop := absf(sin(_anim_t * 11.0))
+		sprite.position.y = _spr_base_y - hop * 7.0
+		sprite.rotation = sin(_anim_t * 11.0) * 0.14
+		sprite.scale = Vector2(_spr_base_scale.x * (1.0 - hop * 0.12), _spr_base_scale.y * (1.0 + hop * 0.16))
+	else:
+		# Idle: breathe (bob + gentle squash).
+		var b := sin(_anim_t * 2.8)
+		sprite.position.y = _spr_base_y + b * 2.4
+		sprite.rotation = lerp_angle(sprite.rotation, 0.0, delta * 8.0)
+		sprite.scale = Vector2(_spr_base_scale.x * (1.0 + b * 0.05), _spr_base_scale.y * (1.0 - b * 0.05))
 
 ## Called on player respawn: forget the player and return to the home post, so a
 ## respawn is never immediately re-swarmed by enemies that were mid-chase.

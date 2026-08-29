@@ -7,6 +7,8 @@ signal died
 const SPEED := 220.0
 const MAX_HP := 100
 const FRAME_SIZE := 64
+const _spr_base_y := -20.0
+var _idle_breath_t := 0.0
 
 ## Dash / Force Push: a guaranteed escape + knockback tool. Even if enemies ever
 ## crowd the player, a dash bursts through them and shoves them away.
@@ -183,10 +185,16 @@ func _physics_process(delta: float) -> void:
 			_walk_frame = (_walk_frame + 1) % 4
 		_play_facing_anim("walk")
 		idle_timer.start(randf_range(10.0, 18.0))
+		sprite.position.y = _spr_base_y  # walk frames carry the motion
 	else:
 		velocity = Vector2.ZERO
 		if not sprite.animation in ["phone_idle", "laptop_idle", "coffee_idle", "panic_idle"]:
 			_play_facing_anim("idle")
+			# Subtle breathing so the player doesn't look frozen while idle.
+			_idle_breath_t += delta
+			sprite.position.y = _spr_base_y + sin(_idle_breath_t * 2.6) * 1.6
+		else:
+			sprite.position.y = _spr_base_y
 	velocity += _ext_impulse
 	move_and_slide()
 	GameManager.player_position = global_position

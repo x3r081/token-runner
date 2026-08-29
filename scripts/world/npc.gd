@@ -8,6 +8,10 @@ class_name NPC
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var indicator: Sprite2D = $QuestIndicator
 
+var _anim_t := 0.0
+var _spr_base_y := 0.0
+var _ind_base_y := 0.0
+
 const NPC_KIND := {
 	"roommate_ai": "claude",
 	"cloud_salesperson": "suit",
@@ -23,6 +27,9 @@ func _ready() -> void:
 	interact_text = "Talk to %s" % DialogueManager.get_npc_name(npc_id)
 	label.text = DialogueManager.get_npc_name(npc_id)
 	_setup_sprite()
+	_spr_base_y = sprite.position.y
+	_ind_base_y = indicator.position.y if indicator else 0.0
+	_anim_t = randf() * TAU
 	QuestManager.quest_started.connect(_on_quest_changed)
 	QuestManager.quest_completed.connect(_on_quest_changed)
 	_update_indicator()
@@ -43,6 +50,18 @@ func _setup_sprite() -> void:
 		sh.position = Vector2(0, 8)
 		sh.z_index = -1
 		add_child(sh)
+
+## Gentle breathing so NPCs feel alive rather than painted onto the floor. The
+## quest indicator floats a little higher/faster to draw the eye.
+func _process(delta: float) -> void:
+	_anim_t += delta
+	if is_instance_valid(sprite):
+		var b := sin(_anim_t * 1.9)
+		sprite.position.y = _spr_base_y + b * 2.6
+		# Gentle breathing scale (baseline set in _setup_sprite is 2.2).
+		sprite.scale = Vector2(2.2 * (1.0 - b * 0.02), 2.2 * (1.0 + b * 0.03))
+	if is_instance_valid(indicator) and indicator.visible:
+		indicator.position.y = _ind_base_y + sin(_anim_t * 3.4) * 4.0
 
 func _on_interact(_player: Node) -> void:
 	DialogueManager.start_dialogue(npc_id)
