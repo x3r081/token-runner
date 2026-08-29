@@ -20,3 +20,6 @@ func _on_body_entered(body: Node2D) -> void:
 func interact(_player: Node) -> void:
 	if GameManager.is_region_unlocked(target_region):
 		GameManager.change_region(target_region)
+
+func get_prompt() -> String:
+	return "Enter %s" % portal_label
