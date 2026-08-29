@@ -106,6 +106,9 @@ jobs:
       - name: Run first-region winnability regression test
         run: godot --headless --path . --scene tests/region_winnable_test.tscn
 
+      - name: Run random-events validation regression test
+        run: godot --headless --path . --scene tests/events_test.tscn
+
       - name: Validate project loads
         run: godot --headless --path . --quit-after 1
 

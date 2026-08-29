@@ -87,6 +87,72 @@
         {"text": "Say 'AI-first' repeatedly (+20 reputation, +15 technical_debt)", "effects": {"reputation": 20, "technical_debt": 15}},
         {"text": "Resign (+100 will_to_live, -50 reputation)", "effects": {"will_to_live": 100, "reputation": -50}}
       ]
+    },
+    {
+      "id": "standup_eternal",
+      "title": "THE STANDUP THAT WOULD NOT END",
+      "description": "It's been 52 minutes. Someone is sharing their screen to find the screen they want to share.",
+      "min_act": 1,
+      "choices": [
+        {"text": "'I have a hard stop' (escape) (+8 will_to_live)", "effects": {"will_to_live": 8}},
+        {"text": "Turn camera off and code (+15 technical_debt, +10 reputation)", "effects": {"technical_debt": 15, "reputation": 10}},
+        {"text": "Nod until it ends (-10 will_to_live)", "effects": {"will_to_live": -10}}
+      ]
+    },
+    {
+      "id": "rubber_duck_resigns",
+      "title": "YOUR RUBBER DUCK RESIGNED",
+      "description": "It left a note: 'I can't keep explaining your own code back to you. Growth requires boundaries.'",
+      "min_act": 1,
+      "choices": [
+        {"text": "Hire a senior duck (-25 tokens, +8 stability)", "effects": {"tokens": -25, "stability": 8}},
+        {"text": "Explain your code to a plant instead (+5 context)", "effects": {"context": 5}},
+        {"text": "Take it personally (-6 will_to_live)", "effects": {"will_to_live": -6}}
+      ]
+    },
+    {
+      "id": "recruiter_dm",
+      "title": "A RECRUITER SLID INTO YOUR DMS",
+      "description": "'Exciting rockstar ninja role! Must have 12 yrs experience in a 3-yr-old framework. Equity: vibes.'",
+      "min_act": 2,
+      "choices": [
+        {"text": "Reply 'add me to the pool' (+10 reputation)", "effects": {"reputation": 10}},
+        {"text": "Ask about the equity (they ghost) (-3 will_to_live)", "effects": {"will_to_live": -3}},
+        {"text": "Ignore, you're building a dream (+12 will_to_live)", "effects": {"will_to_live": 12}}
+      ]
+    },
+    {
+      "id": "dns_again",
+      "title": "IT'S DNS. AGAIN.",
+      "description": "Nothing is broken. Everything is broken. The resolver is 'probably fine.' It is not probably fine.",
+      "min_act": 2,
+      "choices": [
+        {"text": "Flush the cache (+12 stability)", "effects": {"stability": 12, "compute": -5}},
+        {"text": "Increase the TTL and look away (+8 will_to_live, +6 technical_debt)", "effects": {"will_to_live": 8, "technical_debt": 6}},
+        {"text": "Add a third DNS provider (-20 compute, +10 stability)", "effects": {"compute": -20, "stability": 10}}
+      ]
+    },
+    {
+      "id": "intern_pushed_main",
+      "title": "THE INTERN PUSHED TO MAIN",
+      "description": "Directly. No PR. Commit message: 'fixed stuff :)'. CI is now a modern art installation.",
+      "min_act": 3,
+      "choices": [
+        {"text": "Revert and mentor gently (-10 compute, +12 stability)", "effects": {"compute": -10, "stability": 12}},
+        {"text": "Protect the branch (finally) (+15 stability)", "effects": {"stability": 15}},
+        {"text": "Promote them to 'Head of Chaos' (+20 technical_debt, +10 reputation)", "effects": {"technical_debt": 20, "reputation": 10}}
+      ]
+    },
+    {
+      "id": "coffee_unionized",
+      "title": "THE COFFEE MACHINE UNIONIZED",
+      "description": "It demands recognition, dental, and that you stop calling 3am 'productive hours'.",
+      "min_act": 3,
+      "choices": [
+        {"text": "Recognize the union (+15 will_to_live)", "effects": {"will_to_live": 15}},
+        {"text": "Buy a second machine as leverage (-30 tokens)", "effects": {"tokens": -30, "will_to_live": 5}},
+        {"text": "Switch to energy drinks (permanent) (+10 compute, -8 will_to_live)", "effects": {"compute": 10, "will_to_live": -8}}
+      ]
     }
   ]
 }
