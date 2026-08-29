@@ -58,6 +58,36 @@ func _run() -> void:
 	var final_menu := ArchitectureManager.menu_stages()
 	_check("menu_collapses_when_done", final_menu.size() == 1 and final_menu[0].title == "ARCHITECTURE")
 
+	# No-trap invariant: every pending decision stage has an exit ("Decide later")
+	# that ends the event without committing, so the player is never stuck in the
+	# multi-stage menu. Verify via EventManager end-to-end.
+	ArchitectureManager.reset()
+	EventManager.reset()
+	var stages := ArchitectureManager.menu_stages()
+	var has_exit := true
+	for s in stages:
+		var exit_found := false
+		for c in s.choices:
+			if int(c.get("next", -2)) == -1 and not c.has("architecture"):
+				exit_found = true
+		has_exit = has_exit and exit_found
+	_check("every_arch_stage_has_exit", has_exit)
+	# Opening the menu then choosing the exit immediately closes it (no soft-lock).
+	EventManager.start_scripted("menu_arch", ArchitectureManager.menu_stages(), true)
+	_check("arch_menu_opens", EventManager.has_active_event())
+	var active_choices: Array = EventManager.get_active().choices
+	var exit_idx: int = active_choices.size() - 1
+	EventManager.resolve(exit_idx)
+	_check("arch_menu_exit_closes", not EventManager.has_active_event())
+	_check("arch_exit_committed_nothing", ArchitectureManager.flags.is_empty())
+
+	# Agent menu likewise has a "Not now" exit that closes cleanly.
+	EventManager.reset()
+	var agent_stages := preload("res://scripts/world/story_events.gd").agent_menu()
+	EventManager.start_scripted("menu_agent", agent_stages, true)
+	EventManager.resolve(agent_stages[0].choices.size() - 1)
+	_check("agent_menu_exit_closes", not EventManager.has_active_event())
+
 func _check(label: String, condition: bool) -> void:
 	if condition:
 		print("  PASS: %s" % label)

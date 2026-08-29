@@ -116,6 +116,7 @@ func menu_stages() -> Array:
 			"choices": [
 				{"text": "%s %s" % [d.a.label, d.a.hint], "architecture": {"decision": d.id, "option": d.a.id}, "next": nxt},
 				{"text": "%s %s" % [d.b.label, d.b.hint], "architecture": {"decision": d.id, "option": d.b.id}, "next": nxt},
+				{"text": "Decide later (close)", "next": -1},
 			],
 		})
 	return stages

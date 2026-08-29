@@ -230,6 +230,7 @@ static func agent_menu() -> Array:
 				{"text": "Deploy Junior Agent (15 tk)", "deploy_agent": "junior", "next": -1},
 				{"text": "Deploy Senior Agent (40 tk)", "deploy_agent": "senior", "next": -1},
 				{"text": "Deploy Frontier Agent (90 tk)", "deploy_agent": "frontier", "next": -1},
+				{"text": "Not now (close)", "next": -1},
 			],
 		},
 	]
