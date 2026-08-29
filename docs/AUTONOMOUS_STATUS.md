@@ -9,8 +9,24 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 46 — new Ctrl+Z (undo) combat ability. Next: more quest variety;
-hand-crafted per-region furniture set-pieces.
+Iteration 47 — critical playtest + first-region difficulty-curve fix. Next:
+hand-crafted per-region furniture set-pieces; more quest categories.
+
+### Iteration 47 — Critical playtest (no soft-locks) + fair first combat region
+- Ran a harsh QA playtest. **No soft-locks, crashes, or unplayable states.** Core
+  loop verified end-to-end: move -> collect (counter rises) -> Claude dialogue
+  (quest completes) -> Dream App upgrade -> map fast-travel -> death/respawn ->
+  pause. Onboarding clear, [E] prompts work, comedy "excellent", UI clean. Rated
+  7/10, held back only by combat difficulty.
+- Two playtests now flag Dependency District combat as punishing. Ground truth
+  (headless, current build): a stationary player in the middle of all 7 enemies
+  survives **14.4s** (the "2s" claim is 7x exaggerated; i-frames work) -- but
+  clearing 7 enemies takes ~11s, so a new player loses the race. Localhost has 2;
+  jumping to 7 in the first combat region is a spike.
+- Fix (evidence-based, not a blanket nerf): first combat region reduced to **4
+  enemies**. Verified winnable end-to-end -- a button-masher clears it in ~6.3s
+  taking zero damage. Later regions keep higher counts. New `region_winnable_test`.
+  Full suite: **27 suites green**.
 
 ### Iteration 46 — Ctrl+Z ability (panic undo)
 - Added a 6th, tactically-distinct ability from the brief's list. **Ctrl+Z** ([5],
