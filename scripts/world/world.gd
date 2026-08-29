@@ -69,10 +69,17 @@ func _load_region(region_id: String) -> void:
 	# Production greets you with an incident (once).
 	if region_id == "production" and not EventManager.is_script_completed("production_incident"):
 		call_deferred("_trigger_production_incident")
+	# Corporate Enterprise greets you with a surprise live demo (once).
+	if region_id == "corporate_enterprise" and not EventManager.is_script_completed("all_hands_demo"):
+		call_deferred("_trigger_all_hands_demo")
 
 func _trigger_production_incident() -> void:
 	if not EventManager.has_active_event():
 		EventManager.start_scripted("production_incident", preload("res://scripts/world/story_events.gd").production_incident())
+
+func _trigger_all_hands_demo() -> void:
+	if not EventManager.has_active_event():
+		EventManager.start_scripted("all_hands_demo", preload("res://scripts/world/story_events.gd").all_hands_demo())
 
 func _apply_camera_bounds(size: Vector2) -> void:
 	if size == Vector2.ZERO:

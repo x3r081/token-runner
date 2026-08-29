@@ -63,6 +63,7 @@ func _run() -> void:
 
 	_run_free_tier()
 	_run_autonomous_agent()
+	_run_all_hands_demo()
 
 func _run_free_tier() -> void:
 	EventManager.reset()
@@ -96,6 +97,57 @@ func _run_autonomous_agent() -> void:
 	_check("agent_cost_will_to_live (%.0f)" % (ResourceManager.get_value("will_to_live") - wtl0),
 		ResourceManager.get_value("will_to_live") - wtl0 == -8.0)
 	_check("agent_completed", EventManager.is_script_completed("autonomous_agent"))
+
+## The All-Hands Demo: branching with a real failure state, and a model-dependent
+## gamble (a reliable model makes the risky live demo succeed).
+func _run_all_hands_demo() -> void:
+	var stages := StoryDefs.all_hands_demo()
+	_check("demo_has_branches", stages.size() >= 5 and stages[0].choices.size() == 3)
+
+	# Safe path: modest reputation + tokens, no crash.
+	EventManager.reset(); ResourceManager.reset()
+	var rep0 := ResourceManager.get_value("reputation")
+	EventManager.start_scripted("all_hands_demo", StoryDefs.all_hands_demo())
+	EventManager.resolve(0)  # boring stable path -> stage 1
+	EventManager.resolve(0)  # take the modest win -> end
+	_check("demo_safe_path_gains_rep", ResourceManager.get_value("reputation") - rep0 == 6.0)
+	_check("demo_safe_completes", EventManager.is_script_completed("all_hands_demo"))
+
+	# Faked path: reputation loss (seed reputation first; it clamps at 0).
+	EventManager.reset(); ResourceManager.reset()
+	ResourceManager.modify("reputation", 50.0)
+	rep0 = ResourceManager.get_value("reputation")
+	EventManager.start_scripted("all_hands_demo", StoryDefs.all_hands_demo())
+	EventManager.resolve(2)  # fake it -> stage 4
+	EventManager.resolve(0)  # mumble -> end
+	_check("demo_fake_path_loses_rep", ResourceManager.get_value("reputation") - rep0 == -8.0)
+
+	# Risky gamble succeeds with a reliable (frontier) model across a few trials.
+	ModelManager.set_model("frontier")
+	var got_success := false
+	for t in 30:
+		EventManager.reset(); AchievementManager.reset()
+		EventManager.start_scripted("all_hands_demo", StoryDefs.all_hands_demo())
+		EventManager.resolve(1)  # go big (ai_gamble)
+		EventManager.resolve(0)  # accept the outcome
+		if AchievementManager.is_unlocked("shipped_live"):
+			got_success = true
+			break
+	_check("demo_risky_can_succeed_with_good_model", got_success)
+
+	# Risky gamble can fail with an unreliable (experimental) model.
+	ModelManager.set_model("experimental")
+	var got_fail := false
+	for t in 60:
+		EventManager.reset(); AchievementManager.reset()
+		EventManager.start_scripted("all_hands_demo", StoryDefs.all_hands_demo())
+		EventManager.resolve(1)
+		EventManager.resolve(0)
+		if AchievementManager.is_unlocked("demo_gremlin"):
+			got_fail = true
+			break
+	_check("demo_risky_can_fail_with_bad_model", got_fail)
+	ModelManager.reset()
 
 func _check(label: String, condition: bool) -> void:
 	if condition:

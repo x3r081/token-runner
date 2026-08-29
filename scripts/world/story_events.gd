@@ -176,6 +176,50 @@ static func production_incident() -> Array:
 		{"title": "ROLLED BACK", "description": "You rolled back everything, including three features nobody will notice are gone.", "choices": [{"text": "Ship again tomorrow", "next": -1}]},
 	]
 
+## "The All-Hands Demo" — a live, high-stakes performance with real failure states.
+## The risky path is an ai_gamble, so your selected MODEL decides whether the
+## experimental feature dazzles or 500s in front of the entire company.
+static func all_hands_demo() -> Array:
+	return [
+		{  # 0
+			"title": "\ud83c\udfa4 ALL-HANDS DEMO",
+			"description": "The SVP corners you: \"Tiny thing — demo the Dream App. Live. To the whole company. In five minutes. No pressure!\"\n\n847 people are joining the call.",
+			"choices": [
+				{"text": "Demo the boring, stable happy path", "next": 1},
+				{"text": "Go big: demo the experimental AI feature LIVE", "ai_gamble": true, "next_success": 2, "next_fail": 3},
+				{"text": "Fake it: play a pre-recorded 'live' demo", "next": 4},
+			],
+		},
+		{  # 1 — safe
+			"title": "IT... WORKED",
+			"description": "You clicked three buttons very slowly and nothing caught fire. Polite applause. Someone types 'nice' in chat and means it 60% of the way.",
+			"choices": [
+				{"text": "Take the modest win", "effects": {"reputation": 6, "tokens": 60}, "next": -1},
+			],
+		},
+		{  # 2 — risky success (needs a reliable model)
+			"title": "STANDING OVATION",
+			"description": "The experimental feature worked FLAWLESSLY, live, first try. Nobody will ever believe you. The SVP is already taking credit. You made it look easy.",
+			"choices": [
+				{"text": "Bask in undeserved glory", "effects": {"reputation": 16, "tokens": 220}, "achievement": "shipped_live", "next": -1},
+			],
+		},
+		{  # 3 — risky FAILURE
+			"title": "\ud83d\udd25 LIVE ON MAIN",
+			"description": "The model hallucinated on stage. The app 500'd. Then it rendered the login form as a horse. 847 people watched in real time. Someone is recording.\n\n(Pick a better model before you gamble the company's dignity.)",
+			"choices": [
+				{"text": "\"That's a known issue in staging.\"", "effects": {"reputation": -12, "stability": -10, "will_to_live": -10, "technical_debt": 8}, "achievement": "demo_gremlin", "next": -1},
+			],
+		},
+		{  # 4 — faked
+			"title": "\"CAN YOU CLICK THAT?\"",
+			"description": "The demo is flawless because it's a video. Then the SVP says: \"Great — now click the blue button for me?\"\n\nYou cannot. It is a video. Everyone slowly understands.",
+			"choices": [
+				{"text": "Mumble something about 'the staging env'", "effects": {"reputation": -8, "will_to_live": -6}, "next": -1},
+			],
+		},
+	]
+
 ## Repeatable deploy menu for autonomous agents. Choices carry deploy_agent.
 static func agent_menu() -> Array:
 	return [

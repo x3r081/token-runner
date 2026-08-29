@@ -13,6 +13,8 @@
     "agile": {"name": "AGILE", "description": "Turned one tiny change into a design-system migration and back. Velocity!"},
     "it_was_dns": {"name": "IT WAS DNS", "description": "You blamed DNS. This one time, it actually was DNS."},
     "boring_responsible_adult": {"name": "Boring Responsible Adult", "description": "You actually made backups. The disaster was trivial. Nobody clapped."},
-    "free_tier_victim": {"name": "Terms And Conditions", "description": "Accepted 10,000 free tokens. Kept 30 of them."}
+    "free_tier_victim": {"name": "Terms And Conditions", "description": "Accepted 10,000 free tokens. Kept 30 of them."},
+    "shipped_live": {"name": "Shipped Live", "description": "Demoed the experimental feature live to 847 people. It worked. Nobody believes you."},
+    "demo_gremlin": {"name": "Live On Main", "description": "The AI hallucinated during the all-hands demo. Someone was recording."}
   }
 }
