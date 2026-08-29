@@ -257,6 +257,10 @@ func select_choice(index: int) -> void:
 		line_index = 0
 		_show_line()
 		return
+	if choice.has("achievement"):
+		AchievementManager.unlock(choice.achievement)
+	for extra in choice.get("achievements", []):
+		AchievementManager.unlock(str(extra))
 	if choice.has("quest"):
 		QuestManager.start_quest(choice.quest)
 	if choice.has("goto"):

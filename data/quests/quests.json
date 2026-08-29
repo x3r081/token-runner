@@ -6,19 +6,42 @@
       "region": "localhost",
       "auto_start": true,
       "objectives": [
-        {"id": "talk_roommate", "type": "talk", "target": "roommate_ai", "count": 1, "text": "Talk to Claude — he's standing at the desk in your apartment"},
-        {"id": "collect_tokens", "type": "collect_tokens", "target": "any", "count": 10, "text": "Collect 10 tokens — the glowing coins scattered around the apartment"}
+        {
+          "id": "talk_roommate",
+          "type": "talk",
+          "target": "roommate_ai",
+          "count": 1,
+          "text": "Talk to Claude — he's standing at the desk in your apartment"
+        },
+        {
+          "id": "collect_tokens",
+          "type": "collect_tokens",
+          "target": "any",
+          "count": 10,
+          "text": "Collect 10 tokens — the glowing coins scattered around the apartment"
+        }
       ],
-      "rewards": {"tokens": 50, "coffee": 1},
+      "rewards": {
+        "tokens": 50,
+        "coffee": 1
+      },
       "giver": "roommate_ai"
     },
     "tiny_change": {
       "name": "Just One Tiny Change",
       "description": "The client wants the button green. Two seconds of work, tops. The email is sitting on your desk. It is not two seconds of work.",
       "region": "localhost",
-      "prerequisites": ["hello_localhost"],
+      "prerequisites": [
+        "hello_localhost"
+      ],
       "objectives": [
-        {"id": "answer_email", "type": "story", "target": "tiny_change", "count": 1, "text": "Answer the client's 'tiny' email — use the 'Check client email' prompt on your desk"}
+        {
+          "id": "answer_email",
+          "type": "story",
+          "target": "tiny_change",
+          "count": 1,
+          "text": "Answer the client's 'tiny' email — use the 'Check client email' prompt on your desk"
+        }
       ],
       "rewards": {},
       "giver": "roommate_ai"
@@ -27,197 +50,534 @@
       "name": "Install Node (Five Minutes, Tops)",
       "description": "It's one command. It has never once been one command. The district is through the portal east of your apartment, and it has weather.",
       "region": "dependency_district",
-      "prerequisites": ["tiny_change"],
-      "objectives": [
-        {"id": "visit_dep", "type": "visit", "target": "dependency_district", "count": 1, "text": "Take the east portal out of your apartment into the Dependency District"},
-        {"id": "defeat_deps", "type": "defeat", "target": "dependency_demon", "count": 3, "text": "Defeat 3 Dependency Demons roaming the district (leave and return to restock)"},
-        {"id": "find_package", "type": "interact", "target": "abandoned_package", "count": 1, "text": "Find the crate in the district marked 'Recover package' and interact with it"}
+      "prerequisites": [
+        "tiny_change"
       ],
-      "rewards": {"tokens": 200, "compute": 15, "unlock_region": "stackoverflow_ruins"},
+      "objectives": [
+        {
+          "id": "visit_dep",
+          "type": "visit",
+          "target": "dependency_district",
+          "count": 1,
+          "text": "Take the east portal out of your apartment into the Dependency District"
+        },
+        {
+          "id": "defeat_deps",
+          "type": "defeat",
+          "target": "dependency_demon",
+          "count": 2,
+          "text": "Defeat 2 Dependency Demons roaming the district"
+        },
+        {
+          "id": "find_package",
+          "type": "interact",
+          "target": "abandoned_package",
+          "count": 1,
+          "text": "Find the crate in the district marked 'Recover package' and interact with it"
+        }
+      ],
+      "rewards": {
+        "tokens": 200,
+        "compute": 15,
+        "unlock_region": "stackoverflow_ruins"
+      },
       "giver": "maintainer"
     },
     "supply_chain": {
       "name": "Eleven Lines Of Someone Else's Weekend",
       "description": "Before you build anything on top of this district, find out what is actually holding it up. Spoiler: one stranger, one lockfile, and a folder with its own gravity.",
       "region": "dependency_district",
-      "prerequisites": ["install_node"],
-      "objectives": [
-        {"id": "read_lockfile", "type": "interact", "target": "prop_lockfile", "count": 1, "text": "Read the package-lock.json in the Dependency District (walk onto it, press [E])"},
-        {"id": "read_modules", "type": "interact", "target": "prop_node_modules", "count": 1, "text": "Inspect the node_modules drift in the same district"},
-        {"id": "read_leftpad", "type": "interact", "target": "prop_leftpad", "count": 1, "text": "Pay respects at the left-pad marker, also in the Dependency District"}
+      "prerequisites": [
+        "install_node"
       ],
-      "rewards": {"context": 25, "reputation": 20, "achievement": "supply_chain_scholar"},
+      "objectives": [
+        {
+          "id": "read_lockfile",
+          "type": "interact",
+          "target": "prop_lockfile",
+          "count": 1,
+          "text": "Read the package-lock.json in the Dependency District (walk onto it, press [E])"
+        },
+        {
+          "id": "read_modules",
+          "type": "interact",
+          "target": "prop_node_modules",
+          "count": 1,
+          "text": "Inspect the node_modules drift in the same district"
+        },
+        {
+          "id": "read_leftpad",
+          "type": "interact",
+          "target": "prop_leftpad",
+          "count": 1,
+          "text": "Pay respects at the left-pad marker, also in the Dependency District"
+        }
+      ],
+      "rewards": {
+        "context": 25,
+        "reputation": 20,
+        "achievement": "supply_chain_scholar"
+      },
       "giver": "maintainer"
     },
     "stackoverflow_pilgrimage": {
       "name": "Accepted Answer (2013)",
       "description": "Ancient wisdom: highly upvoted, deeply confident, four major versions out of date. The ruins lie east of the district.",
       "region": "stackoverflow_ruins",
-      "prerequisites": ["install_node"],
-      "objectives": [
-        {"id": "visit_so", "type": "visit", "target": "stackoverflow_ruins", "count": 1, "text": "Take the east portal from the Dependency District into the Stack Overflow Ruins"},
-        {"id": "talk_hermit", "type": "talk", "target": "stackoverflow_hermit", "count": 1, "text": "Find the Stack Overflow Hermit in the ruins and consult him"},
-        {"id": "collect_answers", "type": "collect_tokens", "target": "cached", "count": 25, "text": "Collect 25 cached tokens scattered through the ruins"}
+      "prerequisites": [
+        "install_node"
       ],
-      "rewards": {"tokens": 300, "context": 20, "unlock_region": "api_bazaar"},
+      "objectives": [
+        {
+          "id": "visit_so",
+          "type": "visit",
+          "target": "stackoverflow_ruins",
+          "count": 1,
+          "text": "Take the east portal from the Dependency District into the Stack Overflow Ruins"
+        },
+        {
+          "id": "talk_hermit",
+          "type": "talk",
+          "target": "stackoverflow_hermit",
+          "count": 1,
+          "text": "Find the Stack Overflow Hermit in the ruins and consult him"
+        },
+        {
+          "id": "collect_answers",
+          "type": "collect_tokens",
+          "target": "cached",
+          "count": 25,
+          "text": "Collect 25 cached tokens scattered through the ruins"
+        }
+      ],
+      "rewards": {
+        "tokens": 300,
+        "context": 20,
+        "unlock_region": "api_bazaar"
+      },
       "giver": "stackoverflow_hermit"
     },
     "one_more_api_call": {
       "name": "One More API Call",
       "description": "Just the one. Then you'll stop. You have said this before, out loud, to a person. The Bazaar is east of the Ruins and it is always Friday there.",
       "region": "api_bazaar",
-      "prerequisites": ["stackoverflow_pilgrimage"],
-      "objectives": [
-        {"id": "visit_bazaar", "type": "visit", "target": "api_bazaar", "count": 1, "text": "Take the east portal from the Stack Overflow Ruins into the API Bazaar"},
-        {"id": "talk_reseller", "type": "talk", "target": "api_reseller", "count": 1, "text": "Haggle with the Shady API Reseller at his stall in the Bazaar"},
-        {"id": "defeat_rate", "type": "defeat", "target": "rate_limiter", "count": 2, "text": "Survive 2 Rate Limiters patrolling the Bazaar"}
+      "prerequisites": [
+        "stackoverflow_pilgrimage"
       ],
-      "rewards": {"tokens": 400, "api_credits": 25, "unlock_region": "cloud_district"},
+      "objectives": [
+        {
+          "id": "visit_bazaar",
+          "type": "visit",
+          "target": "api_bazaar",
+          "count": 1,
+          "text": "Take the east portal from the Stack Overflow Ruins into the API Bazaar"
+        },
+        {
+          "id": "talk_reseller",
+          "type": "talk",
+          "target": "api_reseller",
+          "count": 1,
+          "text": "Haggle with the Shady API Reseller at his stall in the Bazaar"
+        },
+        {
+          "id": "defeat_rate",
+          "type": "defeat",
+          "target": "rate_limiter",
+          "count": 2,
+          "text": "Survive 2 Rate Limiters patrolling the Bazaar"
+        }
+      ],
+      "rewards": {
+        "tokens": 400,
+        "api_credits": 25,
+        "unlock_region": "cloud_district"
+      },
       "giver": "api_reseller"
     },
     "cloud_migration": {
       "name": "We Should Move To The Cloud",
       "description": "Nobody can say why. Everyone agrees. Cloud. Something extremely expensive is drifting around that district and it knows your name.",
       "region": "cloud_district",
-      "prerequisites": ["one_more_api_call"],
-      "objectives": [
-        {"id": "visit_cloud", "type": "visit", "target": "cloud_district", "count": 1, "text": "Take the east portal from the API Bazaar into the Cloud District"},
-        {"id": "talk_sales", "type": "talk", "target": "cloud_salesperson", "count": 1, "text": "Endure the Cloud Salesperson's pitch (he is mid-district and cannot be reasoned with)"},
-        {"id": "survive_bill", "type": "defeat", "target": "cloud_bill", "count": 1, "text": "Defeat the $700 Cloud Bill — the huge one drifting through the district"}
+      "prerequisites": [
+        "one_more_api_call"
       ],
-      "rewards": {"tokens": 500, "compute": 40, "technical_debt": 20, "unlock_region": "open_source_wildlands"},
+      "objectives": [
+        {
+          "id": "visit_cloud",
+          "type": "visit",
+          "target": "cloud_district",
+          "count": 1,
+          "text": "Take the east portal from the API Bazaar into the Cloud District"
+        },
+        {
+          "id": "talk_sales",
+          "type": "talk",
+          "target": "cloud_salesperson",
+          "count": 1,
+          "text": "Endure the Cloud Salesperson's pitch (he is mid-district and cannot be reasoned with)"
+        },
+        {
+          "id": "survive_bill",
+          "type": "defeat",
+          "target": "cloud_bill",
+          "count": 1,
+          "text": "Defeat the $700 Cloud Bill — the huge one drifting through the district"
+        }
+      ],
+      "rewards": {
+        "tokens": 500,
+        "compute": 40,
+        "technical_debt": 20,
+        "unlock_region": "open_source_wildlands"
+      },
       "giver": "cloud_salesperson"
     },
     "license_puzzle": {
       "name": "Eleven Million Downloads, One Volunteer",
       "description": "A stranger's weekend project holds your entire product together. Go and say thank you, then clear his path.",
       "region": "open_source_wildlands",
-      "prerequisites": ["cloud_migration"],
-      "objectives": [
-        {"id": "visit_os", "type": "visit", "target": "open_source_wildlands", "count": 1, "text": "Take the east portal from the Cloud District into the Open Source Wildlands"},
-        {"id": "talk_maintainer", "type": "talk", "target": "oss_maintainer", "count": 1, "text": "Find the Open Source Maintainer in the wildlands and thank him"},
-        {"id": "defeat_legacy", "type": "defeat", "target": "legacy_system", "count": 1, "text": "Defeat a Legacy System — the grey slabs roaming the wildlands"}
+      "prerequisites": [
+        "cloud_migration"
       ],
-      "rewards": {"tokens": 450, "reputation": 30, "unlock_region": "corporate_enterprise"},
+      "objectives": [
+        {
+          "id": "visit_os",
+          "type": "visit",
+          "target": "open_source_wildlands",
+          "count": 1,
+          "text": "Take the east portal from the Cloud District into the Open Source Wildlands"
+        },
+        {
+          "id": "talk_maintainer",
+          "type": "talk",
+          "target": "oss_maintainer",
+          "count": 1,
+          "text": "Find the Open Source Maintainer in the wildlands and thank him"
+        },
+        {
+          "id": "defeat_legacy",
+          "type": "defeat",
+          "target": "legacy_system",
+          "count": 1,
+          "text": "Defeat a Legacy System — the grey slabs roaming the wildlands"
+        }
+      ],
+      "rewards": {
+        "tokens": 450,
+        "reputation": 30,
+        "unlock_region": "corporate_enterprise"
+      },
       "giver": "oss_maintainer"
     },
     "enterprise_ready": {
       "name": "Just Add AI (Due Friday)",
       "description": "The SVP wants AI transformation by Friday. It's Thursday. He has never opened a terminal, only a keynote.",
       "region": "corporate_enterprise",
-      "prerequisites": ["license_puzzle"],
-      "objectives": [
-        {"id": "visit_corp", "type": "visit", "target": "corporate_enterprise", "count": 1, "text": "Take the east portal from the Open Source Wildlands into Corporate Enterprise"},
-        {"id": "talk_vp", "type": "talk", "target": "svp_ai", "count": 1, "text": "Meet the SVP of AI Transformation Excellence on the office floor"},
-        {"id": "defeat_architect", "type": "defeat", "target": "enterprise_architect", "count": 1, "text": "Defeat the Enterprise Architect — the big one guarding the floor"}
+      "prerequisites": [
+        "license_puzzle"
       ],
-      "rewards": {"tokens": 600, "reputation": 50, "unlock_region": "gpu_mines"},
+      "objectives": [
+        {
+          "id": "visit_corp",
+          "type": "visit",
+          "target": "corporate_enterprise",
+          "count": 1,
+          "text": "Take the east portal from the Open Source Wildlands into Corporate Enterprise"
+        },
+        {
+          "id": "talk_vp",
+          "type": "talk",
+          "target": "svp_ai",
+          "count": 1,
+          "text": "Meet the SVP of AI Transformation Excellence on the office floor"
+        },
+        {
+          "id": "defeat_architect",
+          "type": "defeat",
+          "target": "enterprise_architect",
+          "count": 1,
+          "text": "Defeat the Enterprise Architect — the big one guarding the floor"
+        }
+      ],
+      "rewards": {
+        "tokens": 600,
+        "reputation": 50,
+        "unlock_region": "gpu_mines"
+      },
       "giver": "svp_ai"
     },
     "scope_control": {
       "name": "Scope Is A Verb Now",
       "description": "Nobody added the extra work. It arrived. Four separate Scope Creeps are loose on the office floor and the Kanban board has a column called 'Almost Done' with nine cards in it.",
       "region": "corporate_enterprise",
-      "prerequisites": ["license_puzzle"],
-      "objectives": [
-        {"id": "cut_scope", "type": "defeat", "target": "scope_creep", "count": 4, "text": "Defeat 4 Scope Creeps drifting around Corporate Enterprise (leave and return to restock)"},
-        {"id": "read_kanban", "type": "interact", "target": "prop_kanban", "count": 1, "text": "Read the Kanban board on the office floor (walk onto it, press [E])"}
+      "prerequisites": [
+        "license_puzzle"
       ],
-      "rewards": {"tokens": 380, "focus": 20, "achievement": "scope_is_a_verb"},
+      "objectives": [
+        {
+          "id": "cut_scope",
+          "type": "defeat",
+          "target": "scope_creep",
+          "count": 3,
+          "text": "Defeat 3 Scope Creeps drifting around Corporate Enterprise"
+        },
+        {
+          "id": "read_kanban",
+          "type": "interact",
+          "target": "prop_kanban",
+          "count": 1,
+          "text": "Read the Kanban board on the office floor (walk onto it, press [E])"
+        }
+      ],
+      "rewards": {
+        "tokens": 380,
+        "focus": 20,
+        "achievement": "scope_is_a_verb"
+      },
       "giver": "svp_ai"
     },
     "gpu_rush": {
       "name": "Mine Your Own Business",
       "description": "Acquire compute. Avoid thermal throttling. Question every choice that led you into a 94-degree room.",
       "region": "gpu_mines",
-      "prerequisites": ["enterprise_ready"],
-      "objectives": [
-        {"id": "visit_mines", "type": "visit", "target": "gpu_mines", "count": 1, "text": "Take the east portal from Corporate Enterprise into the GPU Mines"},
-        {"id": "collect_compute", "type": "collect_tokens", "target": "compute", "count": 50, "text": "Mine 50 compute — the glowing chunks across the mine floor"},
-        {"id": "defeat_leak", "type": "defeat", "target": "memory_leak", "count": 3, "text": "Plug 3 Memory Leaks drifting deeper in the mine"}
+      "prerequisites": [
+        "enterprise_ready"
       ],
-      "rewards": {"compute": 80, "tokens": 400, "unlock_region": "production"},
+      "objectives": [
+        {
+          "id": "visit_mines",
+          "type": "visit",
+          "target": "gpu_mines",
+          "count": 1,
+          "text": "Take the east portal from Corporate Enterprise into the GPU Mines"
+        },
+        {
+          "id": "collect_compute",
+          "type": "collect_tokens",
+          "target": "compute",
+          "count": 50,
+          "text": "Mine 50 compute — the glowing chunks across the mine floor"
+        },
+        {
+          "id": "defeat_leak",
+          "type": "defeat",
+          "target": "memory_leak",
+          "count": 3,
+          "text": "Plug 3 Memory Leaks drifting deeper in the mine"
+        }
+      ],
+      "rewards": {
+        "compute": 80,
+        "tokens": 400,
+        "unlock_region": "production"
+      },
       "giver": "gpu_foreman"
     },
     "thermal_shift": {
       "name": "Thermal Headroom (There Is None)",
       "description": "The foreman wants a second pair of eyes on the floor before the next shift. Rig 12 melted a hole in the concrete last week. There is a cone on it. The cone is in the asset register.",
       "region": "gpu_mines",
-      "prerequisites": ["enterprise_ready"],
-      "objectives": [
-        {"id": "check_rig", "type": "interact", "target": "prop_rig", "count": 1, "text": "Inspect the mining rig in the GPU Mines (walk onto it, press [E])"},
-        {"id": "check_fan", "type": "interact", "target": "prop_fan", "count": 1, "text": "Inspect the cooling fan on the far side of the mine"},
-        {"id": "plug_leaks", "type": "defeat", "target": "memory_leak", "count": 2, "text": "Plug 2 Memory Leaks while you're down there"}
+      "prerequisites": [
+        "enterprise_ready"
       ],
-      "rewards": {"compute": 60, "will_to_live": 8, "achievement": "thermal_headroom"},
+      "objectives": [
+        {
+          "id": "check_rig",
+          "type": "interact",
+          "target": "prop_rig",
+          "count": 1,
+          "text": "Inspect the mining rig in the GPU Mines (walk onto it, press [E])"
+        },
+        {
+          "id": "check_fan",
+          "type": "interact",
+          "target": "prop_fan",
+          "count": 1,
+          "text": "Inspect the cooling fan on the far side of the mine"
+        },
+        {
+          "id": "plug_leaks",
+          "type": "defeat",
+          "target": "memory_leak",
+          "count": 2,
+          "text": "Plug 2 Memory Leaks while you're down there"
+        }
+      ],
+      "rewards": {
+        "compute": 60,
+        "will_to_live": 8,
+        "achievement": "thermal_headroom"
+      },
       "giver": "gpu_foreman"
     },
     "production_down": {
       "name": "Production Is Down (Nobody Deployed Anything)",
       "description": "PagerDuty is screaming, users are tweeting, and your manager is 'just checking in'. Bring everything.",
       "region": "production",
-      "prerequisites": ["gpu_rush"],
-      "objectives": [
-        {"id": "visit_prod", "type": "visit", "target": "production", "count": 1, "text": "Take the east portal from the GPU Mines into Production"},
-        {"id": "defeat_monolith", "type": "defeat", "target": "legacy_monolith", "count": 1, "text": "Confront the Legacy Monolith — the enormous one at the heart of Production"},
-        {"id": "defeat_hallucination", "type": "defeat", "target": "hallucination", "count": 2, "text": "Banish 2 Hallucinations (the confident, drifting ones lying to users)"}
+      "prerequisites": [
+        "gpu_rush"
       ],
-      "rewards": {"tokens": 800, "stability": 20, "unlock_region": "token_vault"},
+      "objectives": [
+        {
+          "id": "visit_prod",
+          "type": "visit",
+          "target": "production",
+          "count": 1,
+          "text": "Take the east portal from the GPU Mines into Production"
+        },
+        {
+          "id": "defeat_monolith",
+          "type": "defeat",
+          "target": "legacy_monolith",
+          "count": 1,
+          "text": "Confront the Legacy Monolith — the enormous one at the heart of Production"
+        },
+        {
+          "id": "defeat_hallucination",
+          "type": "defeat",
+          "target": "hallucination",
+          "count": 2,
+          "text": "Banish 2 Hallucinations (the confident, drifting ones lying to users)"
+        }
+      ],
+      "rewards": {
+        "tokens": 800,
+        "stability": 20,
+        "unlock_region": "token_vault"
+      },
       "giver": "oncall_engineer"
     },
     "ship_dream_app": {
       "name": "Deploy On A Friday",
       "description": "The reset is coming and the app is 'done enough', which has historically meant the same thing it means today.",
       "region": "localhost",
-      "prerequisites": ["production_down"],
-      "objectives": [
-        {"id": "upgrade_app", "type": "interact", "target": "dream_app_terminal", "count": 1, "text": "Use the 'Dream App Terminal' on your desk in the apartment to prep the build"},
-        {"id": "visit_vault", "type": "visit", "target": "token_vault", "count": 1, "text": "Travel east past Production into the Token Vault and claim the reserves"},
-        {"id": "ship", "type": "interact", "target": "deploy_button", "count": 1, "text": "Back in the apartment, hit 'Deploy To Production' (the app must meet its ship requirements first)"}
+      "prerequisites": [
+        "production_down"
       ],
-      "rewards": {"tokens": 2000, "reputation": 100, "achievement": "ship_it"},
+      "objectives": [
+        {
+          "id": "upgrade_app",
+          "type": "interact",
+          "target": "dream_app_terminal",
+          "count": 1,
+          "text": "Use the 'Dream App Terminal' on your desk in the apartment to prep the build"
+        },
+        {
+          "id": "visit_vault",
+          "type": "visit",
+          "target": "token_vault",
+          "count": 1,
+          "text": "Travel east past Production into the Token Vault and claim the reserves"
+        },
+        {
+          "id": "ship",
+          "type": "interact",
+          "target": "deploy_button",
+          "count": 1,
+          "text": "Back in the apartment, hit 'Deploy To Production' (the app must meet its ship requirements first)"
+        }
+      ],
+      "rewards": {
+        "tokens": 2000,
+        "reputation": 100,
+        "achievement": "ship_it"
+      },
       "giver": "roommate_ai"
     },
     "fix_without_touching": {
       "name": "Fix It Without Touching Anything",
       "description": "Management has declared a code freeze. Nobody has informed the bug.",
       "region": "dependency_district",
-      "prerequisites": ["install_node"],
-      "objectives": [
-        {"id": "defeat_bug", "type": "defeat", "target": "null_reference", "count": 5, "text": "Defeat 5 Null References in the Dependency District (leave and return to restock)"}
+      "prerequisites": [
+        "install_node"
       ],
-      "rewards": {"tokens": 250, "will_to_live": -5, "reputation": 10}
+      "objectives": [
+        {
+          "id": "defeat_bug",
+          "type": "defeat",
+          "target": "null_reference",
+          "count": 2,
+          "text": "Defeat 2 Null References in the Dependency District"
+        }
+      ],
+      "rewards": {
+        "tokens": 250,
+        "will_to_live": -5,
+        "reputation": 10
+      }
     },
     "junior_agent": {
       "name": "The Agent Optimized The Database",
       "description": "Somebody gave an autonomous agent production credentials on a Friday. That somebody was you. It is 100% confident and would like to know if it can do more.",
       "region": "api_bazaar",
-      "prerequisites": ["one_more_api_call"],
-      "objectives": [
-        {"id": "talk_agent", "type": "talk", "target": "junior_agent", "count": 1, "text": "Find the Junior Agent wandering the API Bazaar and talk to it"},
-        {"id": "escort", "type": "interact", "target": "backup_server", "count": 1, "text": "Reach the 'Backup Server' in the Bazaar and interact with it"}
+      "prerequisites": [
+        "one_more_api_call"
       ],
-      "rewards": {"tokens": 300, "stability": -15, "api_credits": 15}
+      "objectives": [
+        {
+          "id": "talk_agent",
+          "type": "talk",
+          "target": "junior_agent",
+          "count": 1,
+          "text": "Find the Junior Agent wandering the API Bazaar and talk to it"
+        },
+        {
+          "id": "escort",
+          "type": "interact",
+          "target": "backup_server",
+          "count": 1,
+          "text": "Reach the 'Backup Server' in the Bazaar and interact with it"
+        }
+      ],
+      "rewards": {
+        "tokens": 300,
+        "stability": -15,
+        "api_credits": 15
+      }
     },
     "merge_conflict_hell": {
       "name": "Merge Conflict From Hell",
       "description": "Two branches. One truth. You wrote both sides of this argument and you were wrong in each.",
       "region": "stackoverflow_ruins",
-      "prerequisites": ["stackoverflow_pilgrimage"],
-      "objectives": [
-        {"id": "defeat_merge", "type": "defeat", "target": "merge_conflict", "count": 1, "text": "Defeat the Merge Conflict boss at the centre of the Stack Overflow Ruins"}
+      "prerequisites": [
+        "stackoverflow_pilgrimage"
       ],
-      "rewards": {"tokens": 350, "context": 15, "achievement": "i_can_explain"}
+      "objectives": [
+        {
+          "id": "defeat_merge",
+          "type": "defeat",
+          "target": "merge_conflict",
+          "count": 1,
+          "text": "Defeat the Merge Conflict boss at the centre of the Stack Overflow Ruins"
+        }
+      ],
+      "rewards": {
+        "tokens": 350,
+        "context": 15,
+        "achievement": "i_can_explain"
+      }
     },
     "context_window_full": {
       "name": "You Pasted The Whole Repo",
       "description": "It has read everything. It remembers you calling this 'just a prototype'. It brings that up.",
       "region": "cloud_district",
-      "prerequisites": ["cloud_migration"],
-      "objectives": [
-        {"id": "defeat_context", "type": "defeat", "target": "infinite_context", "count": 1, "text": "Defeat THE INFINITE CONTEXT — the boss guarding the Token Vault, east of Production"}
+      "prerequisites": [
+        "cloud_migration"
       ],
-      "rewards": {"context": 50, "tokens": 400, "achievement": "context_is_social_construct"}
+      "objectives": [
+        {
+          "id": "defeat_context",
+          "type": "defeat",
+          "target": "infinite_context",
+          "count": 1,
+          "text": "Defeat THE INFINITE CONTEXT — the boss guarding the Token Vault, east of Production"
+        }
+      ],
+      "rewards": {
+        "context": 50,
+        "tokens": 400,
+        "achievement": "context_is_social_construct"
+      }
     }
   }
 }

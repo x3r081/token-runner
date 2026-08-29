@@ -299,6 +299,12 @@ func _meets(req: Dictionary) -> bool:
 						if str(memory.get(mk, "")) != str(v[mk]): return false
 			"bill_min":
 				if _bill < float(v): return false
+			_:
+				# Unknown key: fail CLOSED. Failing open turned a typo in a
+				# require block into an always-eligible event, which is the
+				# worst direction for the bug to point. Warn so it is findable.
+				push_warning("EventManager: unknown requirement key '%s' — event treated as ineligible." % str(key))
+				return false
 	return true
 
 func _weighted_pick(pool: Array) -> Dictionary:
