@@ -62,6 +62,30 @@ func _run() -> void:
 		ArchitectureManager.apply_delayed()
 	_check("backups_unlock_responsible_adult", AchievementManager.is_unlocked("boring_responsible_adult"))
 
+	# Archetype NPCs are reactive too: a contextual intro line is produced, it is
+	# spoken by the right character, and it changes with game state.
+	_reset_world()
+	var intro := DialogueManager._reactive_intro("cloud_salesperson")
+	_check("archetype_npc_has_reactive_intro", intro.size() == 1)
+	_check("archetype_intro_correct_speaker",
+		intro.size() == 1 and intro[0].get("speaker") == "Salesperson")
+	_check("archetype_intro_counts_talk", int(DialogueManager.npc_talks.get("cloud_salesperson", 0)) == 1)
+
+	# Cloud salesperson reacts to a cloud-hosting choice specifically.
+	var found_cloud := false
+	for trial in 40:
+		_reset_world()
+		ArchitectureManager.flags = {"hosting": "cloud"}
+		var l := _joined(DialogueManager._reactive_intro("cloud_salesperson")).to_lower()
+		if l.contains("invoice") or l.contains("cloud journey"):
+			found_cloud = true
+			break
+	_check("cloud_salesperson_reacts_to_cloud_hosting", found_cloud)
+
+	# Non-archetype / unknown NPC gets no reactive intro (safe no-op).
+	_reset_world()
+	_check("unknown_npc_no_intro", DialogueManager._reactive_intro("nobody").is_empty())
+
 func _reset_world() -> void:
 	ResourceManager.reset()
 	DialogueManager.reset()
