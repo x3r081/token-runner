@@ -9,8 +9,25 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 34 — environmental comedy props (exploration reward). Next: combat
-balance across the run; more quest variety; per-region NPC flavour.
+Iteration 35 — combat-pacing verification (mid-game). Next: more quest variety;
+per-region NPC flavour; raise other regions toward Localhost's density.
+
+### Iteration 35 — Mid-game combat: verified balance, fixed arrival pacing
+- A mid-game playtest (Dependency District via map fast-travel) claimed combat was
+  "unplayable — die in 1-2s, invisible projectiles, no damage numbers." **Verified
+  each claim against evidence and rejected the false ones**: headless repro shows a
+  stationary player survives **15s+** (balance is fine, not nerfed); a controlled
+  combat preview shows **projectiles render clearly** (cyan blasts + trails) and
+  **damage numbers appear** (yellow pop). Discipline held: no enemy nerf on an
+  unreliable report.
+- The one real, defensible issue: enemies were placed only 200px from the region
+  spawn (inside the 340 aggro radius), so fast-travel/respawn dropped the player
+  straight into combat. **Enemies now spawn >=420px from spawn** (beyond aggro), so
+  you arrive safe and choose to engage — consistent with the Localhost opening.
+- Made damage numbers more readable (26px + quick pop-scale) since two reviewers
+  had missed them.
+- New `region_arrival_test` (8 regions, all min-enemy-dist > aggro) wired into CI.
+  Full suite: **25 suites green**.
 
 ### Iteration 34 — Environmental interactable comedy props
 - Implemented the brief's "ENVIRONMENTAL HUMOR DENSITY": **10 interactable props**
