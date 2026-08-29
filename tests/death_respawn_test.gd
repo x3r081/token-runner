@@ -69,6 +69,14 @@ func _run() -> void:
 		is_instance_valid(player) and player.global_position == GameManager.region_spawn
 		and GameManager.region_spawn != Vector2.ZERO)
 
+	# No re-swarm: after respawn, enemies must be sent home (far from the player),
+	# so the player can't die again instantly to the pile that killed them.
+	var min_dist := INF
+	for e in get_tree().get_nodes_in_group("enemy"):
+		if is_instance_valid(e):
+			min_dist = minf(min_dist, player.global_position.distance_to(e.global_position))
+	_check("enemies_sent_home_after_respawn (min_dist=%.0f)" % min_dist, min_dist > 300.0)
+
 func _check(label: String, condition: bool) -> void:
 	if condition:
 		print("  PASS: %s" % label)

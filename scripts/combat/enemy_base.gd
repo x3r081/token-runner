@@ -20,6 +20,12 @@ class_name EnemyBase
 const ENGAGE_DISTANCE := 34.0
 const SEPARATION_RADIUS := 46.0
 const KNOCKBACK_DECAY := 900.0
+## Enemies only chase once the player comes within AGGRO_RADIUS, and give up
+## (return home) if the player gets beyond LEASH_RADIUS. This keeps distant
+## enemies from swarming across a room (which turned the opening into a death
+## loop) and makes combat something the player chooses to walk into.
+@export var aggro_radius: float = 340.0
+const LEASH_MULT := 1.8
 
 var hp: int
 var target: Node2D = null
@@ -33,6 +39,8 @@ var _special_cd := 0.0
 var _telegraph := 0.0
 var _boss_tele := 0.0
 var _dying := false
+var _home := Vector2.ZERO
+var _aggroed := false
 
 func _ready() -> void:
 	add_to_group("enemy")
@@ -46,6 +54,10 @@ func _ready() -> void:
 	_base_speed = speed
 	_base_scale = scale
 	_special_cd = randf_range(2.5, 4.5)
+	_home = global_position
+	# Bosses own their arena — they always engage once you're in the room.
+	if is_boss:
+		aggro_radius = 900.0
 	var tex_path := "res://assets/textures/generated/enemy_%s.png" % enemy_type
 	if ResourceLoader.exists(tex_path):
 		sprite.texture = load(tex_path)
@@ -54,6 +66,14 @@ func _ready() -> void:
 
 func stun(duration: float) -> void:
 	_stun_time = maxf(_stun_time, duration)
+
+## Called on player respawn: forget the player and return to the home post, so a
+## respawn is never immediately re-swarmed by enemies that were mid-chase.
+func reset_to_home() -> void:
+	_aggroed = false
+	_knockback = Vector2.ZERO
+	if _home != Vector2.ZERO:
+		global_position = _home
 
 func _physics_process(delta: float) -> void:
 	# Knockback (e.g. from the player's Force Push dash) always resolves, even
@@ -80,12 +100,27 @@ func _physics_process(delta: float) -> void:
 	_update_special(delta)
 	var to_player := target.global_position - global_position
 	var dist := to_player.length()
+
+	# Aggro gating: wake when the player comes near, sleep (return home) if they
+	# leave. Special behaviours still tick, but a dormant enemy won't chase.
+	if not _aggroed:
+		if dist <= aggro_radius:
+			_aggroed = true
+	elif dist > aggro_radius * LEASH_MULT:
+		_aggroed = false
+
 	var desired := Vector2.ZERO
-	if dist > ENGAGE_DISTANCE:
-		desired = to_player.normalized() * speed
+	if _aggroed:
+		if dist > ENGAGE_DISTANCE:
+			desired = to_player.normalized() * speed
+		else:
+			# Hold at engage range and orbit slightly rather than piling on.
+			desired = to_player.normalized() * speed * 0.12
 	else:
-		# Hold at engage range and orbit slightly rather than piling onto the player.
-		desired = to_player.normalized() * speed * 0.12
+		# Dormant: drift back toward home so enemies don't wander into the spawn.
+		var to_home := _home - global_position
+		if to_home.length() > 12.0:
+			desired = to_home.normalized() * speed * 0.4
 	desired += _separation() * speed
 	velocity = desired
 	move_and_slide()

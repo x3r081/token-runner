@@ -22,6 +22,10 @@ func _on_respawn() -> void:
 		player.respawn(safe)
 		if player.has_method("grant_spawn_grace"):
 			player.grant_spawn_grace(3.0)
+	# Send any chasing enemies back to their posts so the respawn isn't a re-swarm.
+	for e in get_tree().get_nodes_in_group("enemy"):
+		if is_instance_valid(e) and e.has_method("reset_to_home"):
+			e.reset_to_home()
 	queue_free()
 
 func _on_menu() -> void:
