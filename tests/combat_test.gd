@@ -31,6 +31,7 @@ func _run() -> void:
 	await _test_rubber_duck_stun()
 	_test_stack_trace_pierce()
 	await _test_rate_limiter_no_trap()
+	await _test_ctrl_z_undo()
 
 func _spawn_enemy(type: String, pos: Vector2, hp: int = 20) -> Node:
 	var e: Node = EnemyScene.instantiate()
@@ -135,6 +136,33 @@ func _test_rate_limiter_no_trap() -> void:
 	var moved: float = player.global_position.x - x0
 	_check("player_still_moves_after_pulse (%.1f)" % moved, moved > 20.0)
 	e.queue_free()
+	player.queue_free()
+	await get_tree().physics_frame
+
+func _test_ctrl_z_undo() -> void:
+	# Ctrl+Z restores HP lost in the last couple seconds (panic recovery), costs
+	# context, and goes on cooldown.
+	ResourceManager.reset()
+	ResourceManager.resources["context"] = 50
+	var player := _spawn_player(Vector2(200, 200))
+	player.can_move = true
+	await get_tree().physics_frame
+	# ~3s of full HP history, then take a big hit.
+	for i in 60:
+		player._physics_process(0.05)
+	player.hp = 40
+	for i in 12:
+		player._physics_process(0.05)
+	var ctx0 := ResourceManager.get_value("context")
+	player._use_ability("ctrl_z")
+	_check("ctrl_z_restores_recent_hp (40 -> %d)" % player.hp, player.hp >= 90)
+	_check("ctrl_z_costs_context", ResourceManager.get_value("context") == ctx0 - 4.0)
+	_check("ctrl_z_on_cooldown", not player.ability_ready("ctrl_z"))
+	# Second immediate use is blocked (cooldown) and doesn't over-heal / refund.
+	player.hp = 30
+	var ctx1 := ResourceManager.get_value("context")
+	player._use_ability("ctrl_z")
+	_check("ctrl_z_blocked_on_cooldown", player.hp == 30 and ResourceManager.get_value("context") == ctx1)
 	player.queue_free()
 	await get_tree().physics_frame
 

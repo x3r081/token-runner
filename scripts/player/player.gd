@@ -44,6 +44,11 @@ var _prompt_label: Label
 var _ext_impulse := Vector2.ZERO
 var _duck_cd := 0.0
 var _trace_cd := 0.0
+var _ctrlz_cd := 0.0
+## Rolling (time, hp) history so Ctrl+Z can undo damage taken in the last few sec.
+var _hp_hist: Array = []
+const CTRLZ_WINDOW := 2.6
+const CTRLZ_COOLDOWN := 10.0
 
 func _ready() -> void:
 	add_to_group("player")
@@ -158,6 +163,8 @@ func _physics_process(delta: float) -> void:
 	_dash_cd = maxf(0.0, _dash_cd - delta)
 	_duck_cd = maxf(0.0, _duck_cd - delta)
 	_trace_cd = maxf(0.0, _trace_cd - delta)
+	_ctrlz_cd = maxf(0.0, _ctrlz_cd - delta)
+	_track_hp_history(delta)
 	_ext_impulse = _ext_impulse.move_toward(Vector2.ZERO, 1300.0 * delta)
 	_update_prompt()
 	if not can_move or GameManager.state != GameManager.GameState.PLAYING or EventManager.has_active_event():
@@ -244,6 +251,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_use_ability("rubber_duck")
 	if event.is_action_pressed("ability_4"):
 		_use_ability("stack_trace")
+	if event.is_action_pressed("ability_5"):
+		_use_ability("ctrl_z")
 	if event.is_action_pressed("cycle_model"):
 		ModelManager.cycle()
 
@@ -289,7 +298,43 @@ func _use_ability(ability: String) -> void:
 			ResourceManager.modify("tokens", -10)
 			_trace_cd = 1.6
 			_fire_projectile("stack_trace", 22, true)
+		"ctrl_z":
+			# Undo: restore the HP you had a couple seconds ago (panic recovery).
+			if _ctrlz_cd > 0.0 or ResourceManager.get_value("context") < 4:
+				return
+			var prev := _hp_from_ago(CTRLZ_WINDOW)
+			if prev <= hp:
+				return  # nothing to undo
+			ResourceManager.modify("context", -4)
+			_ctrlz_cd = CTRLZ_COOLDOWN
+			hp = mini(prev, MAX_HP)
+			health_changed.emit(hp, MAX_HP)
+			_ctrl_z_effect()
 	AudioManager.play_sfx("ability")
+
+## Sample HP each frame on a monotonic clock; keep only the last few seconds.
+func _track_hp_history(delta: float) -> void:
+	var t: float = (_hp_hist[-1][0] + delta) if not _hp_hist.is_empty() else 0.0
+	_hp_hist.append([t, hp])
+	while _hp_hist.size() > 1 and t - _hp_hist[0][0] > 4.0:
+		_hp_hist.pop_front()
+
+func _hp_from_ago(seconds: float) -> int:
+	if _hp_hist.is_empty():
+		return hp
+	var now: float = _hp_hist[-1][0]
+	var best: int = hp
+	for entry in _hp_hist:
+		if now - entry[0] >= seconds:
+			best = int(entry[1])
+	return best
+
+func _ctrl_z_effect() -> void:
+	# A green "undo" pulse.
+	sprite.modulate = Color(0.5, 1.6, 0.7)
+	var tw := create_tween()
+	tw.tween_property(sprite, "modulate", Color.WHITE, 0.4)
+	particles.emitting = true
 
 const RUBBER_DUCK_RADIUS := 180.0
 
@@ -356,6 +401,8 @@ func ability_ready(id: String) -> bool:
 			return _duck_cd <= 0.0
 		"stack_trace":
 			return _trace_cd <= 0.0
+		"ctrl_z":
+			return _ctrlz_cd <= 0.0
 		"dash":
 			return _dash_cd <= 0.0
 	return true

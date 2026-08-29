@@ -24,6 +24,7 @@ const ABILITY_DEFS := [
 	{"key": "2", "name": "Cache", "cost": "3 cp", "res": "compute", "amt": 3, "id": "cache"},
 	{"key": "3", "name": "Rubber Duck", "cost": "5 ctx", "res": "context", "amt": 5, "id": "rubber_duck"},
 	{"key": "4", "name": "Stack Trace", "cost": "10 tk", "res": "tokens", "amt": 10, "id": "stack_trace"},
+	{"key": "5", "name": "Ctrl+Z", "cost": "4 ctx", "res": "context", "amt": 4, "id": "ctrl_z"},
 	{"key": "Q", "name": "Dash / Push", "cost": "free", "res": "", "amt": 0, "id": "dash"},
 ]
 
@@ -82,7 +83,7 @@ func show_intro_hint() -> void:
 	_hint_label(vb, "WELCOME TO THE HACKATHON", 24, Color(0.4, 0.95, 0.85))
 	_hint_label(vb, "GOAL: ship your Dream App before the RESET.\nCollect tokens -> upgrade the Dream App [B] -> meet its ship requirements -> Deploy.", 16, Color(0.92, 0.94, 0.98))
 	_hint_label(vb, "CONTROLS", 18, Color(0.95, 0.8, 0.4))
-	_hint_label(vb, "WASD / Arrows  —  Move\nE  —  Interact / Talk (walk up to props & Claude)\n1  —  Prompt Blast (attack)      Shift  —  Dash (escape)\nB  —  Dream App      M  —  Map      J  —  Quests      Esc  —  Pause", 15, Color(0.85, 0.9, 0.95))
+	_hint_label(vb, "WASD / Arrows  —  Move\nE  —  Interact / Talk (walk up to props & Claude)\n1  —  Prompt Blast (attack)      Shift  —  Dash (escape)\n2-5  —  Abilities (Cache, Rubber Duck, Stack Trace, Ctrl+Z undo)\nB  —  Dream App      M  —  Map      J  —  Quests      Esc  —  Pause", 15, Color(0.85, 0.9, 0.95))
 	_hint_label(vb, "First up: talk to Claude at the desk, then grab some tokens.\n\n[E] / click to begin", 14, Color(0.6, 0.85, 0.8))
 	get_tree().create_timer(0.25).timeout.connect(func():
 		if is_instance_valid(root):
@@ -186,9 +187,9 @@ func _setup_ability_bar() -> void:
 	bar.anchor_right = 0.5
 	bar.anchor_top = 1.0
 	bar.anchor_bottom = 1.0
-	bar.offset_left = -300
+	bar.offset_left = -360
 	bar.offset_top = -74
-	bar.offset_right = 300
+	bar.offset_right = 360
 	bar.offset_bottom = -8
 	add_child(bar)
 	for def in ABILITY_DEFS:
