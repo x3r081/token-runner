@@ -9,8 +9,21 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 53 — P0: respawn blockable by a lingering overlay (found via broad
-playtest). Next: live re-confirmation; more quest variety.
+Iteration 54 — respawn/prop-safety P0 fix CONFIRMED live. Next: one more BROAD
+confirmation playtest post-fix (rigor), then re-audit completion.
+
+### Iteration 54 — Live re-confirmation of the respawn P0 fix
+- Focused live playtest of the It53 fixes: **both confirmed working.**
+  - Respawn: **3 deaths, 3 successful respawns** — via Enter, via Ctrl+Z, and via
+    clicking the button. Death screen closes, control restored at the safe spawn,
+    HP restored. Reliable.
+  - Prop safety: opening a prop popup **pauses** the game (background darkens,
+    enemies freeze, no damage taken while reading).
+  - Tester found **no remaining high-severity issues** (no crashes/soft-locks/stuck).
+- Note on completion: the explicit requirements are all met + evidenced, and the
+  last two playtests (combat-confirm It49, respawn-confirm It54) are clean. But the
+  most recent BROAD playtest (It53) did surface the respawn P0, so before declaring
+  the goal complete I want one clean BROAD (not focused) playtest post-fix.
 
 ### Iteration 53 — Broad playtest + respawn P0 fix
 - A broad mid-game playtest confirmed the game is cohesive and competitive (7.5/10:
