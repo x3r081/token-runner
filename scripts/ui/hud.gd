@@ -60,6 +60,7 @@ var _cycle_num := -1
 var _cycle_shown := -1
 var _model_sig := ""
 var _player: Node
+var _ability_bar: Control
 var _ability_slots: Array = []
 var _ability_panels: Array = []
 var _ability_overlays: Array = []
@@ -169,6 +170,8 @@ func _ready() -> void:
 	QuestManager.quest_completed.connect(_on_quest_completed)
 	GameManager.region_changed.connect(_on_region_changed)
 	AchievementManager.achievement_unlocked.connect(_on_achievement)
+	DialogueManager.dialogue_started.connect(_on_dialogue_started)
+	DialogueManager.dialogue_ended.connect(_on_dialogue_ended)
 	_player = get_tree().get_first_node_in_group("player")
 	if _player:
 		_player.health_changed.connect(_on_health_changed)
@@ -625,6 +628,18 @@ func _on_quest_completed(quest_id: String, _rewards: Dictionary) -> void:
 func _on_achievement(_id: String, name_text: String, desc: String) -> void:
 	push_toast("achievement", name_text, desc)
 
+## The ability bar lives in the same bottom-center band as the dialogue panel
+## and bleeds through its glass background. During a conversation the abilities
+## are not usable (player.gd gates them on DialogueManager.is_active), so the
+## bar goes away entirely and returns the moment the conversation ends.
+func _on_dialogue_started(_npc_id: String) -> void:
+	if is_instance_valid(_ability_bar):
+		_ability_bar.visible = false
+
+func _on_dialogue_ended(_npc_id: String) -> void:
+	if is_instance_valid(_ability_bar):
+		_ability_bar.visible = true
+
 # -------------------------------------------------------------- ability bar --
 func _setup_ability_bar() -> void:
 	var bar := HBoxContainer.new()
@@ -641,6 +656,7 @@ func _setup_ability_bar() -> void:
 	bar.offset_right = 380
 	bar.offset_bottom = -42
 	add_child(bar)
+	_ability_bar = bar
 	_ability_prev_frac.resize(ABILITY_DEFS.size())
 	for def in ABILITY_DEFS:
 		var accent: Color = ABILITY_ACCENTS.get(def.id, _GameTheme.CYAN)

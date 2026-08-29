@@ -369,6 +369,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Ignore gameplay input while a modal event/storyline popup is showing.
 	if EventManager.has_active_event():
 		return
+	# Same rule mid-conversation: ability keys pressed while reading dialogue
+	# (or picking a choice) must not fire blasts and spend resources behind the
+	# panel. DialogueUI handles its own advance/choice input.
+	if DialogueManager.is_active:
+		return
 	if event.is_action_pressed("interact"):
 		_try_interact()
 	if event.is_action_pressed("ability_1"):

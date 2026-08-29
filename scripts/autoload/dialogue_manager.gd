@@ -411,8 +411,10 @@ func build_claude_lines() -> Array:
 	# guidance entry has to live in THIS block -- a second choices block appended
 	# after it would never be shown.
 	#
-	# Hard cap: dialogue_ui.tscn renders one button per choice inside a fixed
-	# 200px panel, so every block stays at 3 choices or fewer.
+	# Style cap: keep every block at 3 choices or fewer so the decision stays
+	# readable at a glance. (The panel itself now grows upward from its anchored
+	# bottom edge — grow_vertical BEGIN in dialogue_ui.tscn — so overflow no
+	# longer pushes buttons off-screen; this cap is about clarity, not layout.)
 	if not GameManager.get_flag("backups"):
 		if not claude_state.get("warned_backups", false):
 			claude_state.warned_backups = true

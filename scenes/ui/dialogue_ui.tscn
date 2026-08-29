@@ -16,6 +16,8 @@ offset_left = -450.0
 offset_top = -220.0
 offset_right = 450.0
 offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 0
 
 [node name="Margin" type="MarginContainer" parent="Panel"]
 layout_mode = 2
