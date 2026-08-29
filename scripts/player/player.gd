@@ -36,6 +36,7 @@ var _walk_timer := 0.0
 var _dash_timer := 0.0
 var _dash_cd := 0.0
 var _dash_dir := Vector2.DOWN
+var _prompt_label: Label
 ## A short, decaying push (e.g. a Rate Limiter's 429 pulse). It never removes
 ## control — the player can always walk against it — so it can't cause a trap.
 var _ext_impulse := Vector2.ZERO
@@ -53,6 +54,45 @@ func _ready() -> void:
 	ResourceManager.resource_changed.connect(_on_resource_changed)
 	idle_timer.timeout.connect(_on_idle_timer)
 	idle_timer.start(randf_range(8.0, 14.0))
+	_setup_prompt()
+
+## Floating "[E]" prompt so players always know when (and what) they can interact with.
+func _setup_prompt() -> void:
+	_prompt_label = Label.new()
+	_prompt_label.add_theme_font_size_override("font_size", 15)
+	_prompt_label.add_theme_color_override("font_color", Color(0.35, 0.95, 0.85))
+	_prompt_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	_prompt_label.add_theme_constant_override("outline_size", 5)
+	_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_prompt_label.z_index = 500
+	_prompt_label.visible = false
+	add_child(_prompt_label)
+
+func _update_prompt() -> void:
+	if not is_instance_valid(_prompt_label):
+		return
+	var closest := _closest_interactable()
+	if closest and can_move and GameManager.state == GameManager.GameState.PLAYING and not EventManager.has_active_event():
+		var text := "Interact"
+		if closest.has_method("get_prompt"):
+			text = closest.get_prompt()
+		_prompt_label.text = "[E] %s" % text
+		_prompt_label.position = (closest.global_position - global_position) + Vector2(-70, -64)
+		_prompt_label.custom_minimum_size = Vector2(140, 0)
+		_prompt_label.visible = true
+	else:
+		_prompt_label.visible = false
+
+func _closest_interactable() -> Node:
+	var closest: Node = null
+	var closest_dist := INF
+	for n in nearby_interactables:
+		if is_instance_valid(n):
+			var d := global_position.distance_to(n.global_position)
+			if d < closest_dist:
+				closest_dist = d
+				closest = n
+	return closest
 
 func _setup_shadow() -> void:
 	var tex: Texture2D = load("res://assets/textures/generated/player_shadow.png")
@@ -117,6 +157,7 @@ func _physics_process(delta: float) -> void:
 	_duck_cd = maxf(0.0, _duck_cd - delta)
 	_trace_cd = maxf(0.0, _trace_cd - delta)
 	_ext_impulse = _ext_impulse.move_toward(Vector2.ZERO, 1300.0 * delta)
+	_update_prompt()
 	if not can_move or GameManager.state != GameManager.GameState.PLAYING or EventManager.has_active_event():
 		velocity = Vector2.ZERO
 		if sprite.animation.begins_with("walk"):
@@ -199,16 +240,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		ModelManager.cycle()
 
 func _try_interact() -> void:
-	if nearby_interactables.is_empty():
-		return
-	var closest: Node = null
-	var closest_dist := INF
-	for n in nearby_interactables:
-		if is_instance_valid(n):
-			var d := global_position.distance_to(n.global_position)
-			if d < closest_dist:
-				closest_dist = d
-				closest = n
+	var closest := _closest_interactable()
 	if closest and closest.has_method("interact"):
 		closest.interact(self)
 

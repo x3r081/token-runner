@@ -9,7 +9,7 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 22 — **P0 intro soft-lock fixed** (found via interactive playtest).
+Iteration 23 — interaction range + "[E]" prompt (found via interactive playtest).
 Next: continued interactive playtests; more quest variety; per-region NPC flavour.
 
 ## Iteration log
@@ -291,6 +291,15 @@ Next: continued interactive playtests; more quest variety; per-region NPC flavou
   frees itself with no input. Wired into CI.
 - Lesson: scripted screenshot captures used movement keys that incidentally
   finished the intro, hiding the bug — interactive playtesting caught it.
+
+### Iteration 23 — Interaction range + prompt (playtest finding)
+- Re-playtest confirmed the intro fix (movement works). It flagged **interaction
+  range as too tight** — pressing E near NPCs/consoles required pixel-perfect
+  positioning, which was frustrating.
+- Widened the player's interact area (56 → 82) and added a floating **"[E] <what>"
+  prompt** above the nearest interactable so players always know when and what
+  they can interact with. Verified: Claude dialogue now triggers from a
+  comfortable distance.
 
 ## Verified test commands
 
