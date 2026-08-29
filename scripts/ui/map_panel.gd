@@ -28,7 +28,7 @@ func _populate() -> void:
 		if unlocked and not current:
 			# Fast-travel to any unlocked region.
 			var btn := Button.new()
-			btn.text = "\u2713 %s   \u2192 travel" % display
+			btn.text = "Travel to %s" % display
 			btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			var r: String = rid
 			btn.pressed.connect(func(): _travel(r))

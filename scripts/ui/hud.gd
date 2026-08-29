@@ -45,7 +45,25 @@ func _ready() -> void:
 		_player.health_changed.connect(_on_health_changed)
 	_setup_cycle_readout()
 	_setup_ability_bar()
+	_setup_pause_button()
 	_update_all()
+
+func _setup_pause_button() -> void:
+	var b := Button.new()
+	b.text = "\u2016"  # pause glyph
+	b.anchor_left = 1.0
+	b.anchor_right = 1.0
+	b.position = Vector2(-52, 46)
+	b.custom_minimum_size = Vector2(40, 30)
+	b.tooltip_text = "Pause (Esc)"
+	b.focus_mode = Control.FOCUS_NONE
+	b.pressed.connect(_on_pause_button)
+	add_child(b)
+
+func _on_pause_button() -> void:
+	var w := get_parent()
+	if w and w.has_method("_open_pause") and GameManager.state == GameManager.GameState.PLAYING:
+		w._open_pause()
 	_on_region_changed(GameManager.current_region)
 
 func _setup_cycle_readout() -> void:

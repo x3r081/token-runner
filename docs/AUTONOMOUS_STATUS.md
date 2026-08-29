@@ -9,7 +9,7 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 29 — world-map fast-travel + verified live multi-region gameplay.
+Iteration 30 — input-robustness (visible HUD pause button + ASCII travel labels).
 Next: live boss-fight playtesting; combat balance across the run; more quest
 variety.
 
@@ -369,6 +369,16 @@ variety.
 - Per-region HUD subtitles (was "Region under construction" for all non-Localhost).
 - Regression test `tests/map_travel_test.tscn` (4/4): travel buttons for unlocked
   regions, travel changes region + closes the map, locked travel refused.
+
+### Iteration 30 — Input robustness
+- A computer-use playtest reported "pause/fast-travel don't work," but direct
+  `xdotool` captures prove both DO work (pause menu renders on Esc; clicking a map
+  button traveled to Dependency District live). The subagent's desktop appears to
+  intercept Escape and mis-target clicks — an environment quirk, not a game bug.
+- Regardless, added robustness that helps real players: a **visible HUD pause
+  button** (top-right, not everyone knows Esc) and **ASCII travel labels** on the
+  map ("Travel to <region>", no reliance on unicode arrows). Core Esc/click paths
+  unchanged and verified working.
 
 ## Verified test commands
 
