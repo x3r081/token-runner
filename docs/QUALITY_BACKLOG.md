@@ -54,8 +54,10 @@ every iteration by fresh playtesting. Priorities:
   trails. *(It28)*
 
 - [~] Multi-stage/branching quests with consequences, failure states, callbacks:
-  flagship storylines + a fully branching **Debugging Investigation** (multiple
-  endings, failure path, model-dependent AI) shipped. More variety welcome.
+  flagship storylines (Tiny Change, Free Tier, Autonomous Agent), a fully branching
+  **Debugging Investigation**, **Production Incident** (DNS gag), and **The
+  All-Hands Demo** (live-demo gamble with a real crash failure state, model-
+  dependent). More categories welcome (escort/defense/stealth).
 - [x] Technical-debt systemic consequences: costs rise, stability drains, bugs
   spawn on dependency-break incidents (safe below threshold). *(It7)*
 - [x] Ship-before-reset cycle system: timed cycles with quota refill, debt

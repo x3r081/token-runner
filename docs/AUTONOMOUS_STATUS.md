@@ -9,8 +9,22 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 39 — denser region visuals. Next: more quest variety with branching/
-failure states; continue raising regions toward Localhost's furniture density.
+Iteration 40 — new branching quest with a failure state. Next: more quest variety
+(escort/defense/stealth categories); hand-crafted per-region furniture set-pieces.
+
+### Iteration 40 — "The All-Hands Demo" (branching quest + failure state)
+- New quest category (high-stakes live performance), triggered on first entering
+  Corporate Enterprise. Three branches with distinct endings:
+  - **Stable happy path** → modest reputation + tokens.
+  - **Go big (experimental feature LIVE)** → an `ai_gamble` keyed on your selected
+    MODEL: a reliable model earns a standing ovation (+16 rep, +220 tk, *Shipped
+    Live*); an unreliable one hallucinates on stage and the app 500s in front of
+    847 people (−rep/−stability/−WTL + debt, *Live On Main*). Model choice matters.
+  - **Fake it** (pre-recorded demo) → works until the SVP asks you to click a live
+    button (−rep/−WTL).
+- Verified live (event triggers + renders in Corporate Enterprise) and via
+  `story_test` (branches, both gamble outcomes reachable by model, rep loss on the
+  fake path). Full suite: **26 suites green**.
 
 ### Iteration 39 — De-stamped, denser region visuals (all 9 regions)
 - Regions read as a bare tinted floor with props in the corners. For every region:
