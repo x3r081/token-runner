@@ -9,8 +9,42 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 54 — respawn/prop-safety P0 fix CONFIRMED live. Next: one more BROAD
-confirmation playtest post-fix (rigor), then re-audit completion.
+Iteration 55 — clean BROAD playtest (9/10, no high-severity issues) + enemy health
+bars. Stop condition met; see completion audit below.
+
+### Iteration 55 — Clean broad playtest + enemy health bars
+- **Broad post-fix QA playthrough (~8 min, full feature sweep): HIGH-SEVERITY
+  ISSUES: NONE FOUND.** Every core system verified working (movement, collection,
+  dialogue+choices, 5-stage branching events, Dream App upgrades + the evolving
+  ridiculous diagram, ship-requirement tracking, map/fast-travel, aim-assist
+  combat, enemy AI, death/respawn via Enter/Ctrl+Z, pause, quests, cycle/reset,
+  HUD, comedy). Rated **9/10** — "a genuinely polished indie game… technically
+  flawless comedy roguelike with zero game-breaking bugs. Ship it."
+- Addressed its single (low-severity) note — combat clarity — by adding **enemy
+  health bars** (green->red, shown when damaged) on top of the existing damage
+  numbers/knockback/death-pops. `combat_test` now 17 checks. Full suite: **28
+  suites green**.
+
+## Completion audit (as of It55)
+Every explicit objective requirement is satisfied and evidenced:
+- P0 enemy soft-lock fixed + regression test (soft_lock_test) — and no soft-locks
+  across 4 playtests.
+- Visually excellent Localhost (inhabited interior, depth/lighting/bloom, de-stamped
+  floor) — reviews 7->9/10.
+- Redesigned player/enemies/NPCs/props with distinct identities AND procedural
+  animation.
+- Deep systems: branching quests, comedy-as-mechanics, model selection, agent
+  system, Dream App architecture tradeoffs (with the live ridiculous diagram),
+  technical-debt consequences, ship-before-reset cycles — all tested.
+- Expanded combat with an escape mechanic (Dash/Force Push) + aim-assist + 6
+  abilities + juice (knockback/death-pops/damage-numbers/health-bars).
+- Conservative safe audio (master hard-limiter, audio_test).
+- Correct composition at 1920x1080 AND 2560x1440 (verified).
+- Maintained docs + continuous screenshot/video self-critique throughout.
+- Stop condition: repeated critical playtesting (It49 combat-confirm, It54
+  respawn-confirm, It55 broad) finds **no high-severity player-facing issue**, and
+  the game is **demonstrably competitive** (9/10, "approved for competition").
+28 automated suites green in CI.
 
 ### Iteration 54 — Live re-confirmation of the respawn P0 fix
 - Focused live playtest of the It53 fixes: **both confirmed working.**
