@@ -9,8 +9,18 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 45 — re-verified composition at 1080p & 1440p with all recent changes.
-Next: more quest variety; hand-crafted per-region furniture; deeper combat options.
+Iteration 46 — new Ctrl+Z (undo) combat ability. Next: more quest variety;
+hand-crafted per-region furniture set-pieces.
+
+### Iteration 46 — Ctrl+Z ability (panic undo)
+- Added a 6th, tactically-distinct ability from the brief's list. **Ctrl+Z** ([5],
+  4 context, 10s cd) restores the HP you had ~2.6s ago — an emergency "undo that
+  hit" button, distinct from Cache (i-frames) and Dash (escape), reinforcing the
+  never-soft-locked design. Rolling HP history; won't over-heal or refund on cd.
+- Wired into input, the HUD **6-slot ability bar** (widened; verified rendering at
+  1440p: `[1] Prompt Blast [2] Cache [3] Rubber Duck [4] Stack Trace [5] Ctrl+Z
+  [Q] Dash/Push`), and the onboarding controls list. `combat_test` covers
+  restore/cost/cooldown (15 checks). Full suite: **26 suites green**.
 
 ### Iteration 45 — Composition re-verification (1080p + 1440p)
 - Re-verified the explicit requirement "looks good at 1920x1080 AND 2560x1440" now

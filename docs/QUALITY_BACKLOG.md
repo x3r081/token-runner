@@ -67,9 +67,10 @@ every iteration by fresh playtesting. Priorities:
   now prepend a state-aware, in-character quip (react to debt/stability/deaths/
   cycle/tokens/agents/architecture) and evolve via a per-NPC talk counter. *(It37)*
 - [~] Combat abilities beyond Prompt Blast/Cache/Dash: added **Rubber Duck**
-  (AoE stun) and **Stack Trace** (piercing); **HUD ability bar** now shows all
-  5 slots with keys/costs and dims when on cooldown/unaffordable. Still open:
-  Rollback, Ctrl+Z, Agent Swarm.
+  (AoE stun), **Stack Trace** (piercing), and **Ctrl+Z** (undo recent damage /
+  panic recovery); **HUD ability bar** shows all 6 slots with keys/costs and dims
+  when on cooldown/unaffordable. Combat also has hit knockback + death pops. Still
+  open (optional): Rollback, Agent Swarm.
 - [x] Enemy behaviours: signature per-type behaviours + telegraphs (split, grow,
   429 pulse, blink), plus **boss** art + telegraphed slam + summons. *(It6, It17)*
 - [x] Environmental interactables with readable comedy (monitors, fridge, plant,
