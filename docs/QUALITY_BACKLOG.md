@@ -62,6 +62,9 @@ every iteration by fresh playtesting. Priorities:
   spawn on dependency-break incidents (safe below threshold). *(It7)*
 - [x] Ship-before-reset cycle system: timed cycles with quota refill, debt
   reckoning, vendor price shifts, reset warning + HUD readout. *(It8)*
+- [x] Dream App architecture VISUAL that gets increasingly ridiculous with player
+  decisions: live procedural diagram (spaghetti arrows, microservice swarm,
+  self-loops, unhinged labels, ridiculousness score). *(It52)*
 - [x] NPC personalities with memory and evolving dialogue: **Claude** is fully
   reactive with memory + a backups running-gag callback. **All 9 archetype NPCs**
   now prepend a state-aware, in-character quip (react to debt/stability/deaths/

@@ -9,8 +9,22 @@ competitive, polished hackathon PC game. Updated every iteration.
 
 ## Current focus
 
-Iteration 51 — +6 absurd random events (surprise density). Next: more quest
-variety / per-region set-pieces; keep playtesting toward 8-9/10.
+Iteration 52 — live "increasingly ridiculous" Dream App architecture diagram.
+Next: more quest variety; keep playtesting toward 8-9/10.
+
+### Iteration 52 — Ridiculous architecture diagram (a requested-but-missing feature)
+- The brief explicitly asked that "the architecture view must visually become
+  increasingly ridiculous based on player decisions" — this was **unbuilt**
+  (`get_visual_stage()` was dead code). Implemented a procedural architecture graph
+  in the Dream App panel that reflects the exact current build: a node per built
+  branch (sized/labelled by tier), base wiring, and — as upgrades/architecture
+  decisions accumulate — more tangled "spaghetti" cross-arrows, self-loops
+  (services calling themselves), and unhinged annotations ("here be dragons",
+  "temp (2019)", "load-bearing"). The **microservices** decision literally explodes
+  the backend into a swarm of tiny boxes. Live ridiculousness score in the header;
+  redraws on each purchase.
+- Verified via capture (ridiculousness 34: full spaghetti + microservice swarm +
+  chaos labels). Full suite: **28 suites green**.
 
 ### Iteration 51 — More surprises (random events 8 -> 14)
 - Per the brief's "MORE SURPRISES / rare absurd events," expanded the mid-run
