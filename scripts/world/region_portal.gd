@@ -151,7 +151,7 @@ func _build_halo(vivid: Color) -> void:
 	halo.scale = Vector2(1.9, 1.9)
 	halo.z_index = Z_HALO
 	halo.light_mask = 0
-	halo.modulate = Color(vivid.r * 0.52, vivid.g * 0.52, vivid.b * 0.52, 0.30)
+	halo.modulate = Color(vivid.r * 0.34, vivid.g * 0.34, vivid.b * 0.34, 0.20)
 	add_child(halo)
 	var pulse := halo.create_tween().set_loops()
 	pulse.tween_property(halo, "scale", Vector2(2.16, 2.16), 1.9) \

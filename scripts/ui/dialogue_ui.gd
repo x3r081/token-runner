@@ -53,6 +53,7 @@ func _on_line(_npc_id: String, speaker: String, text: String) -> void:
 		_GameTheme.open_panel(panel)
 	speaker_label.text = speaker
 	text_label.text = text
+	AudioManager.play_sfx("dialogue_blip")
 	# Typewriter reveal — pressing continue mid-reveal skips to the full line.
 	if _reveal_tween and _reveal_tween.is_valid():
 		_reveal_tween.kill()
@@ -84,7 +85,9 @@ func _on_choices(choices: Array) -> void:
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		_GameTheme.style_button(btn, _GameTheme.CYAN, 15)
 		var idx := i
-		btn.pressed.connect(func(): DialogueManager.select_choice(idx))
+		btn.pressed.connect(func():
+			AudioManager.play_sfx("choice_select")
+			DialogueManager.select_choice(idx))
 		choices_box.add_child(btn)
 	_GameTheme.stagger_rows(choices_box, 0.05, 0.0)
 

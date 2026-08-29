@@ -49,6 +49,13 @@ func generate() -> void:
 	_chair()
 	_whiteboard()
 	_door()
+	_window_hero()
+	_poster_art()
+	_pizza_props()
+	_power_strip()
+	_sticky_strip()
+	_can()
+	_couch_tex()
 	_tech_floor()
 	_struct_slab()
 	_struct_crate()
@@ -1050,8 +1057,12 @@ func _desk() -> void:
 	var h := 96
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var top := Color(0.235, 0.205, 0.265)
-	var legc := Color(0.115, 0.105, 0.145)
+	# Round-4 exposure lift: captured frames put the old 0.235 top BELOW the
+	# floor's in-game value, so the whole battlestation read as a black cutout.
+	# The slab now sits a step above the boards, and the legs a step below it —
+	# three honest values before the rim light even lands.
+	var top := Color(0.300, 0.262, 0.325)
+	var legc := Color(0.130, 0.120, 0.165)
 	_shadow(img, 120, 89, 108, 6, 0.32)
 	# legs with feet
 	_bevel(img, 10, 46, 12, 44, legc)
@@ -1079,7 +1090,7 @@ func _desk() -> void:
 		for gx in range(6, 232, 13):
 			if _hash(gx, gy) % 3 == 0:
 				_rect(img, gx, gy, 7, 1, top.darkened(0.08))
-	_rect(img, 2, 22, 236, 1, Color(0.42, 0.37, 0.46))   # rim edge, catches light
+	_rect(img, 2, 22, 236, 1, Color(0.56, 0.50, 0.58))   # rim edge, catches light
 	_rect(img, 2, 23, 236, 2, top.lightened(0.10))
 	_rect(img, 2, 22, 2, 24, top.lightened(0.08))
 	_rect(img, 2, 46, 236, 4, top.darkened(0.35))        # front edge board
@@ -1146,7 +1157,7 @@ func _desk() -> void:
 	_line(img, 215, 34, 218, 34, Color(0.30, 0.38, 0.14))
 	# a cable escaping off the right end of the desk
 	_line(img, 132, 44, 226, 48, Color(0.10, 0.10, 0.14))
-	_finish(img, RIM_WARM, 0.40)
+	_finish(img, RIM_WARM, 0.55)
 	_save(img, "furn_desk.png")
 
 func _monitor() -> void:
@@ -1156,7 +1167,7 @@ func _monitor() -> void:
 	var h := 84
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var bez := Color(0.075, 0.078, 0.10)
+	var bez := Color(0.105, 0.110, 0.140)
 	_shadow(img, w / 2, 80, 26, 4, 0.30)
 	# stand: neck + base with a lit top edge
 	_bevel(img, w / 2 - 6, 62, 12, 12, bez.lightened(0.10))
@@ -1202,7 +1213,7 @@ func _monitor() -> void:
 	_line(img, 74, 59, 88, 71, Color(0.16, 0.17, 0.21))
 	# standby LED
 	_glow(img, 88, 59, CYAN)
-	_finish(img, Color(0.75, 0.95, 1.0), 0.30)
+	_finish(img, Color(0.75, 0.95, 1.0), 0.45)
 	_save(img, "furn_monitor.png")
 
 func _server_rack() -> void:
@@ -1212,7 +1223,7 @@ func _server_rack() -> void:
 	var h := 168
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var cab := Color(0.13, 0.14, 0.18)
+	var cab := Color(0.175, 0.185, 0.235)
 	_shadow(img, w / 2, 164, 42, 3, 0.34)
 	_vgrad(img, 2, 2, 92, 158, cab.lightened(0.10), cab.darkened(0.22))
 	_rect(img, 2, 2, 92, 2, cab.lightened(0.30))
@@ -1271,7 +1282,7 @@ func _server_rack() -> void:
 	_line(img, 26, 160, 12, 167, Color(0.34, 0.12, 0.22))
 	_line(img, 32, 160, 18, 167, Color(0.16, 0.17, 0.22))
 	_line(img, 21, 160, 9, 166, Color(0.22, 0.38, 0.42))
-	_finish(img, Color(0.70, 0.95, 1.0), 0.38)
+	_finish(img, Color(0.70, 0.95, 1.0), 0.50)
 	_save(img, "furn_server.png")
 
 func _bed() -> void:
@@ -1280,9 +1291,9 @@ func _bed() -> void:
 	var h := 108
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var frame := Color(0.165, 0.130, 0.115)
+	var frame := Color(0.205, 0.163, 0.142)
 	var sheet := Color(0.285, 0.305, 0.410)
-	var blanket := Color(0.185, 0.225, 0.330)
+	var blanket := Color(0.225, 0.268, 0.385)
 	_shadow(img, w / 2, 102, 78, 5, 0.30)
 	# frame with a lit headboard edge (head of bed is at the top)
 	_bevel(img, 3, 10, 162, 90, frame)
@@ -1338,7 +1349,7 @@ func _bed() -> void:
 	_rect(img, 24, 66, 26, 2, Color(0.78, 0.74, 0.66))
 	_rect(img, 36, 66, 2, 14, Color(0.44, 0.40, 0.34))
 	_rect(img, 24, 79, 26, 1, Color(0.36, 0.33, 0.28))
-	_finish(img, RIM_WARM, 0.32)
+	_finish(img, RIM_WARM, 0.42)
 	_save(img, "furn_bed.png")
 
 func _fridge() -> void:
@@ -1609,7 +1620,7 @@ func _bookshelf() -> void:
 	var h := 120
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var wood := Color(0.205, 0.160, 0.135)
+	var wood := Color(0.270, 0.212, 0.172)
 	_bevel(img, 2, 2, 136, 116, wood)
 	var shelf_cols := [Color(0.55, 0.28, 0.28), Color(0.28, 0.40, 0.55), Color(0.34, 0.48, 0.34), Color(0.60, 0.52, 0.30), Color(0.42, 0.34, 0.50), Color(0.30, 0.30, 0.36)]
 	var shelf_i := 0
@@ -1674,7 +1685,7 @@ func _bookshelf() -> void:
 	_rect(img, 8, 106, 26, 2, Color(0.58, 0.46, 0.30))
 	_rect(img, 18, 106, 3, 10, Color(0.38, 0.30, 0.20))
 	_rect(img, 12, 110, 12, 2, Color(0.30, 0.24, 0.16))
-	_finish(img, RIM_WARM, 0.32)
+	_finish(img, RIM_WARM, 0.48)
 	_save(img, "furn_shelf.png")
 
 func _chair() -> void:
@@ -1683,7 +1694,7 @@ func _chair() -> void:
 	var h := 88
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var c := Color(0.135, 0.145, 0.200)
+	var c := Color(0.175, 0.188, 0.252)
 	_shadow(img, 32, 84, 22, 3, 0.30)
 	# star base + wheels first (they sit behind everything)
 	for wp in [Vector2i(10, 82), Vector2i(54, 82), Vector2i(20, 85), Vector2i(44, 85), Vector2i(32, 86)]:
@@ -1733,7 +1744,7 @@ func _chair() -> void:
 	_rect(img, 44, 18, 9, 2, Color(0.27, 0.36, 0.52))
 	_rect(img, 44, 18, 2, 20, Color(0.24, 0.32, 0.47))
 	_rect(img, 45, 36, 7, 2, Color(0.12, 0.17, 0.28))
-	_finish(img, Color(1.0, 0.60, 0.80), 0.28)
+	_finish(img, Color(1.0, 0.60, 0.80), 0.42)
 	_save(img, "furn_chair.png")
 
 func _whiteboard() -> void:
@@ -1876,6 +1887,399 @@ func _door() -> void:
 		_rect(img, 13, 136 + sy, 70, 1, Color(1.0, 0.75, 0.42, 0.22 - 0.05 * float(sy)))
 	_finish(img, RIM_WARM, 0.30)
 	_save(img, "furn_door.png")
+
+# ------------------------------------------- localhost fidelity pass --------
+# Round-4 additions for the apartment: a hero window, real poster art, and
+# textures for the props that were still ColorRects. Everything here is
+# _hash-deterministic (no _rng), so adding these functions cannot shift a
+# single pixel in any texture generated before them.
+
+func _window_hero() -> void:
+	# THE window: floor-to-ceiling night city behind the battlestation. Ties the
+	# room to the menu's identity (starfield, neon, indigo dark) and is the one
+	# place the world outside is allowed to look better than the world inside.
+	# Bottom rows bake their own sill + feathered contact shadow, because in the
+	# builder this hangs below the wall band and has to meet the boards cleanly.
+	var w := 460
+	var h := 300
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var frame := Color(0.105, 0.105, 0.155)
+	var sky_top := Color(0.030, 0.038, 0.088)
+	var sky_low := Color(0.130, 0.085, 0.190)
+	var glass_top := 10
+	var glass_bot := h - 24
+	var glass_l := 10
+	var glass_r := w - 10
+	# sky: dithered indigo-to-violet with a city-glow haze at the horizon
+	for y in range(glass_top, glass_bot):
+		for x in range(glass_l, glass_r):
+			var t := float(y - glass_top) / float(glass_bot - glass_top)
+			var tt := t + (0.030 if (((x >> 1) + (y >> 1)) & 1) == 0 else 0.0)
+			var c := sky_top.lerp(sky_low, clampf(tt, 0.0, 1.0))
+			c = c.lerp(Color(0.205, 0.105, 0.235), clampf((t - 0.52) * 1.1, 0.0, 0.40))
+			# stars — the menu's starfield, seen from indoors
+			if t < 0.55 and _hash(x * 7, y * 13) % 431 == 0:
+				c = WHITE_HOT if _hash(x, y) % 5 == 0 else Color(0.60, 0.64, 0.80)
+			img.set_pixel(x, y, c)
+	# moon, indifferent, with a hot crescent for the bloom pass
+	for yy in range(38, 82):
+		for xx in range(318, 362):
+			var d := Vector2(float(xx - 340), float(yy - 60)).length()
+			if d < 15.0:
+				var b := clampf(0.78 - (float(xx - 340) + float(yy - 60)) * 0.010, 0.58, 0.92)
+				img.set_pixel(xx, yy, Color(b, b + 0.02, b + 0.06))
+			elif d < 21.0:
+				_px(img, xx, yy, Color(0.85, 0.88, 1.0, (21.0 - d) * 0.012))
+	for mc: Vector2i in [Vector2i(344, 62), Vector2i(336, 56), Vector2i(341, 68)]:
+		_px(img, mc.x, mc.y, Color(0.60, 0.62, 0.72))
+	_px(img, 332, 52, WHITE_HOT)
+	_px(img, 333, 52, WHITE_HOT)
+	_px(img, 332, 53, WHITE_HOT)
+	# far skyline: hazy indigo towers, one value step above the sky
+	for x in range(glass_l, glass_r):
+		var fh := 46 + _hash((x - glass_l) / 24, 3) % 42
+		for y in range(glass_bot - fh, glass_bot):
+			var c := Color(0.080, 0.088, 0.162)
+			if y == glass_bot - fh:
+				c = Color(0.105, 0.115, 0.200)
+			img.set_pixel(x, y, c)
+	# near skyline: near-black towers, parapets catching the sky, and window
+	# grids lit in the palette's amber/cyan — the other people still awake
+	for x in range(glass_l, glass_r):
+		var band := (x - glass_l) / 34
+		var nh := 26 + _hash(band * 13, 7) % 92
+		var top := glass_bot - nh
+		for y in range(top, glass_bot):
+			var c := Color(0.028, 0.032, 0.058)
+			if y == top:
+				c = Color(0.052, 0.058, 0.096)
+			elif (x - glass_l) % 5 != 0 and (y - top) % 7 >= 2 and (y - top) % 7 <= 4:
+				var wx := (x - glass_l) / 5
+				var wy := (y - top) / 7
+				if _hash(wx * 3 + band * 17, wy * 11) % 7 == 0:
+					c = Color(0.95, 0.70, 0.33) if _hash(wx, wy * 5) % 3 != 0 else Color(0.35, 0.85, 0.90)
+					if _hash(wx * 5, wy * 3) % 37 == 0:
+						c = WHITE_HOT
+			img.set_pixel(x, y, c)
+	# aviation beacons on the tallest towers, each on its own mast
+	for b in (glass_r - glass_l) / 34 + 1:
+		var nh2 := 26 + _hash(b * 13, 7) % 92
+		if nh2 < 96:
+			continue
+		var bx := glass_l + b * 34 + 17
+		if bx >= glass_r - 4:
+			continue
+		var top2 := glass_bot - nh2
+		_rect(img, bx, top2 - 6, 1, 6, Color(0.05, 0.055, 0.09))
+		_glow(img, bx, top2 - 7, RED)
+	# neon signage on two near towers — the city the menu promised
+	for si: int in [2, 6]:
+		var nh3 := 26 + _hash(si * 13, 7) % 92
+		var top3 := glass_bot - nh3
+		var sx := glass_l + si * 34 + 6
+		if si == 2:
+			for sy in range(top3 + 8, mini(top3 + 34, glass_bot - 4)):
+				_px(img, sx, sy, Color(0.60, 0.10, 0.36))
+				_px(img, sx + 1, sy, MAGENTA)
+				_px(img, sx + 2, sy, Color(0.60, 0.10, 0.36))
+				if (sy - top3) % 7 == 1:
+					_px(img, sx + 1, sy, WHITE_HOT)
+		else:
+			_rect(img, sx, top3 + 10, 22, 9, Color(0.04, 0.10, 0.12))
+			_rect(img, sx + 2, top3 + 12, 18, 2, CYAN)
+			_rect(img, sx + 2, top3 + 16, 12, 1, Color(0.10, 0.55, 0.52))
+			_px(img, sx + 4, top3 + 12, WHITE_HOT)
+			_px(img, sx + 13, top3 + 13, WHITE_HOT)
+	# glass: two faint diagonal reflections + the room's warm spill low down
+	for y in range(glass_top, glass_bot):
+		for x in range(glass_l, glass_r):
+			var dg := x - y
+			if absi(dg - 60) < 4 or absi(dg - 96) < 2:
+				_px(img, x, y, Color(0.80, 0.90, 1.0, 0.045))
+	for y2 in range(glass_bot - 34, glass_bot):
+		var wa := float(y2 - (glass_bot - 34)) / 34.0 * 0.085
+		for x2 in range(glass_l, glass_r):
+			_px(img, x2, y2, Color(1.0, 0.80, 0.52, wa))
+	# condensation runnels where the warm room meets the cold pane
+	for r in 12:
+		var rx := glass_l + 8 + _hash(r, 131) % (w - 36)
+		var ry := glass_bot - 40 + _hash(r, 137) % 20
+		var rl := 6 + _hash(r, 139) % 14
+		for j in rl:
+			var ryy := ry + j
+			if ryy >= glass_bot - 2:
+				break
+			_px(img, rx + int(sin(float(j) * 0.23 + float(r)) * 1.3), ryy, Color(0.70, 0.78, 0.92, 0.05))
+		_px(img, rx, mini(ry + rl, glass_bot - 3), Color(0.84, 0.90, 1.0, 0.15))
+	# mullions: two verticals + a transom, lit on their left/top edges
+	for my in range(glass_top, glass_bot):
+		for mx: int in [glass_l + 146, glass_l + 292]:
+			_px(img, mx - 1, my, frame.lightened(0.22))
+			_px(img, mx, my, frame.lightened(0.05))
+			_px(img, mx + 1, my, frame.darkened(0.28))
+	for mx2 in range(glass_l, glass_r):
+		_px(img, mx2, 96, frame.lightened(0.22))
+		_px(img, mx2, 97, frame.lightened(0.05))
+		_px(img, mx2, 98, frame.darkened(0.28))
+	# fairy lights taped along the top rail. Still not the holidays.
+	for cx in range(glass_l + 4, glass_r - 4):
+		_px(img, cx, 15 + int(sin(float(cx) * 0.11) * 2.0), Color(0.20, 0.20, 0.24, 0.55))
+	for lx in range(glass_l + 10, glass_r - 10, 26):
+		var ly := 16 + int(sin(float(lx) * 0.11) * 2.0)
+		_px(img, lx, ly, Color(1.0, 0.78, 0.42))
+		_px(img, lx, ly - 1, WHITE_HOT)
+		_px(img, lx - 1, ly, Color(0.95, 0.70, 0.36, 0.55))
+		_px(img, lx + 1, ly, Color(0.95, 0.70, 0.36, 0.55))
+	# a sticky note stuck to the glass at eye height, overlapping the skyline so
+	# it reads as ON the pane, not in the sky. It says TODO. Same TODO.
+	_rect(img, 262, 210, 12, 12, Color(0.92, 0.78, 0.36))
+	_rect(img, 262, 210, 12, 1, Color(0.98, 0.86, 0.46))
+	_line(img, 264, 213, 271, 213, Color(0.35, 0.28, 0.12))
+	_line(img, 264, 216, 269, 216, Color(0.35, 0.28, 0.12))
+	_px(img, 273, 222, Color(0.05, 0.05, 0.08, 0.5))
+	# frame: chunky bevel lit from the top-left, drawn over the glass edges
+	_rect(img, 0, 0, w, 2, Color(0.045, 0.05, 0.08))
+	_rect(img, 0, 0, 2, h - 10, Color(0.045, 0.05, 0.08))
+	_rect(img, w - 2, 0, 2, h - 10, Color(0.045, 0.05, 0.08))
+	_rect(img, 2, 2, w - 4, 8, frame.lightened(0.18))
+	_rect(img, 2, 2, w - 4, 2, frame.lightened(0.34))
+	_rect(img, 2, 9, w - 4, 1, frame.darkened(0.40))
+	_rect(img, 2, 2, 8, h - 26, frame.lightened(0.09))
+	_rect(img, 2, 2, 2, h - 26, frame.lightened(0.20))
+	_rect(img, 9, 10, 1, h - 34, frame.darkened(0.35))
+	_rect(img, w - 10, 2, 8, h - 26, frame.darkened(0.16))
+	_rect(img, w - 10, 10, 1, h - 34, frame.darkened(0.40))
+	_rect(img, w - 4, 2, 2, h - 26, frame.darkened(0.30))
+	# sill: warm-lit ledge, shadowed front board, then a feathered contact
+	# shadow with REAL alpha so the boards below read through it
+	var sill := Color(0.335, 0.270, 0.210)
+	_rect(img, 0, h - 24, w, 8, sill)
+	_rect(img, 0, h - 24, w, 2, sill.lightened(0.30))
+	_rect(img, 0, h - 16, w, 6, sill.darkened(0.35))
+	_rect(img, 0, h - 10, w, 2, sill.darkened(0.55))
+	# two dead tins on the sill, keeping watch over the city
+	for k: int in [0, 1]:
+		var cx2 := 64 + k * 22
+		var tin := Color(0.30, 0.72, 0.38) if k == 0 else Color(0.82, 0.34, 0.30)
+		_rect(img, cx2, h - 36, 8, 12, tin.darkened(0.12))
+		_rect(img, cx2, h - 36, 2, 12, tin.lightened(0.30))
+		_ellipse(img, cx2 + 4, h - 36, 4.0, 1.5, tin.darkened(0.45))
+		_px(img, cx2 + 1, h - 35, WHITE_HOT)
+	for y3 in range(h - 8, h):
+		var fa := clampf((1.0 - float(y3 - (h - 8)) / 7.0) * 0.80, 0.0, 1.0)
+		_rect(img, 0, y3, w, 1, Color(0.012, 0.014, 0.035, fa))
+	_finish(img, RIM_COOL, 0.30)
+	_save(img, "int_window_big.png")
+
+func _poster_art() -> void:
+	# Motivational poster, bright near-greyscale so the builder tints one
+	# texture into every creed on the wall. The art is a sunburst over a
+	# horizon: hype, radiating from nothing. The WorldLabel carries the words.
+	var img := Image.create(44, 60, false, Image.FORMAT_RGBA8)
+	var paper := Color(0.560, 0.575, 0.640)
+	_rect(img, 0, 0, 44, 60, Color(0.085, 0.09, 0.12))
+	_rect(img, 0, 0, 44, 1, Color(0.16, 0.17, 0.22))
+	_rect(img, 0, 0, 1, 60, Color(0.13, 0.14, 0.18))
+	_rect(img, 2, 2, 40, 56, paper.darkened(0.16))
+	_vgrad(img, 3, 3, 38, 54, paper, paper.darkened(0.30))
+	for r in 9:
+		var ang := PI + PI * (float(r) + 0.5) / 9.0
+		_line(img, 22, 40, 22 + int(cos(ang) * 26.0), 40 + int(sin(ang) * 26.0), paper.lightened(0.22))
+	_disc(img, 22, 40, 4.0, paper.lightened(0.34))
+	_px(img, 21, 39, Color(0.92, 0.94, 0.99))
+	# slogan bars, unreadable on purpose; the label rides alongside
+	_rect(img, 6, 44, 32, 2, paper.darkened(0.42))
+	_rect(img, 10, 49, 24, 2, paper.darkened(0.38))
+	_rect(img, 14, 53, 16, 1, paper.darkened(0.34))
+	# tape at the top corners, one curling corner at the bottom
+	for tc: Vector2i in [Vector2i(2, 2), Vector2i(36, 2)]:
+		_rect(img, tc.x, tc.y, 6, 4, Color(0.80, 0.82, 0.86, 0.5))
+	_line(img, 39, 55, 42, 52, paper.lightened(0.30))
+	_px(img, 41, 54, paper.darkened(0.40))
+	_finish(img, RIM_COOL, 0.25)
+	_save(img, "int_poster.png")
+
+func _pizza_props() -> void:
+	# The strata. A leaning tower of closed boxes — deeper layers darker and
+	# greasier, per the archaeology — plus one open single with the last slice.
+	var img := Image.create(64, 58, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var card := Color(0.585, 0.435, 0.240)
+	_shadow(img, 32, 53, 27, 4, 0.32)
+	var offs: Array[Vector2i] = [Vector2i(6, 42), Vector2i(2, 31), Vector2i(9, 20), Vector2i(5, 9)]
+	for i in offs.size():
+		var o: Vector2i = offs[i]
+		var tone := card.darkened(0.16 - 0.05 * float(i))
+		_rect(img, o.x, o.y, 46, 12, tone)
+		_rect(img, o.x, o.y, 46, 3, tone.lightened(0.22))
+		_rect(img, o.x, o.y + 10, 46, 2, tone.darkened(0.34))
+		_rect(img, o.x + 44, o.y, 2, 12, tone.darkened(0.24))
+		# printed lid circle + steam slot
+		for a in 20:
+			var ang := TAU * float(a) / 20.0
+			_px(img, o.x + 23 + int(cos(ang) * 6.0), o.y + 6 + int(sin(ang) * 3.0), tone.darkened(0.30))
+		_rect(img, o.x + 8, o.y + 5, 6, 1, tone.darkened(0.38))
+		# the grease is the stratigraphy
+		var gx := o.x + 28 + (_hash(i, 3) % 10)
+		_ellipse(img, gx, o.y + 7, 4.0 + float(_hash(i, 5) % 3), 2.4, Color(0.30, 0.20, 0.09, 0.55))
+	_finish(img, RIM_WARM, 0.34)
+	_save(img, "int_pizza_stack.png")
+	# the open single: one slice left, which is a supply-chain miracle
+	var sg := Image.create(50, 40, false, Image.FORMAT_RGBA8)
+	sg.fill(Color(0, 0, 0, 0))
+	_shadow(sg, 25, 36, 21, 3, 0.30)
+	_rect(sg, 3, 2, 44, 12, card.darkened(0.06))
+	_rect(sg, 3, 2, 44, 2, card.lightened(0.22))
+	_rect(sg, 3, 12, 44, 2, card.darkened(0.30))
+	_rect(sg, 3, 15, 44, 20, card.darkened(0.28))
+	_rect(sg, 5, 17, 40, 16, Color(0.34, 0.25, 0.13))
+	for g in 7:
+		_px(sg, 8 + _hash(g, 7) % 34, 19 + _hash(g, 11) % 12, Color(0.22, 0.15, 0.07))
+	_rect(sg, 12, 19, 12, 2, Color(0.62, 0.28, 0.16))
+	for sy in 10:
+		var sw := 12 - sy
+		_rect(sg, 12, 21 + sy, maxi(sw, 1), 1, Color(0.83, 0.60, 0.22))
+	_px(sg, 15, 23, Color(0.55, 0.16, 0.12))
+	_px(sg, 18, 26, Color(0.55, 0.16, 0.12))
+	_finish(sg, RIM_WARM, 0.32)
+	_save(sg, "int_pizza_box.png")
+
+func _power_strip() -> void:
+	# Six sockets, more wall-warts than sockets, one confident LED.
+	var img := Image.create(56, 22, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var body := Color(0.70, 0.71, 0.75)
+	_shadow(img, 28, 18, 25, 3, 0.30)
+	_rect(img, 2, 6, 52, 10, body.darkened(0.10))
+	_rect(img, 2, 6, 52, 2, body.lightened(0.16))
+	_rect(img, 2, 14, 52, 2, body.darkened(0.36))
+	for s in 6:
+		var sx := 6 + s * 8
+		_rect(img, sx, 8, 5, 6, body.darkened(0.34))
+		if s != 4:
+			# a wall-wart squatting over its socket and half the next one
+			var pc := Color(0.16 + 0.05 * float(s % 3), 0.16, 0.20)
+			_rect(img, sx - 1, 4, 7, 8, pc)
+			_rect(img, sx - 1, 4, 7, 2, pc.lightened(0.30))
+			_line(img, sx + 2, 4, sx + 2 + (s % 3) * 3 - 3, 0, Color(0.10, 0.10, 0.13))
+		else:
+			# the one free socket, guarded like a parking spot
+			_px(img, sx + 2, 10, Color(0.06, 0.06, 0.08))
+	_glow(img, 51, 8, RED)
+	_finish(img, RIM_WARM, 0.32)
+	_save(img, "int_power_strip.png")
+
+func _sticky_strip() -> void:
+	# Six estimates on a desk edge. The scribbles are load-bearing.
+	var img := Image.create(96, 26, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var cols: Array[Color] = [
+		Color(0.93, 0.80, 0.38), Color(0.74, 0.87, 0.42), Color(0.95, 0.62, 0.60),
+		Color(0.62, 0.80, 0.94), Color(0.93, 0.80, 0.38), Color(0.86, 0.70, 0.90),
+	]
+	for i in cols.size():
+		var nx := 2 + i * 15
+		var ny := 2 + (_hash(i, 3) % 4)
+		var c: Color = cols[i]
+		_rect(img, nx, ny, 12, 12, c)
+		_rect(img, nx, ny, 12, 1, c.lightened(0.22))
+		_rect(img, nx, ny + 11, 12, 1, c.darkened(0.28))
+		_px(img, nx + 11, ny + 12, Color(0.05, 0.05, 0.08, 0.4))
+		_line(img, nx + 2, ny + 3, nx + 8, ny + 3, c.darkened(0.55))
+		_line(img, nx + 2, ny + 6, nx + 6 + _hash(i, 7) % 3, ny + 6, c.darkened(0.55))
+		if i % 2 == 0:
+			_line(img, nx + 2, ny + 9, nx + 9, ny + 9, c.darkened(0.45))
+		if i == 3:
+			# one note peeling at the corner; it will fall during a demo
+			_clear(img, nx + 8, ny + 8, 4, 4)
+			for f in 4:
+				_px(img, nx + 8 + f, ny + 11 - f, c.lightened(0.30))
+				_px(img, nx + 8 + f, ny + 12 - f, c.darkened(0.20))
+	# the one that already fell, at an angle nobody will fix
+	_rect(img, 82, 14, 11, 10, Color(0.84, 0.72, 0.34))
+	_line(img, 84, 17, 90, 17, Color(0.35, 0.28, 0.12))
+	_line(img, 84, 20, 88, 20, Color(0.35, 0.28, 0.12))
+	_finish(img, RIM_WARM, 0.0)
+	_save(img, "int_sticky_strip.png")
+
+func _can() -> void:
+	# One empty energy tin, near-white so the builder tints each flavour of
+	# regret. The tab is up because every one was opened one-handed, mid-build.
+	var img := Image.create(10, 16, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var tin := Color(0.78, 0.79, 0.82)
+	for y in range(3, 15):
+		var t := float(y - 3) / 11.0
+		_rect(img, 1, y, 8, 1, tin.lerp(tin.darkened(0.30), t))
+	_rect(img, 1, 3, 8, 1, tin.lightened(0.16))
+	_rect(img, 2, 4, 1, 10, Color(0.97, 0.98, 1.0, 0.85))
+	_rect(img, 7, 4, 1, 10, tin.darkened(0.42))
+	_rect(img, 2, 8, 6, 3, tin.darkened(0.16))
+	_rect(img, 3, 9, 4, 1, tin.darkened(0.38))
+	_rect(img, 1, 14, 8, 1, tin.darkened(0.52))
+	_ellipse(img, 5, 3, 4.0, 1.6, tin.darkened(0.48))
+	_px(img, 4, 2, tin.lightened(0.30))
+	_px(img, 5, 2, tin.darkened(0.20))
+	_finish(img, RIM_WARM, 0.0)
+	_save(img, "int_can.png")
+
+func _couch_tex() -> void:
+	# The couch: bought for a social life that never shipped. Cushions read in
+	# three values, the blanket in two, the crumbs in confession.
+	var w := 172
+	var h := 84
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var base := Color(0.300, 0.270, 0.385)
+	_shadow(img, 86, 78, 76, 5, 0.32)
+	# backrest with cushion seams
+	_bevel(img, 10, 6, 152, 30, base.darkened(0.10))
+	_rect(img, 10, 6, 152, 3, base.lightened(0.20))
+	for bx in range(60, 162, 50):
+		_rect(img, bx, 9, 2, 24, base.darkened(0.30))
+		_rect(img, bx + 2, 9, 1, 24, base.lightened(0.08))
+	# arms, overhanging the seat
+	for k: int in [0, 1]:
+		var ax := 2 if k == 0 else 148
+		_bevel(img, ax, 14, 22, 52, base.lightened(0.04) if k == 0 else base.darkened(0.06))
+		_rect(img, ax, 14, 22, 4, base.lightened(0.26))
+		_rect(img, ax, 62, 22, 4, base.darkened(0.36))
+	# seat cushions: lit top, one compressed dent per cushion, seam AO
+	for ci in 3:
+		var cx := 26 + ci * 42
+		var cush := base.lightened(0.14 - 0.03 * float(ci % 2))
+		_rect(img, cx, 34, 40, 26, cush)
+		_rect(img, cx, 34, 40, 4, cush.lightened(0.20))
+		_rect(img, cx, 56, 40, 4, cush.darkened(0.26))
+		_rect(img, cx + 38, 34, 2, 26, cush.darkened(0.30))
+		_ellipse(img, cx + 20, 46, 14.0, 7.0, cush.darkened(0.10))
+		_line(img, cx + 8, 46, cx + 32, 46, cush.darkened(0.18))
+	# skirt + feet
+	_rect(img, 10, 64, 152, 10, base.darkened(0.30))
+	_rect(img, 10, 64, 152, 1, base.darkened(0.06))
+	for fx: int in [16, 82, 148]:
+		_rect(img, fx, 74, 8, 5, Color(0.10, 0.08, 0.09))
+		_rect(img, fx, 74, 8, 1, Color(0.18, 0.15, 0.16))
+	# the blanket, folded over the right arm, one corner reaching the seat
+	var bl := Color(0.52, 0.30, 0.34)
+	_rect(img, 140, 10, 26, 34, bl)
+	_rect(img, 140, 10, 26, 3, bl.lightened(0.22))
+	_rect(img, 140, 41, 26, 3, bl.darkened(0.30))
+	for by in range(14, 40, 5):
+		_rect(img, 142, by, 22, 1, bl.darkened(0.16))
+	_rect(img, 134, 30, 8, 18, bl.darkened(0.10))
+	_rect(img, 134, 46, 8, 2, bl.darkened(0.34))
+	# remote, unreachable from the dent by exactly one cushion
+	_rect(img, 34, 40, 6, 12, Color(0.09, 0.10, 0.13))
+	_rect(img, 34, 40, 6, 1, Color(0.20, 0.22, 0.27))
+	_px(img, 36, 42, Color(0.62, 0.28, 0.24))
+	_px(img, 36, 45, Color(0.24, 0.44, 0.30))
+	# crumbs in the seam. Carbon dating: recent.
+	for cr in 8:
+		_px(img, 30 + _hash(cr, 13) % 110, 57 + _hash(cr, 17) % 4, Color(0.72, 0.62, 0.40, 0.8))
+	_finish(img, RIM_WARM, 0.40)
+	_save(img, "int_couch.png")
 
 # --------------------------------------------- set-piece dressing props -----
 # New vocabulary for the hand-composed focal points. Same rules as the shared

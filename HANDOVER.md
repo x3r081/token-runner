@@ -161,6 +161,11 @@ Committed on the branch:
   completed storyline, and guidance pointing at where a quest was *given* rather
   than where it can be *completed*.
 
+- round 4 — full graphics+sound overhaul: generated musical score + 30 layered
+  SFX + rebuilt AudioManager (docs/AUDIO_BIBLE.md is the contract, audio now ON
+  by default), menu hero scene, region composition/readability pass, silhouette
+  polish, post-FX grade. See AUTONOMOUS_STATUS.md tail.
+
 Working tree clean, all 28 suites green. Branch is **3 commits ahead of its own
 origin** (unpushed) and ~95 ahead of `main`.
 

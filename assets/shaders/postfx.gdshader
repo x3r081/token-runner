@@ -26,6 +26,12 @@ uniform float saturation : hint_range(0.0, 2.0) = 1.16;
 // Gentle S-curve applied after the lift. The lift is what stops shadows going
 // dead black; without a counter-curve it also turns the whole frame into haze.
 uniform float contrast : hint_range(0.0, 0.6) = 0.12;
+// Filmic response on the displayable range: rolled toe, slight mid lift, soft
+// shoulder. Anything above 1.0 (neon cores, portal lips) bypasses it entirely,
+// so bloom sources keep blooming while the mid-values between the focal glow
+// and the frame edge stop greying into the wash. 0 restores the old linear
+// response.
+uniform float filmic : hint_range(0.0, 1.0) = 0.30;
 uniform float stress : hint_range(0.0, 1.0) = 0.0;
 uniform vec3 stress_tint = vec3(1.0, 0.55, 0.50);
 uniform vec4 wash_color : source_color = vec4(1.0, 0.28, 0.32, 1.0);
@@ -70,6 +76,14 @@ void fragment() {
 	// feverish, not dead.
 	col = mix(col, col * stress_tint, st * 0.30);
 
+	// Filmic tone response (see the uniform note). The HDR excess is split off
+	// first and added back untouched — the curve only shapes what a monitor can
+	// actually show.
+	vec3 ldr = clamp(col, vec3(0.0), vec3(1.0));
+	vec3 excess = col - ldr;
+	vec3 shaped = (ldr * (2.51 * ldr + 0.03)) / (ldr * (2.43 * ldr + 0.59) + 0.14);
+	col = mix(ldr, clamp(shaped, vec3(0.0), vec3(1.0)), filmic * intensity) + excess;
+
 	// Scanlines — extremely subtle.
 	float scan = sin(uv.y * scanline_count * 3.14159);
 	col *= 1.0 - scanline_amount * intensity * (0.5 + 0.5 * scan);
@@ -79,9 +93,16 @@ void fragment() {
 	col += gr * grain_amount * (1.0 + st * 0.9) * intensity;
 
 	// Vignette, plus a slow hot pulse in the corners once debt is real.
-	float vig = smoothstep(0.85, 0.25, dist);
+	// Round 4: the old single smoothstep started darkening at dist 0.25, so
+	// half the frame paid a value tax and the mid-ground sank into the wash
+	// (see the gpu_mines / wildlands QA frames). The plateau now holds clean
+	// to ~0.42, and a separate corner term buys the darkness back at the very
+	// edge — darker corners, wider clean center.
+	float vig = smoothstep(0.78, 0.42, dist);
 	float vamt = clamp(vignette_strength + st * 0.10 * breathe, 0.0, 1.0);
 	col *= mix(1.0, vig, vamt * intensity);
+	float corner = smoothstep(0.55, 0.85, dist);
+	col *= 1.0 - corner * corner * vamt * 0.6 * intensity;
 	col += stress_tint * (1.0 - vig) * st * 0.09 * breathe;
 
 	// Incident flash.

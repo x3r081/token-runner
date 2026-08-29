@@ -14,7 +14,7 @@ render_mode blend_add, unshaded;
 
 uniform vec4 ray_color : source_color = vec4(0.72, 0.86, 1.0, 1.0);
 uniform float angle : hint_range(-1.5, 1.5) = 0.35;
-uniform float density : hint_range(1.0, 40.0) = 8.0;
+uniform float density : hint_range(1.0, 40.0) = 6.0;
 uniform float speed : hint_range(0.0, 3.0) = 0.16;
 uniform float intensity : hint_range(0.0, 2.0) = 0.30;
 uniform float reach : hint_range(0.15, 3.0) = 0.85;
@@ -46,16 +46,25 @@ void fragment() {
 	float along = max(q.y, 0.0);
 	float t = TIME * speed;
 
-	// Three beat frequencies so the shafts never read as a repeating comb.
+	// Beat frequencies so the shafts never read as a repeating comb. Round 4:
+	// two dominant combs and a faint third — the 1.9x octave at its old weight
+	// doubled the apparent ray count and read as a picket fence in the
+	// wildlands QA frame. Sharpness is eased off before use so shaft profiles
+	// stay soft-edged even at the corporate preset (12.0).
 	// max(x, 0.0) on every base: hardware sin() is allowed to return marginally
 	// less than -1.0, and pow() of a negative base is NaN in GLSL — one stray
 	// ULP would put a black speck in the middle of a light shaft.
-	float shafts = pow(max(0.5 + 0.5 * sin(across * density * TAUC + t * 1.7), 0.0), sharpness);
-	shafts += 0.62 * pow(max(0.5 + 0.5 * sin(across * density * 0.53 * TAUC - t * 1.1 + 1.7), 0.0), sharpness + 3.0);
-	shafts += 0.34 * pow(max(0.5 + 0.5 * sin(across * density * 1.90 * TAUC + t * 0.6 + 4.2), 0.0), sharpness + 6.0);
-	shafts *= 0.55 + 0.60 * vnoise(vec2(across * 6.0, t * 0.5));
+	float sh = max(sharpness * 0.75, 1.0);
+	float shafts = 0.92 * pow(max(0.5 + 0.5 * sin(across * density * TAUC + t * 1.7), 0.0), sh);
+	shafts += 0.66 * pow(max(0.5 + 0.5 * sin(across * density * 0.53 * TAUC - t * 1.1 + 1.7), 0.0), sh + 2.0);
+	shafts += 0.14 * pow(max(0.5 + 0.5 * sin(across * density * 1.90 * TAUC + t * 0.6 + 4.2), 0.0), sh + 5.0);
+	// Gentler, slower amplitude wander — the old 0.55..1.15 swing chopped the
+	// shafts into flickering segments; a beam should breathe, not strobe.
+	shafts *= 0.70 + 0.40 * vnoise(vec2(across * 4.0, t * 0.4));
 
-	float falloff = exp(-along / reach);
+	// Longer throw: shafts hold ~35% deeper into the room before the falloff
+	// takes them, so each one reads as a beam with a body rather than a stub.
+	float falloff = exp(-along / (reach * 1.35));
 	// min() so bottom_fade can never equal the upper edge: smoothstep with two
 	// identical edges is undefined, and hint_range lets it reach 1.0.
 	float bf = min(bottom_fade, 0.97);

@@ -520,7 +520,7 @@ func _start_dash() -> void:
 	particles.emitting = true
 	if _fx:
 		_fx.dash_burst(_dash_dir)
-	AudioManager.play_sfx("ability")
+	AudioManager.play_sfx("dash")
 
 ## A fading snapshot of the current sprite frame, tinted overbright cyan so the
 ## dash leaves a neon smear through the dark. The FX rig upgrades this to a pair
@@ -596,6 +596,7 @@ func _fire_projectile(type: String, damage: int, pierce: bool = false, weak: boo
 	proj.crit = crit
 	proj.global_position = global_position + dir * 20
 	get_tree().current_scene.add_child(proj)
+	AudioManager.play_sfx("projectile_shoot")
 	if _fx:
 		if type == "stack_trace":
 			_fx.cast_stack_trace(dir, Color("#FF2D95"), 760.0)
@@ -681,7 +682,10 @@ func _threat_dir() -> Vector2:
 	return Vector2.ZERO
 
 func heal(amount: int) -> void:
+	var prev := hp
 	hp = mini(hp + amount, MAX_HP)
+	if hp > prev:
+		AudioManager.play_sfx("heal")
 	health_changed.emit(hp, MAX_HP)
 
 ## Death flow is UNCHANGED and still fully synchronous — trauma, `died`, then

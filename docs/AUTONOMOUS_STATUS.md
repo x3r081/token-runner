@@ -779,3 +779,30 @@ See `QUALITY_BACKLOG.md`. Candidate next largest player-facing weaknesses:
 Exact resume point: pick weakness #1 (enemy identities) — extend
 `asset_generator_runtime._generate_enemies()` with distinct per-type art like
 the beetle, then add per-type telegraphs/behaviours in `enemy_base.gd`.
+
+### Round 4 — Graphics & sound overhaul (16-agent workflow)
+- Contracts first: new `docs/AUDIO_BIBLE.md` ("Neon Afterhours"); VISUAL_BIBLE
+  Round-4 addendum (structure-before-noise, silhouette law, contrast
+  hierarchy, menu hero). 8 disjoint-ownership build tracks, each followed by a
+  high-effort adversarial reviewer; reviewers caught real defects in all four
+  historic bug classes (DOA floor-texture names, menu vignette z-order,
+  settings migration leaving old profiles mute, a broken tanh in mixdown).
+- Sound: full generated score (menu/explore/combat/boss/victory + 4 ambience
+  beds, all seam-0, RMS/peak in the bible's law — verified from disk, not the
+  generator's self-report) + 30 layered SFX. AudioManager rebuilt: crossfades,
+  region-family ambience bus, dialogue ducking, pitch jitter, cooldowns,
+  footstep polling, signal-driven one-shots. Audio ON by default (with
+  migration for old cfg files). Combat music was authored-but-unreachable —
+  now starts on first aggro, calms when nothing chases; boss intro uses its
+  own sting + theme.
+- Graphics: menu hero scene (parallax skyline, apartment corner, title
+  chroma); paths/material zones/backglows/one-brightest-focal in all 9 built
+  regions; silhouette-law polish + 10 structured floor/path textures;
+  vignette plateau + filmic response, tamed portal collar, softer god
+  rays/haze, mottle demoted to a finish; apartment window-wall, monitor light
+  pools, readable furniture.
+- Validation: 28/28 suites green (349 asserts), zero SCRIPT/Parse/shader
+  errors in a real windowed run, all 15 QA frames recaptured and eyeballed.
+- Known minors (next round): portal halo still reads hot on cloud_district's
+  light floors; menu near-facade darkness makes some windows float; ui_hover
+  and typing SFX are generated but unwired (no natural call site yet).

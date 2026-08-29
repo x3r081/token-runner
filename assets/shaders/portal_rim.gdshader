@@ -55,9 +55,20 @@ void fragment() {
 	// A thin hue-tinted lip so the ring itself is visible against a dark floor.
 	// d*d rather than pow(d, 2.0): d goes negative inside the ring, and pow()
 	// of a negative base is undefined in GLSL.
-	float drim = (r - inner - 0.05) / 0.10;
+	// Round 4: the lip is roughly half its old width — a crisp line instead of
+	// a band — which is the actual fix for the flat white collar seen around
+	// the wildlands portal in the QA frames. The luma metering below is a
+	// GUARD, not the collar fix: the capture this shader reads is taken at
+	// z -4 (region_portal.gd's PortalLensCopy), so it holds only the floor
+	// layers — the additive halo (z -2) and the disc draw AFTER the copy and
+	// are invisible to it. Over dark floors head clamps to 1.0 and the term is
+	// a no-op; it only tapers the lip over genuinely bright captured backdrops
+	// (cloud_district's lighter floors, baked light pools).
+	float drim = (r - inner - 0.04) / 0.055;
 	float rim = exp(-drim * drim);
-	col += vivid(hue_color.rgb) * rim * glow * mask;
+	vec3 rimc = vivid(hue_color.rgb) * rim * glow * mask;
+	float head = clamp(1.30 - dot(col, vec3(0.299, 0.587, 0.114)), 0.0, 1.0);
+	col += rimc * head;
 
 	COLOR = vec4(col, mask);
 }

@@ -67,8 +67,16 @@ void fragment() {
 	vec2 ruv = vec2(uv.x * cr - uv.y * sr, uv.x * sr + uv.y * cr);
 	float g = vnoise(ruv * grit_scale + vec2(o * 5.5, o * 1.9));
 
-	float m = clamp(broad * 0.62 + fine * 0.22 + wear * streak * 0.30
-		+ (g - 0.5) * grit, 0.0, 1.0);
-	vec3 mul = mix(vec3(1.0), tint * mix(darkest, 1.0, m), amount);
+	// Round 4: the builders now give floors real structure (paths, panel
+	// grids, strata), so the mottle is demoted from "the floor" to a finish.
+	// The high-frequency octaves lose most of their weight — fine + grit were
+	// the color-soup in the gpu_mines / wildlands QA frames — and the broad,
+	// low-frequency history keeps the lead. The 0.72 scale on `amount` caps
+	// the hottest consumer preset (0.34) at ~24% effective opacity, under the
+	// bible's 25% finish ceiling, without touching any caller.
+	float m = clamp(broad * 0.66 + fine * 0.12 + wear * streak * 0.26
+		+ (g - 0.5) * grit * 0.55, 0.0, 1.0);
+	float amt = amount * 0.72;
+	vec3 mul = mix(vec3(1.0), tint * mix(darkest, 1.0, m), amt);
 	COLOR = vec4(clamp(mul, vec3(0.0), vec3(1.0)), 1.0);
 }

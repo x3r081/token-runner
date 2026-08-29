@@ -149,3 +149,37 @@ ALWAYS guard optional textures with `ResourceLoader.exists(path)`.
 - 60fps: no per-frame allocations in _process; reuse ShaderMaterials where
   identical (share one instance per shader+params combo when possible).
 - Comedy tone: any new visible text stays dry-sarcastic (see COMEDY_BIBLE.md).
+
+## Round 4 — Readability & Fidelity (addendum, authoritative for this round)
+
+Verdict from the round-3 QA frames (docs/screenshots/qa/): the atmosphere is
+strong but **composition and readability lag it**. Specific, evidenced gaps:
+
+- `menu.png` — near-black screen with one floating panel. No motion, no place,
+  no character. This is the first frame a judge sees.
+- `region_gpu_mines.png` / `region_open_source_wildlands.png` — the ground is
+  a uniform noise wash ("color soup"). No paths, no material zones, no reading
+  of "walk here". Props under the world labels are dark smudges; the labels
+  carry all the meaning their objects should.
+- Focal set-pieces exist but do not command the frame; mid-ground and
+  background sit at the same value level.
+
+### Rules for this round (all world/art agents)
+
+1. **Structure before noise.** Every region floor gets readable structure
+   first — paths/pavement/plank runs/server-room panel grids/rock strata —
+   then grime/noise ON TOP at <= 25% opacity. A player must see where to walk
+   in a 1-second glance at a static frame.
+2. **Silhouette law.** Every labeled prop reads WITHOUT its label at game
+   zoom: >= 3 value steps, a 1px rim-light on the lit side, and a contact
+   shadow. If the label is doing the work, the sprite failed.
+3. **Contrast hierarchy.** One brightest thing per screen (the focal
+   set-piece), mid-ground a step down, edges darkest. Full-screen wash shaders
+   cap at the particle/lighting budgets above — never crush the hierarchy.
+4. **Menu hero.** The menu becomes a scene: animated backdrop (parallax neon
+   skyline through an apartment window, code-rain on a monitor glow), title
+   with slow glow pulse, buttons with hover slide+glow, the player character
+   silhouetted at a desk. Motion budget: subtle, 60fps, no strobing.
+5. Additive only. The 15-shader uniform API is FROZEN (tune defaults, add new
+   uniforms with safe defaults, never rename/remove). Texture filenames and
+   node/group names stay.

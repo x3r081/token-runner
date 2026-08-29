@@ -345,6 +345,7 @@ func _physics_process(delta: float) -> void:
 			_on_aggro()
 	elif dist > aggro_radius * LEASH_MULT:
 		_aggroed = false
+		_music_calm_check()
 
 	var desired := Vector2.ZERO
 	if _aggroed:
@@ -369,10 +370,19 @@ func _physics_process(delta: float) -> void:
 func _on_aggro() -> void:
 	if _dying or is_boss:
 		return
+	AudioManager.play_music("combat_music")
 	var host := get_parent()
 	if host:
 		CombatFx.glyph(host, global_position + Vector2(0, -46), "!", Color("#FF4757"), 22, 0.6, 18.0)
 	_set_pose(POSE_HOP, Vector2.UP, 9.0, 0.24)
+
+## Back to the explore track, but only when NOTHING in the room is still
+## chasing — one enemy dropping its leash must not calm the music mid-brawl.
+func _music_calm_check() -> void:
+	for e in get_tree().get_nodes_in_group("enemy"):
+		if e != self and is_instance_valid(e) and "_aggroed" in e and e._aggroed:
+			return
+	AudioManager.play_music("explore_music")
 
 # ------------------------------------------------------- melee telegraph ----
 
@@ -497,8 +507,8 @@ func _play_boss_intro() -> void:
 	var fx := get_tree().get_first_node_in_group("camera_fx")
 	if fx and fx.has_method("punch_zoom"):
 		fx.punch_zoom(0.07)
-	AudioManager.play_sfx("upgrade")
-	AudioManager.play_music("combat_music")
+	AudioManager.play_sfx("boss_spawn")
+	AudioManager.play_music("boss_music")
 
 ## Phase thresholds at 75/50/25%. Each one is louder, faster and better
 ## documented than the last.

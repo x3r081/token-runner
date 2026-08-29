@@ -169,8 +169,25 @@ static func _floor_zone(p: Vector2, w: float, h: float) -> float:
 		k += 0.18 * (1.0 - d / 220.0)
 	var e := minf(minf(p.x, w - p.x), minf(p.y - 46.0, h - p.y))
 	if e < 156.0:
-		k -= 0.28 * (1.0 - maxf(e, 0.0) / 156.0)
+		# Round-4 rule 3: edges darkest. Was -0.28; the perimeter now falls off
+		# hard enough to read as the room ending rather than the wash fading.
+		k -= 0.34 * (1.0 - maxf(e, 0.0) / 156.0)
 	return k
+
+## Ground-MATERIAL zone for a tile centre (round-4 rule 1). _floor_zone answers
+## "how bright is this cell"; this answers "what is this cell MADE of":
+## 0 open field, 1 walkway band (the portal-to-portal artery), 2 landing plaza,
+## 3 perimeter. Checked in priority order so the plaza wins over the band where
+## they overlap at the spawn.
+static func _tile_zone(p: Vector2, w: float, h: float) -> int:
+	var e := minf(minf(p.x, w - p.x), minf(p.y - 46.0, h - p.y))
+	if e < 110.0:
+		return 3
+	if p.distance_to(Vector2(w * 0.5, h * 0.5)) < 190.0:
+		return 2
+	if absf(p.y - h * 0.5) < 100.0 and p.x > 130.0 and p.x < w - 130.0:
+		return 1
+	return 0
 
 ## Smooth low-frequency wear field: coarse 4-tile cells hashed to a value, then
 ## bilinearly blended. Multiplied into per-tile brightness it produces broad
@@ -202,6 +219,12 @@ static func _build_floor_themed(parent: Node2D, theme: Dictionary, w: int, h: in
 	var suffix: String = REGION_TILE_MAP.get(region_id, "")
 	var has_a := suffix != "" and ResourceLoader.exists(GEN + "tile_" + suffix + ".png")
 	var has_b := suffix != "" and ResourceLoader.exists(GEN + "tile_" + suffix + "_b.png")
+	# Round-4 material set (art agents supply these; everything exists()-guarded
+	# with today's tiles as the fallback): floor_<family>_base/alt are the
+	# region's ground proper, path_tile the maintained walkway deck.
+	var has_base := suffix != "" and ResourceLoader.exists(GEN + "floor_" + suffix + "_base.png")
+	var has_alt := suffix != "" and ResourceLoader.exists(GEN + "floor_" + suffix + "_alt.png")
+	var has_path_tile := ResourceLoader.exists(GEN + "path_tile.png")
 	var tile_mul: float = float(theme.get("tile_mul", 2.2))
 	for x in REGION_SIZE.x:
 		for y in REGION_SIZE.y:
@@ -210,30 +233,66 @@ static func _build_floor_themed(parent: Node2D, theme: Dictionary, w: int, h: in
 			var k := _floor_zone(p, float(w), float(h)) \
 				* _floor_wear(x, y) \
 				* (1.0 + (float(hv % 61) / 61.0 - 0.5) * 0.13)
-			var fam := _cell_hash(x >> 1, (y >> 1) + 7919) % 10
-			if hv % 100 < 14:
-				fam = (hv >> 7) % 10  # one tile that does not match its slab
 			var tex_name := "tech_floor"
 			# Per-cell hue drift as well as value drift: identical texture, three
 			# slightly different ages of grout.
 			var warm := (float((hv >> 11) % 41) / 41.0 - 0.5) * 0.05
 			var m := Color(tint.r * k * (1.0 + warm), tint.g * k, tint.b * k * (1.0 - warm))
-			if has_a and fam < 3:
-				tex_name = "tile_" + suffix
-				m = Color(k * tile_mul * (1.0 + warm), k * tile_mul, k * tile_mul * (1.0 - warm))
-			elif has_b and fam < 6:
-				# 1.12, not 1.3. A ~30% value step between neighbouring cells
-				# reads as a checkerboard no matter how good the tile art is;
-				# _floor_zone / _floor_wear carry the large-scale variation.
-				var b := k * tile_mul * 1.12
-				tex_name = "tile_" + suffix + "_b"
-				m = Color(b * (1.0 + warm), b, b * (1.0 - warm))
-			if (hv >> 5) % 29 == 0:
-				m = m.darkened(0.26)  # a cell something bad happened on
+			# STRUCTURE BEFORE NOISE (round-4 rule 1): the material a tile is made
+			# of is decided by WHERE it is — walkway band, landing plaza, perimeter,
+			# open field — so the ground reads as designed zones, not one noise wash.
+			match _tile_zone(p, float(w), float(h)):
+				1:  # walkway band: one clean deck material end to end
+					if has_path_tile:
+						tex_name = "path_tile"
+						m = Color(k * 1.05, k * 1.05, k * 1.08)
+					elif has_b:
+						tex_name = "tile_" + suffix + "_b"
+						var wv := k * tile_mul * 1.16
+						m = Color(wv, wv, wv * 1.04)
+					else:
+						m = Color(tint.r * k * 1.18, tint.g * k * 1.18, tint.b * k * 1.22)
+				2:  # landing plaza: the region's own showcase material
+					if has_a:
+						var pv := k * tile_mul * 1.08
+						tex_name = "tile_" + suffix
+						m = Color(pv * (1.0 + warm), pv, pv * (1.0 - warm))
+					else:
+						m = Color(tint.r * k * 1.16, tint.g * k * 1.16, tint.b * k * 1.16)
+				3:  # perimeter: the darkest material — edges recede (rule 3)
+					if has_base:
+						tex_name = "floor_" + suffix + "_base"
+						m = Color(k * (1.0 + warm), k, k * (1.0 - warm))
+					m = m.darkened(0.26)
+					if (hv >> 5) % 29 == 0:
+						m = m.darkened(0.26)  # a cell something bad happened on
+				_:  # open field
+					if has_base:
+						tex_name = "floor_" + suffix + "_base"
+						if has_alt and hv % 100 < 26:
+							tex_name = "floor_" + suffix + "_alt"
+						m = Color(k * (1.0 + warm), k, k * (1.0 - warm))
+					else:
+						var fam := _cell_hash(x >> 1, (y >> 1) + 7919) % 10
+						if hv % 100 < 14:
+							fam = (hv >> 7) % 10  # one tile that does not match its slab
+						if has_a and fam < 3:
+							tex_name = "tile_" + suffix
+							m = Color(k * tile_mul * (1.0 + warm), k * tile_mul, k * tile_mul * (1.0 - warm))
+						elif has_b and fam < 6:
+							# 1.12, not 1.3. A ~30% value step between neighbouring cells
+							# reads as a checkerboard no matter how good the tile art is;
+							# _floor_zone / _floor_wear carry the large-scale variation.
+							var b := k * tile_mul * 1.12
+							tex_name = "tile_" + suffix + "_b"
+							m = Color(b * (1.0 + warm), b, b * (1.0 - warm))
+					if (hv >> 5) % 29 == 0:
+						m = m.darkened(0.26)  # a cell something bad happened on
 			_put(floor_node, tex_name, p, -100, 1.0, m)
 	_floor_seams(floor_node, w, h)
 	_floor_blotches(floor_node, theme, w, h)
 	_floor_mottle(floor_node, theme, w, h, region_id)
+	_paint_paths(floor_node, region_id, theme, w, h)
 	_paint_lane(floor_node, theme, w, h)
 	var glow: Color = theme.get("glow", Color.WHITE)
 	_paint_wayfinding(floor_node, region_id, w, h, glow)
@@ -304,7 +363,13 @@ static func _floor_blotches(parent: Node2D, theme: Dictionary, w: int, h: int) -
 		var p := Vector2(rng.randf_range(70, w - 70), rng.randf_range(96, h - 50))
 		var width := rng.randf_range(150.0, 460.0)
 		if rng.randf() < 0.72:
-			_floor_patch(parent, p, width, Color(0.012, 0.014, 0.03), rng.randf_range(0.10, 0.26), -97)
+			# Dark stains stay OFF the walkway band (round-4 rule 1, the same law
+			# as the decal/litter skips): one 460px shadow across the maintained
+			# deck reads as dirt the sweeping missed. The alpha draw still happens
+			# so the scatter downstream keeps its deterministic layout.
+			var stain_a := rng.randf_range(0.10, 0.26)
+			if absf(p.y - float(h) * 0.5) >= 90.0:
+				_floor_patch(parent, p, width, Color(0.012, 0.014, 0.03), stain_a, -97)
 		else:
 			# Scrubbed patches: somebody cleaned exactly this much and gave up.
 			_floor_patch(parent, p, width * 0.7, Color(glow.r, glow.g, glow.b), rng.randf_range(0.03, 0.07), -97)
@@ -316,11 +381,15 @@ static func _paint_lane(parent: Node2D, theme: Dictionary, w: int, h: int) -> vo
 	var glow: Color = theme.get("glow", Color.WHITE)
 	var cy := h * 0.5
 	for k: float in [1.0, -1.0]:
-		_rect(parent, Vector2(w * 0.5, cy + k * 100.0), Vector2(w - 320.0, 3.0), Color(accent.r, accent.g, accent.b, 0.13), -93)
+		# Band edge = material seam (round-4 rule 1): a dark expansion groove
+		# with the painted accent line beside it, so the walkway band reads as a
+		# DIFFERENT floor, not a lighter stripe of the same one.
+		_rect(parent, Vector2(w * 0.5, cy + k * 100.0), Vector2(w - 300.0, 3.0), Color(0, 0, 0, 0.34), -93)
+		_rect(parent, Vector2(w * 0.5, cy + k * 100.0 - k * 3.0), Vector2(w - 300.0, 2.0), Color(accent.r, accent.g, accent.b, 0.22), -93)
 		# hazard dashes just inside the painted edge
 		for i in 13:
 			var dx := 190.0 + float(i) * 76.0
-			_rect(parent, Vector2(dx, cy + k * 92.0), Vector2(30.0, 6.0), Color(accent.r, accent.g, accent.b, 0.07), -93, 0.5 * k)
+			_rect(parent, Vector2(dx, cy + k * 92.0), Vector2(30.0, 6.0), Color(accent.r, accent.g, accent.b, 0.12), -93, 0.5 * k)
 	# Landing plaza ring at the spawn: "you are here".
 	_floor_patch(parent, Vector2(w * 0.5, cy), 430.0, glow, 0.055, -95)
 	for i in 26:
@@ -351,6 +420,101 @@ static func _chevron(parent: Node2D, pos: Vector2, col: Color, ang: float, z: in
 	_rect(parent, pos + side * -6.0, Vector2(26.0, 5.0), col, z, ang + 0.46)
 	_rect(parent, pos + side * 6.0, Vector2(26.0, 5.0), col, z, ang - 0.46)
 
+## The drawn road network (round-4 rule 1). The walkway band (zone 1 in
+## _build_floor_themed) already carries the east-west artery in its own
+## material; this adds the perpendicular SPURS — one to every off-lane portal,
+## one to every NPC, one to the focal set-piece — so the objective graph
+## (spawn -> focal -> NPC -> portals) is literally paved onto the ground.
+## Drawn after the mottle pass: navigation line-work must not be dimmed.
+static func _paint_paths(parent: Node2D, region_id: String, theme: Dictionary, _w: int, h: int) -> void:
+	var cy := float(h) * 0.5
+	var glow: Color = theme.get("glow", Color(0.7, 0.8, 0.9))
+	var focal: Vector2 = theme.get("focal", Vector2.ZERO)
+	for pd in _region_portals(region_id):
+		var pp: Vector2 = pd.pos
+		if absf(pp.y - cy) > 60.0:
+			var stop_y := pp.y
+			# When the focal set-piece stands ON this column between the band and
+			# the door (the vault: pedestal at 244, north door at 80), stop the
+			# road at the set-piece instead of paving under it — the piece and
+			# the portal's own gate pool carry the line the rest of the way.
+			if absf(pp.x - focal.x) < 80.0 and (focal.y - cy) * (pp.y - cy) > 0.0 \
+					and absf(focal.y - cy) < absf(pp.y - cy):
+				stop_y = focal.y
+			_spur(parent, pp.x, stop_y, cy, glow, 96.0)
+	for npc_data in _region_npcs(region_id):
+		var np: Vector2 = npc_data.pos
+		_spur(parent, np.x, np.y, cy, glow, 90.0)
+	if focal != Vector2.ZERO:
+		# Skip the focal spur when an NPC or portal spur already runs down the
+		# same column (the wildlands camp, the corporate stage, the vault's
+		# north door) — two overlaid paths read as a rendering mistake.
+		var dup := false
+		for npc_data in _region_npcs(region_id):
+			var np2: Vector2 = npc_data.pos
+			if absf(np2.x - focal.x) < 80.0:
+				dup = true
+		for pd2 in _region_portals(region_id):
+			var pp2: Vector2 = pd2.pos
+			if absf(pp2.y - cy) > 60.0 and absf(pp2.x - focal.x) < 80.0:
+				dup = true
+		if not dup:
+			_spur(parent, focal.x, focal.y, cy, glow, 96.0)
+
+## One vertical branch from the artery band edge toward a destination, stopping
+## a respectful margin short of it. Degenerate spurs (target close to the band)
+## are skipped — the band itself already delivers the player there.
+static func _spur(parent: Node2D, x: float, target_y: float, cy: float, col: Color, wpx: float) -> void:
+	var k := signf(target_y - cy)
+	if k == 0.0:
+		return
+	var a := Vector2(x, cy + k * 92.0)
+	var b := Vector2(x, target_y - k * 96.0)
+	if (b.y - a.y) * k < 40.0:
+		return
+	_path_segment(parent, a, b, col, wpx)
+
+## Axis-aligned paved segment: dark poured underlay (cuts the ground noise), a
+## lighter deck, crisp region-tinted edge lines, and grate ticks at a 48px
+## rhythm the 64px floor lattice cannot sync with. Consumes the round-4
+## path_tile / path_tile_edge textures when the art agents have produced them;
+## the procedural deck underneath is the graceful fallback either way.
+static func _path_segment(parent: Node2D, a: Vector2, b: Vector2, col: Color, wpx: float = 90.0) -> void:
+	var d := b - a
+	var seg_len := d.length()
+	if seg_len < 40.0:
+		return
+	var horiz := absf(d.x) > absf(d.y)
+	var mid := (a + b) * 0.5
+	var dirn := d / seg_len
+	var size := Vector2(seg_len + wpx * 0.6, wpx) if horiz else Vector2(wpx, seg_len + wpx * 0.6)
+	# Poured underlay: its own material, not another tint on the wash.
+	_rect(parent, mid, size, Color(0.016, 0.02, 0.04, 0.42), -93)
+	# Deck: one value step up from the field, cool maintenance-grey everywhere
+	# so the region hue stays with the region and the road reads as ROAD.
+	_rect(parent, mid, size - Vector2(14, 14), Color(0.72, 0.78, 0.9, 0.085), -93)
+	if ResourceLoader.exists(GEN + "path_tile.png"):
+		for i in int(seg_len / 64.0) + 1:
+			_put(parent, "path_tile", a + dirn * minf(float(i) * 64.0, seg_len), -93, 1.0, Color(1, 1, 1, 0.92))
+	# Crisp edges: the strongest "walk here" cue a static frame can give.
+	var side := Vector2(0, 1) if horiz else Vector2(1, 0)
+	var esz := Vector2(size.x, 2.0) if horiz else Vector2(2.0, size.y)
+	var half := wpx * 0.5
+	for k: float in [1.0, -1.0]:
+		var ep := mid + side * (k * half)
+		_rect(parent, ep, esz, Color(0, 0, 0, 0.38), -93)
+		_rect(parent, ep - side * (k * 2.0), esz, Color(col.r, col.g, col.b, 0.16), -93)
+	if ResourceLoader.exists(GEN + "path_tile_edge.png"):
+		for i in int(seg_len / 64.0) + 1:
+			var pp := a + dirn * minf(float(i) * 64.0, seg_len)
+			for k: float in [1.0, -1.0]:
+				var rot := (PI if k > 0.0 else 0.0) if horiz else (PI * 0.5 if k > 0.0 else -PI * 0.5)
+				_put(parent, "path_tile_edge", pp + side * (k * half), -93, 1.0, Color(1, 1, 1, 0.9), rot)
+	# Grate ticks across the deck — the walkway's own surface texture.
+	for i in int(seg_len / 48.0):
+		var tp := a + dirn * (24.0 + float(i) * 48.0)
+		_rect(parent, tp, Vector2(3.0, wpx - 18.0) if horiz else Vector2(wpx - 18.0, 3.0), Color(0, 0, 0, 0.16), -93)
+
 ## Small hard-edged floor litter: bolts, hairline cracks, spilled coolant chips,
 ## drain grates. Reads as texture underfoot at a glance, as story up close.
 ## Tile-independent floor marks. The grid you can see is half a tile problem and
@@ -373,6 +537,11 @@ static func _floor_decals(parent: Node2D, region_id: String, w: int, h: int) -> 
 	for i in 9:
 		var name_i: String = str(pool[rng.randi() % pool.size()])
 		var pos := Vector2(rng.randf_range(150, float(w) - 150), rng.randf_range(170, float(h) - 120))
+		# Keep the big decals off the walkway band: a maintained deck with a
+		# 0.7-alpha crack across it stops reading as maintained (rule 1: noise
+		# stays OFF the structure).
+		if absf(pos.y - float(h) * 0.5) < 90.0:
+			continue
 		var spr := _put(parent, name_i, pos, -91, rng.randf_range(0.75, 1.7),
 			Color(1, 1, 1, rng.randf_range(0.35, 0.72)), rng.randf_range(-PI, PI))
 		if spr == null:
@@ -393,6 +562,10 @@ static func _floor_litter(parent: Node2D, theme: Dictionary, w: int, h: int, reg
 			_rect(parent, sp + Vector2(-sin(ang), cos(ang)) * k * 5.0, Vector2(seg, 2.0), Color(0, 0, 0, 0.20), -91, ang)
 	for i in 78:
 		var dp := Vector2(rng.randf_range(80, w - 80), rng.randf_range(96, h - 64))
+		# Thin the scatter on the walkway band — most of it, not all: a swept
+		# deck with the odd bolt reads maintained; an untouched one reads fake.
+		if absf(dp.y - float(h) * 0.5) < 86.0 and rng.randf() < 0.65:
+			continue
 		match rng.randi() % 5:
 			0:
 				_rect(parent, dp, Vector2(rng.randf_range(3, 7), rng.randf_range(3, 7)), Color(0, 0, 0, rng.randf_range(0.14, 0.3)), -91)
@@ -547,6 +720,10 @@ static func _build_structures(parent: Node2D, theme: Dictionary) -> void:
 		if not spr:
 			continue
 		var zi := spr.z_index
+		# Silhouette support (round-4 rule 2): every themed structure gets a
+		# faint backing halo so it reads as a shape against the ground, not a
+		# smudge the caption has to explain.
+		_backglow(z, sp + Vector2(0, -6.0 * sc), 140.0 * sc, glow, 0.09)
 		# Emissive props earn a real light (bible lighting rules), capped so a
 		# dense cluster doesn't blow the light budget; the rest get free pools.
 		match s.t:
@@ -775,12 +952,14 @@ static func _build_region_lights(parent: Node2D, theme: Dictionary, w: int, h: i
 	var i2 := 0
 	for lp in theme.get("lights", []):
 		# First anchor light in each region hums (bible: 2-4 flickers/region,
-		# together with the struct + sign flickers).
-		_lamp(z, lp, glow, 0.75, 4.0, i2 == 0, 300.0)
+		# together with the struct + sign flickers). 0.62, down from 0.75:
+		# anchors are mid-ground, one step below the focal (round-4 rule 3).
+		_lamp(z, lp, glow, 0.62, 4.0, i2 == 0, 300.0)
 		i2 += 1
-	# Corner fill so the four corners are shaped darkness, not dead space.
+	# Corner fill so the four corners are shaped darkness, not dead space —
+	# faint on purpose: the contrast hierarchy keeps its edges darkest.
 	for c: Vector2 in [Vector2(0.13, 0.2), Vector2(0.87, 0.2), Vector2(0.13, 0.84), Vector2(0.87, 0.84)]:
-		_light_pool(z, Vector2(w * c.x, h * c.y), 300.0, accent, 0.09)
+		_light_pool(z, Vector2(w * c.x, h * c.y), 300.0, accent, 0.06)
 
 ## A warm puddle under everything worth walking to. The player complaint was
 ## "I don't know where to go" — lit things read as destinations from across the
@@ -881,6 +1060,21 @@ static func _light_pool(parent: Node2D, pos: Vector2, width: float, col: Color, 
 	s.scale = Vector2(width / tw, width * 0.6 / tw)
 	s.modulate = Color(col.r, col.g, col.b, alpha)
 	s.z_index = z
+	parent.add_child(s)
+
+## Soft additive halo BEHIND a prop (round-4 rule 2, silhouette support): drawn
+## above the ground layers but below every y-sorted sprite, so the prop is
+## backlit out of the floor instead of dissolving into it. Deliberately faint —
+## it separates the silhouette; the focal lamp still owns the brightness.
+static func _backglow(parent: Node2D, pos: Vector2, width: float, col: Color, alpha: float = 0.10) -> void:
+	var s := Sprite2D.new()
+	s.texture = _light_tex()
+	s.material = _additive_mat()
+	s.position = pos
+	var tw := maxf(1.0, float(s.texture.get_width()))
+	s.scale = Vector2(width / tw, width * 0.8 / tw)
+	s.modulate = Color(col.r, col.g, col.b, alpha)
+	s.z_index = -44
 	parent.add_child(s)
 
 ## Soft coloured stain on the floor — pits, spills, painted plazas, scorch.
@@ -1132,8 +1326,9 @@ static func _build_region_fx(parent: Node2D, region_id: String, _theme: Dictiona
 			# from inside the world canvas where it fought the postfx grade's
 			# own BackBufferCopy. The screen-space one wins: it composes with
 			# the grade correctly and costs nothing in the other nine regions.
-			# Lava-glow pool under the shimmer so the hot zone reads HOT.
-			_add_light(parent, Vector2(w * 0.5, h * 0.76), Color(1.0, 0.42, 0.18), 0.8, 6.0, true)
+			# Lava-glow pool under the shimmer so the hot zone reads HOT. This is
+			# the mines' focal (round-4 rule 3): the one brightest thing.
+			_add_light(parent, Vector2(w * 0.5, h * 0.76), Color(1.0, 0.42, 0.18), 1.2, 6.0, true)
 		"token_vault":
 			var rain := _shader_mat("code_rain", {"tint": Color(1.0, 0.83, 0.3, 1.0), "alpha_max": 0.14, "columns": 42.0, "speed": 0.8})
 			if rain:
@@ -1220,8 +1415,10 @@ static func _heap(parent: Node2D, pos: Vector2, col: Color, n: int, sc: float, s
 static func _stall(parent: Node2D, pos: Vector2, awning: Color, goods: Color, seed_v: int) -> void:
 	var zi := _depth(pos.y, 46.0)
 	_light_pool(parent, pos + Vector2(0, 34), 230.0, awning, 0.26)
+	_backglow(parent, pos + Vector2(0, -26), 220.0, awning, 0.10)
 	_prop(parent, "struct_crate", pos + Vector2(-46, 10), 0.85, Color(0.62, 0.5, 0.42))
 	_prop(parent, "struct_crate", pos + Vector2(46, 10), 0.85, Color(0.58, 0.46, 0.4))
+	_drop_shadow(parent, pos + Vector2(0, 14), 165.0, zi - 1, 0.38)
 	_rect(parent, pos, Vector2(150, 16), Color(0.24, 0.2, 0.26), zi)          # counter top
 	_rect(parent, pos + Vector2(0, -7), Vector2(150, 3), Color(0.4, 0.36, 0.44), zi + 1)
 	# striped awning above the counter
@@ -1240,6 +1437,7 @@ static func _stall(parent: Node2D, pos: Vector2, awning: Color, goods: Color, se
 
 ## Toppled monolith: a slab lying at an angle with rubble shed around it.
 static func _monolith(parent: Node2D, pos: Vector2, rot: float, col: Color, sc: float, seed_v: int) -> void:
+	_backglow(parent, pos, 130.0 * sc, Color(col.r, col.g, col.b * 0.9), 0.08)
 	_prop(parent, "struct_slab", pos, sc, col, rot)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_v
@@ -1251,6 +1449,7 @@ static func _monolith(parent: Node2D, pos: Vector2, rot: float, col: Color, sc: 
 static func _rack(parent: Node2D, pos: Vector2, col: Color, hot: Color, sc: float, phase: float) -> void:
 	var spr := _prop(parent, "struct_tower", pos, sc, col)
 	var zi := spr.z_index if spr else _depth(pos.y, 60.0)
+	_backglow(parent, pos + Vector2(0, -12.0 * sc), 150.0 * sc, hot, 0.09)
 	for i in 5:
 		_led(parent, pos + Vector2(-10.0 + float(i % 2) * 20.0, -54.0 + float(i) * 18.0), hot if i % 2 == 0 else col, phase + float(i) * 0.19, zi + 1)
 	_glow_rect(parent, pos + Vector2(0, 52.0 * sc), Vector2(40.0 * sc, 5), Color(hot.r, hot.g, hot.b, 0.55), zi + 1)
@@ -1261,6 +1460,7 @@ static func _cubicle(parent: Node2D, pos: Vector2, col: Color, screen_col: Color
 	var zi := _depth(pos.y, 40.0)
 	_prop(parent, "struct_slab", pos + Vector2(-56, -8), 0.55, col, 0.0, 0.6)
 	_prop(parent, "struct_slab", pos + Vector2(0, -40), 0.55, Color(col.r * 0.9, col.g * 0.9, col.b * 0.95), 0.0, 0.6)
+	_drop_shadow(parent, pos + Vector2(8, 32), 96.0, zi - 1, 0.34)
 	_rect(parent, pos + Vector2(8, 18), Vector2(84, 26), Color(0.2, 0.22, 0.3), zi)
 	_rect(parent, pos + Vector2(8, 7), Vector2(84, 3), Color(0.34, 0.37, 0.48), zi + 1)
 	_screen(parent, pos + Vector2(8, 4), screen_col, Vector2(0.8, 0.7), zi + 2)
@@ -1372,6 +1572,7 @@ static func _bunting(parent: Node2D, from: Vector2, to: Vector2, a: Color, b: Co
 static func _shack(parent: Node2D, pos: Vector2, col: Color) -> void:
 	var zi := _depth(pos.y, 58.0)
 	_drop_shadow(parent, pos + Vector2(0, 56), 220.0, zi - 2, 0.45)
+	_backglow(parent, pos + Vector2(0, -20), 240.0, Color(1.0, 0.76, 0.4), 0.10)
 	_rect(parent, pos + Vector2(0, 8), Vector2(184, 96), Color(col.r * 0.34, col.g * 0.38, col.b * 0.34), zi)
 	for i in 9:
 		_rect(parent, pos + Vector2(-80.0 + float(i) * 20.0, 8.0), Vector2(3, 96), Color(0, 0, 0, 0.22), zi + 1)
@@ -1382,17 +1583,21 @@ static func _shack(parent: Node2D, pos: Vector2, col: Color) -> void:
 	_lamp(parent, pos + Vector2(0, -36), Color(1.0, 0.74, 0.36), 0.8, 2.2, true, 270.0)
 
 static func _sp_dependency(z: Node2D, glow: Color, accent: Color) -> void:
-	# node_modules: a crate heap collapsing into its own gravity well.
+	# node_modules: a crate heap collapsing into its own gravity well. THE focal
+	# (round-4 rule 3): the one brightest thing in the district, backlit so the
+	# heap's silhouette reads from the far door without its caption.
 	_floor_patch(z, Vector2(296, 292), 340.0, Color(0.01, 0.03, 0.01), 0.55, -94)
+	_backglow(z, Vector2(296, 250), 300.0, glow, 0.14)
 	_heap(z, Vector2(296, 286), accent, 8, 1.0, 4201)
-	_lamp(z, Vector2(296, 214), glow, 0.6, 2.3, true, 280.0)
+	_lamp(z, Vector2(296, 214), glow, 1.1, 3.0, true, 340.0)
 	_sign(z, Vector2(196, 148), "node_modules\n4.2 GB of someone else's problems", glow, 12)
-	# The install bay: a terminal that has been at 47% for a while.
+	# The install bay: a terminal that has been at 47% for a while. Mid-ground:
+	# one step below the heap.
 	_prop(z, "struct_console", Vector2(1010, 254), 1.0, Color(0.66, 0.8, 0.5))
 	_screen(z, Vector2(1010, 232), glow, Vector2(1.3, 1.1), _depth(254, 60))
 	_rect(z, Vector2(1010, 296), Vector2(120, 8), Color(0.06, 0.1, 0.05), _depth(296, 8))
 	_glow_rect(z, Vector2(982, 296), Vector2(56, 6), Color(glow.r, glow.g, glow.b, 0.8), _depth(296, 9))
-	_lamp(z, Vector2(1010, 224), glow, 0.65, 1.9, false, 210.0)
+	_lamp(z, Vector2(1010, 224), glow, 0.5, 1.9, false, 210.0)
 	_sign(z, Vector2(922, 336), "installing... 47%\n(it has said 47% for an hour)", accent, 11)
 	# The lockfile shrine. Merged by hand. We do not speak of it.
 	_prop(z, "struct_slab", Vector2(560, 796), 0.6, Color(0.5, 0.62, 0.44))
@@ -1402,6 +1607,7 @@ static func _sp_dependency(z: Node2D, glow: Color, accent: Color) -> void:
 	# The conveyor feeding the heap. It only runs one way, it has run since before
 	# anybody currently here joined, and nobody has located the off switch.
 	var belt_y := 210.0
+	_drop_shadow(z, Vector2(560, belt_y + 22.0), 350.0, _depth(belt_y, 20.0) - 1, 0.4)
 	_rect(z, Vector2(560, belt_y), Vector2(330, 40), Color(0.11, 0.14, 0.1), _depth(belt_y, 20.0))
 	_rect(z, Vector2(560, belt_y - 17.0), Vector2(330, 4), Color(0.3, 0.38, 0.26), _depth(belt_y, 22.0))
 	for i in 11:
@@ -1428,10 +1634,12 @@ static func _sp_stackoverflow(z: Node2D, glow: Color, accent: Color) -> void:
 	_monolith(z, Vector2(392, 348), -0.42, Color(0.66, 0.58, 0.46), 0.75, 12)
 	_monolith(z, Vector2(1096, 318), -1.25, Color(0.7, 0.62, 0.48), 0.85, 13)
 	_monolith(z, Vector2(936, 372), 0.35, Color(0.62, 0.55, 0.44), 0.7, 14)
-	# The Accepted Answer, still lit, still wrong.
+	# The Accepted Answer, still lit, still wrong. THE focal: brightest thing in
+	# the ruins, haloed so the slab reads before its caption does.
+	_backglow(z, Vector2(640, 200), 260.0, glow, 0.14)
 	_prop(z, "struct_slab", Vector2(640, 214), 1.0, Color(0.86, 0.76, 0.55))
 	_glow_rect(z, Vector2(640, 190), Vector2(30, 30), Color(glow.r, glow.g, glow.b, 0.5), _depth(214, 62))
-	_lamp(z, Vector2(640, 178), glow, 0.85, 2.6, true, 300.0)
+	_lamp(z, Vector2(640, 178), glow, 1.15, 2.8, true, 340.0)
 	_floor_patch(z, Vector2(640, 292), 300.0, glow, 0.14, -94)
 	_sign(z, Vector2(560, 300), "ACCEPTED ANSWER\n(deprecated in 2016)", glow, 12)
 	# Cairn of duplicates, stacked by a hermit with a lot of time.
@@ -1442,9 +1650,10 @@ static func _sp_stackoverflow(z: Node2D, glow: Color, accent: Color) -> void:
 	# asked. The answer is four versions out of date and marked as duplicate.
 	_shrine(z, Vector2(324, 716), glow)
 	_sign(z, Vector2(212, 792), "SHRINE OF THE ASKED\n\"possible duplicate of\"", accent, 11)
-	# The hermit's fire, burning documentation for warmth.
+	# The hermit's fire, burning documentation for warmth. Mid-ground, a step
+	# below the Accepted Answer.
 	_light_pool(z, Vector2(1000, 730), 240.0, Color(1.0, 0.66, 0.3), 0.3)
-	_lamp(z, Vector2(1000, 716), Color(1.0, 0.62, 0.26), 0.7, 1.8, true, 0.0)
+	_lamp(z, Vector2(1000, 716), Color(1.0, 0.62, 0.26), 0.58, 1.8, true, 0.0)
 	for k: float in [1.0, -1.0]:
 		_prop(z, "struct_slab", Vector2(1000 + k * 92.0, 740), 0.3, Color(0.56, 0.5, 0.42), k * 0.2)
 
@@ -1453,10 +1662,13 @@ static func _sp_stackoverflow(z: Node2D, glow: Color, accent: Color) -> void:
 	_prop(z, "dress_monolith", Vector2(1188, 846), 0.85, Color(0.7, 0.63, 0.5), 0.09)
 
 static func _sp_bazaar(z: Node2D, glow: Color, accent: Color) -> void:
-	# Three stalls along the top: everything's for sale, per request.
+	# Three stalls along the top: everything's for sale, per request. The centre
+	# stall is THE focal — one headline lamp over it, so the market has a main
+	# attraction instead of three equally-lit pitches.
 	_stall(z, Vector2(276, 236), glow, accent, 91)
 	_stall(z, Vector2(640, 218), accent, glow, 92)
 	_stall(z, Vector2(1004, 236), glow, accent, 93)
+	_lamp(z, Vector2(640, 146), glow, 1.1, 2.8, false, 360.0)
 	_sign(z, Vector2(190, 300), "API keys\ncash, crypto, or kidney", glow, 11)
 	_sign(z, Vector2(930, 300), "Free tier: 14 seconds\n(measured generously)", accent, 11)
 	# The haggling pit: a ring of crates around a low table nobody wins at.
@@ -1464,6 +1676,7 @@ static func _sp_bazaar(z: Node2D, glow: Color, accent: Color) -> void:
 	for i in 7:
 		var a := TAU * float(i) / 7.0
 		_prop(z, "struct_crate", Vector2(604, 800) + Vector2(cos(a) * 150.0, sin(a) * 92.0), 0.55, Color(0.72, 0.56, 0.4), a * 0.2)
+	_drop_shadow(z, Vector2(604, 812), 110.0, _depth(800, 16) - 1, 0.36)
 	_rect(z, Vector2(604, 800), Vector2(96, 30), Color(0.3, 0.2, 0.3), _depth(800, 16))
 	_lamp(z, Vector2(604, 762), accent, 0.6, 2.0, true, 240.0)
 	_sign(z, Vector2(516, 862), "HAGGLING PIT\nprices go up while you think", accent, 11)
@@ -1489,14 +1702,16 @@ static func _sp_cloud(z: Node2D, glow: Color, accent: Color) -> void:
 		var y := 176.0 + float(i) * 96.0
 		_rack(z, Vector2(430, y), Color(0.6, 0.7, 0.86), glow, 0.85, 0.2 + float(i) * 0.3)
 		_rack(z, Vector2(850, y), Color(0.56, 0.66, 0.82), glow, 0.85, 0.5 + float(i) * 0.3)
+	_backglow(z, Vector2(640, 190), 280.0, glow, 0.13)
 	_prop(z, "struct_arch", Vector2(640, 172), 1.15, Color(0.72, 0.82, 0.96))
 	_floor_patch(z, Vector2(640, 268), 380.0, glow, 0.16, -94)
-	_lamp(z, Vector2(640, 196), glow, 0.9, 3.0, true, 340.0)
+	# THE focal: the cathedral arch owns the frame; everything else steps down.
+	_lamp(z, Vector2(640, 196), glow, 1.2, 3.2, true, 380.0)
 	_sign(z, Vector2(556, 288), "THE CLOUD\nsomeone else's computer, uphill", glow, 12)
 	# The invoice altar. Numbers go up. Nobody knows which numbers.
 	_prop(z, "struct_slab", Vector2(640, 802), 0.75, Color(0.66, 0.76, 0.9))
 	_screen(z, Vector2(640, 774), accent, Vector2(1.5, 1.1), _depth(802, 48))
-	_lamp(z, Vector2(640, 762), accent, 0.6, 1.9, false, 220.0)
+	_lamp(z, Vector2(640, 762), accent, 0.5, 1.9, false, 220.0)
 	_sign(z, Vector2(548, 852), "THIS MONTH: €41,802\nLine items: 2,304. Understood: 0.", accent, 11)
 	# The cooling pond. Still, lit, expensive, and cooling nothing anybody here
 	# can name. Reflections are two glow bars and a lot of confidence.
@@ -1514,8 +1729,9 @@ static func _sp_cloud(z: Node2D, glow: Color, accent: Color) -> void:
 
 static func _sp_opensource(z: Node2D, glow: Color, accent: Color) -> void:
 	# The maintainer's camp: one tent, one fire, one person, 4,000 dependents.
-	_light_pool(z, Vector2(1058, 826), 300.0, Color(1.0, 0.7, 0.34), 0.34)
-	_lamp(z, Vector2(1058, 812), Color(1.0, 0.64, 0.28), 0.8, 2.0, true, 0.0)
+	# THE focal — the warmest, brightest pool in the wildlands is the human.
+	_light_pool(z, Vector2(1058, 826), 340.0, Color(1.0, 0.7, 0.34), 0.34)
+	_lamp(z, Vector2(1058, 812), Color(1.0, 0.64, 0.28), 1.15, 2.4, true, 0.0)
 	for i in 5:
 		var a := TAU * float(i) / 5.0
 		_rect(z, Vector2(1058, 812) + Vector2(cos(a) * 34.0, sin(a) * 20.0), Vector2(9, 9), Color(0.18, 0.16, 0.14), _depth(812, 6), a)
@@ -1559,7 +1775,7 @@ static func _sp_opensource(z: Node2D, glow: Color, accent: Color) -> void:
 	_floor_patch(z, Vector2(640, 246), 300.0, glow, 0.12, -94)
 	for i in 6:
 		_rect(z, Vector2(566.0 + float(i) * 30.0, 214.0 + float(i % 3) * 12.0), Vector2(6, 44), Color(accent.r * 0.7, accent.g * 0.7, accent.b * 0.7, 0.8), -46, 0.2 * float(i % 3))
-	_lamp(z, Vector2(640, 224), glow, 0.6, 2.2, true, 260.0)
+	_lamp(z, Vector2(640, 224), glow, 0.5, 2.2, true, 260.0)
 
 	# Dinner by the camp, and the spool the whole ecosystem is strung from.
 	_prop(z, "dress_noodle_cup", Vector2(996, 890), 1.0, Color(0.82, 0.96, 0.8))
@@ -1579,15 +1795,20 @@ static func _sp_corporate(z: Node2D, glow: Color, accent: Color) -> void:
 	for i in 4:
 		_partition(z, Vector2(250.0 + float(i) * 260.0, 286.0), Vector2(12.0, 82.0), glow)
 	_sign(z, Vector2(210, 158), "OPEN PLAN\nfor collaboration (headphones mandatory)", accent, 11)
-	# The all-hands stage, permanently set up.
+	# The all-hands stage, permanently set up. THE focal: the big screen gets
+	# the one headline lamp; the flanking pair steps down under it.
+	_drop_shadow(z, Vector2(1000, 846), 270.0, _depth(812, 30) - 1, 0.4)
+	_backglow(z, Vector2(1000, 770), 300.0, glow, 0.12)
 	_rect(z, Vector2(1000, 812), Vector2(250, 60), Color(0.18, 0.2, 0.28), _depth(812, 30))
 	_rect(z, Vector2(1000, 786), Vector2(250, 5), Color(0.32, 0.36, 0.5), _depth(812, 32))
 	_rect(z, Vector2(930, 780), Vector2(30, 42), Color(0.24, 0.26, 0.36), _depth(796, 22))
 	_screen(z, Vector2(1000, 742), glow, Vector2(2.6, 1.7), _depth(812, 34))
+	_lamp(z, Vector2(1000, 722), glow, 1.05, 2.6, false, 320.0)
 	for k: float in [1.0, -1.0]:
-		_lamp(z, Vector2(1000 + k * 96.0, 744), glow, 0.55, 1.8, false, 200.0)
+		_lamp(z, Vector2(1000 + k * 96.0, 744), glow, 0.5, 1.8, false, 200.0)
 	_sign(z, Vector2(896, 872), "ALL-HANDS: AI STRATEGY\nby Friday. Of an unspecified year.", glow, 11)
 	# Reception: a desk, a ticket queue, and no receptionist.
+	_drop_shadow(z, Vector2(258, 660), 165.0, _depth(640, 18) - 1, 0.36)
 	_rect(z, Vector2(258, 640), Vector2(150, 34), Color(0.2, 0.23, 0.32), _depth(640, 18))
 	_screen(z, Vector2(258, 620), accent, Vector2(1.1, 0.8), _depth(640, 20))
 	_lamp(z, Vector2(258, 604), accent, 0.5, 1.6, false, 180.0)
@@ -1619,6 +1840,7 @@ static func _sp_gpu(z: Node2D, glow: Color, accent: Color) -> void:
 	# Cooling towers, losing.
 	for k: float in [1.0, -1.0]:
 		var cp := Vector2(640.0 - k * 456.0, 792.0)
+		_backglow(z, cp + Vector2(0, -30), 190.0, Color(0.6, 0.85, 1.0), 0.09)
 		_prop(z, "struct_tower", cp, 1.25, Color(0.62, 0.56, 0.56))
 		_glow_rect(z, cp + Vector2(0, -78), Vector2(34, 6), Color(0.7, 0.9, 1.0, 0.5), _depth(cp.y, 80.0))
 		_lamp(z, cp + Vector2(0, -84), Color(0.6, 0.85, 1.0), 0.5, 1.8, k > 0.0, 200.0)
@@ -1665,15 +1887,18 @@ static func _sp_gpu(z: Node2D, glow: Color, accent: Color) -> void:
 	_prop(z, "dress_ore_cart", Vector2(1112, 886), 0.95, Color(0.9, 0.68, 0.56), 0.11)
 
 static func _sp_production(z: Node2D, glow: Color, accent: Color) -> void:
-	# The incident war room. Permanently staffed by nobody.
+	# The incident war room. Permanently staffed by nobody. THE focal: the
+	# brightest thing in production is the room where production is discussed.
+	_backglow(z, Vector2(640, 230), 320.0, glow, 0.13)
 	_prop(z, "struct_slab", Vector2(640, 208), 1.7, Color(0.6, 0.42, 0.44))
 	for i in 3:
 		_screen(z, Vector2(556.0 + float(i) * 84.0, 196.0), glow, Vector2(1.7, 1.3), _depth(208, 104))
+	_drop_shadow(z, Vector2(640, 324), 250.0, _depth(300, 20) - 1, 0.38)
 	_rect(z, Vector2(640, 300), Vector2(230, 40), Color(0.22, 0.17, 0.19), _depth(300, 20))
 	_rect(z, Vector2(640, 284), Vector2(230, 4), Color(0.36, 0.28, 0.3), _depth(300, 22))
 	for k: float in [1.0, -1.0]:
 		_rect(z, Vector2(640 + k * 132.0, 306), Vector2(34, 34), Color(0.18, 0.15, 0.18), _depth(306, 18))
-	_lamp(z, Vector2(640, 262), glow, 1.0, 2.6, true, 340.0)
+	_lamp(z, Vector2(640, 262), glow, 1.25, 2.8, true, 380.0)
 	_floor_patch(z, Vector2(640, 330), 420.0, glow, 0.16, -94)
 	_sign(z, Vector2(524, 344), "WAR ROOM\nSeverity: yes. Owner: unassigned.", glow, 12)
 	# Whiteboards flanking the war room: four boxes, three arrows, one theory
@@ -1686,10 +1911,10 @@ static func _sp_production(z: Node2D, glow: Color, accent: Color) -> void:
 		_rect(z, Vector2(bx, 90.0), Vector2(20, 14), Color(0.1, 0.05, 0.06, 0.95), -45)
 		_glow_rect(z, Vector2(bx, 84.0), Vector2(14, 6), Color(glow.r, glow.g, glow.b, 0.9), -44)
 		_light_pool(z, Vector2(bx, 168.0), 260.0, glow, 0.16)
-	# The status page. Fully green. Load-bearing lie.
+	# The status page. Fully green. Load-bearing lie. Mid-ground.
 	_prop(z, "struct_slab", Vector2(272, 276), 0.9, Color(0.6, 0.44, 0.46))
 	_screen(z, Vector2(272, 248), Color(0.3, 0.95, 0.45), Vector2(1.9, 1.2), _depth(276, 56))
-	_lamp(z, Vector2(272, 234), Color(0.3, 0.95, 0.45), 0.6, 1.9, false, 240.0)
+	_lamp(z, Vector2(272, 234), Color(0.3, 0.95, 0.45), 0.5, 1.9, false, 240.0)
 	for i in 5:
 		_led(z, Vector2(220.0 + float(i) * 26.0, 296.0), Color(0.3, 1.0, 0.5), 0.2 + float(i) * 0.21, _depth(296, 8))
 	_sign(z, Vector2(190, 322), "STATUS PAGE\nAll systems operational.", Color(0.4, 1.0, 0.55), 11)
@@ -1716,12 +1941,13 @@ static func _sp_vault(z: Node2D, glow: Color, accent: Color) -> void:
 		for b in 4:
 			_glow_rect(z, sp + Vector2(-26.0 + float(b) * 17.0, -22.0), Vector2(13, 7), Color(glow.r, glow.g, glow.b, 0.75), _depth(sp.y, 50.0))
 		_light_pool(z, sp + Vector2(0, 46), 190.0, glow, 0.2)
-	# The reserve pedestal: an orb of tokens under an arcane ring.
+	# The reserve pedestal: an orb of tokens under an arcane ring. THE focal.
+	_backglow(z, Vector2(640, 236), 260.0, glow, 0.15)
 	_prop(z, "struct_orb", Vector2(640, 244), 0.85, Color(1.0, 0.85, 0.34))
 	for i in 20:
 		var a := TAU * float(i) / 20.0
 		_glow_rect(z, Vector2(640, 300) + Vector2(cos(a) * 128.0, sin(a) * 78.0), Vector2(11, 4), Color(VIOLET.r, VIOLET.g, VIOLET.b, 0.5), -90, a)
-	_lamp(z, Vector2(640, 226), glow, 1.0, 2.8, true, 340.0)
+	_lamp(z, Vector2(640, 226), glow, 1.25, 3.0, true, 380.0)
 	_sign(z, Vector2(556, 320), "THE RESERVES\nWithdrawals require a written excuse.", glow, 12)
 	# Two arcane circles: the price oracle, and whatever the other one does.
 	for k: float in [1.0, -1.0]:
@@ -1744,13 +1970,13 @@ static func _sp_vault(z: Node2D, glow: Color, accent: Color) -> void:
 	_screen(z, Vector2(640, 778), accent, Vector2(1.4, 1.0), _depth(800, 56))
 	_sign(z, Vector2(566, 858), "BALANCE: yes\nRate limit: spiritual", accent, 11)
 
-## Small cluster helper for composing themed set-dressing.
 	# The posts the lattice actually comes out of, and a cart of reserves left
 	# where the last audit abandoned it.
 	_prop(z, "dress_laser_emitter", Vector2(186, 640), 1.0, Color(1.0, 0.78, 0.6))
 	_prop(z, "dress_laser_emitter", Vector2(1094, 704), 1.0, Color(1.0, 0.78, 0.6))
 	_prop(z, "dress_ore_cart", Vector2(884, 894), 0.9, Color(1.0, 0.86, 0.5), -0.06)
 
+## Small cluster helper for composing themed set-dressing.
 static func _clu(cx: float, cy: float, t: String, n: int, s: float, m: Color, spread: float) -> Array:
 	var out: Array = []
 	var rng := RandomNumberGenerator.new()
@@ -1783,6 +2009,7 @@ static func _region_theme(region_id: String) -> Dictionary:
 			return {
 				"floor": Color(0.62, 0.76, 0.55), "wall": Color(0.5, 0.64, 0.42), "tile_mul": 2.3,
 				"glow": Color("#A8FF3E"), "accent": Color("#E08A3C"),
+				"focal": Vector2(296, 286),  # the node_modules heap
 				"lights": [Vector2(220, 620), Vector2(1120, 600)], "structs": structs,
 				"signs": [
 					# Dropped clear of the crate stack it labels — at y=668 the sign was
@@ -1809,6 +2036,7 @@ static func _region_theme(region_id: String) -> Dictionary:
 			return {
 				"floor": Color(0.76, 0.68, 0.53), "wall": Color(0.64, 0.57, 0.44), "tile_mul": 2.1,
 				"glow": Color("#E8C46B"), "accent": Color("#C97B4A"), "ambient": "dust",
+				"focal": Vector2(640, 214),  # the Accepted Answer
 				"lights": [Vector2(272, 600), Vector2(1012, 616)], "structs": structs,
 				"signs": [
 					{"p": Vector2(170, 664), "t": "Marked as duplicate.", "c": Color("#E8C46B")},
@@ -1825,6 +2053,7 @@ static func _region_theme(region_id: String) -> Dictionary:
 			return {
 				"floor": Color(0.7, 0.55, 0.7), "wall": Color(0.6, 0.44, 0.6), "tile_mul": 2.4,
 				"glow": Color("#FF2D95"), "accent": Color("#FFD34D"),
+				"focal": Vector2(640, 218),  # the centre stall
 				"lights": [Vector2(200, 470), Vector2(1104, 462)], "structs": structs,
 				"signs": [
 					{"p": Vector2(146, 700), "t": "API keys — cash only", "c": Color("#FF2D95")},
@@ -1841,6 +2070,7 @@ static func _region_theme(region_id: String) -> Dictionary:
 			return {
 				"floor": Color(0.66, 0.76, 0.92), "wall": Color(0.6, 0.7, 0.88), "tile_mul": 2.0,
 				"glow": Color("#6BC7FF"), "accent": Color("#E8F4FF"), "ambient": "packets",
+				"focal": Vector2(640, 172),  # the server cathedral arch
 				"lights": [Vector2(196, 604), Vector2(1116, 612)], "structs": structs,
 				"signs": [
 					{"p": Vector2(150, 664), "t": "Elastic. Ask us how.\n(we cannot explain)", "c": Color("#6BC7FF")},
@@ -1864,6 +2094,7 @@ static func _region_theme(region_id: String) -> Dictionary:
 			return {
 				"floor": Color(0.58, 0.76, 0.6), "wall": Color(0.48, 0.66, 0.5), "tile_mul": 2.3,
 				"glow": Color("#58E07C"), "accent": Color("#3E9E5C"), "ambient": "spores",
+				"focal": Vector2(1058, 812),  # the maintainer's campfire
 				"lights": [Vector2(196, 600), Vector2(1122, 606)], "structs": structs,
 				"signs": [
 					{"p": Vector2(146, 664), "t": "PRs welcome (ignored)", "c": Color("#58E07C")},
@@ -1881,6 +2112,7 @@ static func _region_theme(region_id: String) -> Dictionary:
 			return {
 				"floor": Color(0.68, 0.72, 0.86), "wall": Color(0.58, 0.63, 0.78), "tile_mul": 1.9,
 				"glow": Color("#4D7CFF"), "accent": Color("#93A7C8"),
+				"focal": Vector2(1000, 742),  # the all-hands stage screen
 				"lights": [Vector2(180, 470), Vector2(1100, 470)], "structs": structs,
 				"signs": [
 					{"p": Vector2(120, 664), "t": "Synergy Zone", "c": Color("#4D7CFF")},
@@ -1897,6 +2129,7 @@ static func _region_theme(region_id: String) -> Dictionary:
 			return {
 				"floor": Color(0.72, 0.54, 0.46), "wall": Color(0.66, 0.46, 0.4), "tile_mul": 2.2,
 				"glow": Color("#FF6B2D"), "accent": Color("#FF3D2D"), "ambient": "embers",
+				"focal": Vector2(640, 812),  # the heat pit
 				"lights": [Vector2(190, 600), Vector2(1130, 592)], "structs": structs,
 				"signs": [
 					{"p": Vector2(136, 668), "t": "GPU go brrr", "c": Color("#FF6B2D")},
@@ -1915,6 +2148,7 @@ static func _region_theme(region_id: String) -> Dictionary:
 			return {
 				"floor": Color(0.74, 0.54, 0.56), "wall": Color(0.66, 0.44, 0.46), "tile_mul": 2.5,
 				"glow": Color("#FF4757"), "accent": Color("#FFB020"), "ambient": "sparks",
+				"focal": Vector2(640, 262),  # the war room
 				"lights": [Vector2(186, 466), Vector2(1104, 466)], "structs": structs,
 				"signs": [
 					{"p": Vector2(120, 660), "t": "PRODUCTION — DO NOT TOUCH", "c": Color("#FF4757")},
@@ -1931,6 +2165,7 @@ static func _region_theme(region_id: String) -> Dictionary:
 			return {
 				"floor": Color(0.78, 0.68, 0.5), "wall": Color(0.72, 0.62, 0.42), "tile_mul": 2.4,
 				"glow": Color("#FFD34D"), "accent": VIOLET, "ambient": "sparkle",
+				"focal": Vector2(640, 244),  # the reserve pedestal
 				"lights": [Vector2(192, 600), Vector2(1124, 596)], "structs": structs,
 				"signs": [
 					{"p": Vector2(130, 664), "t": "TOKEN RESERVES", "c": Color("#FFD34D")},

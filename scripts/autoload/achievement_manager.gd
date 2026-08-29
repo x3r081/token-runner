@@ -28,7 +28,6 @@ func unlock(id: String) -> void:
 	unlocked.append(id)
 	var a: Dictionary = defs[id]
 	achievement_unlocked.emit(id, a.get("name", id), a.get("description", ""))
-	AudioManager.play_sfx("quest_complete")
 
 func is_unlocked(id: String) -> bool:
 	return id in unlocked

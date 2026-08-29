@@ -100,7 +100,7 @@ func _on_body_entered(body: Node2D) -> void:
 		ResourceManager.add_tokens(amount, "pickup_%s" % token_type)
 	QuestManager.on_token_collected(amount)
 	_spawn_float_text()
-	AudioManager.play_sfx("token_collect")
+	AudioManager.play_sfx("token_collect" if token_type == "common" else "pickup_rare")
 	particles.emitting = true
 	if _sparkle:
 		_sparkle.emitting = false

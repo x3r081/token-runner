@@ -36,8 +36,8 @@ func _ready() -> void:
 	if ResourceLoader.exists(HAZE_SHADER):
 		_haze_mat = ShaderMaterial.new()
 		_haze_mat.shader = load(HAZE_SHADER)
-		_haze_mat.set_shader_parameter("strength", 0.0018)
-		_haze_mat.set_shader_parameter("speed", 1.6)
+		_haze_mat.set_shader_parameter("strength", 0.0014)
+		_haze_mat.set_shader_parameter("speed", 1.15)
 		_haze_mat.set_shader_parameter("tint", Color(1.0, 0.55, 0.28))
 		_haze_mat.set_shader_parameter("tint_amount", 0.0)
 		_haze_mat.set_shader_parameter("rise", 1.0)
@@ -64,6 +64,7 @@ func _ready() -> void:
 		_mat.set_shader_parameter("vignette_strength", 0.20)
 		_mat.set_shader_parameter("saturation", 1.16)
 		_mat.set_shader_parameter("contrast", 0.12)
+		_mat.set_shader_parameter("filmic", 0.30)
 		_mat.set_shader_parameter("stress", 0.0)
 		_mat.set_shader_parameter("stress_tint", Vector3(1.0, 0.55, 0.50))
 		_mat.set_shader_parameter("wash_color", Color("#FF4757"))
@@ -109,6 +110,12 @@ func fade_from_black(duration: float = 0.4) -> void:
 ## Vignettes stay light across the board (the old 0.34–0.42 ate the corners of
 ## an already dark frame) and every region carries a small S-curve so the indigo
 ## shadow lift reads as depth instead of haze.
+##
+## Round 4: the vignette CURVE moved into the shader — a wide clean plateau to
+## ~0.42 of the frame radius plus a corner-commit term — so these per-region
+## strengths now price only the edges, not the mid-ground. A `filmic` tone
+## response (seeded in _ready, constant across regions) separates near-white
+## mid-values from the true HDR bloom sources above 1.0.
 func set_region(region_id: String) -> void:
 	var hot := region_id == "gpu_mines"
 	if _haze:
@@ -116,10 +123,13 @@ func set_region(region_id: String) -> void:
 	if _haze_copy:
 		_haze_copy.visible = _haze != null and _haze.visible
 	if _haze_mat and hot:
-		_haze_mat.set_shader_parameter("strength", 0.0024)
-		_haze_mat.set_shader_parameter("speed", 1.9)
-		_haze_mat.set_shader_parameter("tint_amount", 0.035)
-		_haze_mat.set_shader_parameter("rise", 1.6)
+		# Round 4: slower and subtler. The old 0.0024/1.9 made the whole mine
+		# swim and smeared prop edges in the QA frame — heat now reads in the
+		# peripheral vision, not as a lens over the room.
+		_haze_mat.set_shader_parameter("strength", 0.0019)
+		_haze_mat.set_shader_parameter("speed", 1.3)
+		_haze_mat.set_shader_parameter("tint_amount", 0.024)
+		_haze_mat.set_shader_parameter("rise", 1.15)
 	if not _mat:
 		return
 	var lift := Vector3(0.012, 0.008, 0.03)  # default: shadows toward indigo

@@ -1,11 +1,18 @@
 extends Control
-## Cinematic main menu: drifting starfield, overbright pulsing title, typewriter
-## subtitle, neon buttons. The game's first impression — it dresses accordingly,
-## states the premise in one breath, and rotates a tip pool so nobody reads the
+## Cinematic main menu — the first frame is a scene, not a panel in a void:
+## a parallax neon skyline drifts behind the 3AM apartment corner (desk,
+## monitor running code-rain, the vibe coder silhouetted in its glow), dust
+## motes hang in the air, the overbright title pulses with a whisper of CRT
+## chromatic fringing, and the neon buttons slide toward the cursor. It still
+## states the premise in one breath and rotates a tip pool so nobody reads the
 ## same joke twice while deciding whether to press New Game.
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 const _Comedy = preload("res://scripts/ui/comedy_lines.gd")
+
+const CITY_SHADER := "res://assets/shaders/menu_skyline.gdshader"
+const CODE_RAIN_SHADER := "res://assets/shaders/code_rain.gdshader"
+const GEN_TEX_DIR := "res://assets/textures/generated/"
 
 ## Dry build notes appended to the version string. Short — it's a footnote.
 const BUILD_NOTES := [
@@ -22,6 +29,9 @@ const BUILD_NOTES := [
 ]
 
 var _starfield_mat: ShaderMaterial
+var _city_mat: ShaderMaterial
+var _apartment: Control
+var _drift: CPUParticles2D
 
 func _ready() -> void:
 	var theme := _GameTheme.create()
@@ -44,11 +54,15 @@ func _ready() -> void:
 	$CenterPanel/VBox/QuitBtn.pressed.connect(_on_quit)
 	$TipLabel.text = _Comedy.pick("menu_tip", _Comedy.MENU_TIPS)
 	_build_premise()
+	_build_cityscape()
+	_build_apartment()
+	_build_ambient_particles()
 	_dress_background()
 	_dress_panel()
 	_dress_title()
 	_dress_buttons()
 	_start_tip_rotation()
+	resized.connect(_on_root_resized)
 
 ## The premise, stated once, plainly, before anyone has pressed anything: what
 ## you are doing and in what order. The joke is the last clause, never the goal.
@@ -80,16 +94,226 @@ func _dress_background() -> void:
 		var t := create_tween().set_loops()
 		t.tween_property(_starfield_mat, "shader_parameter/scroll", Vector2(2400.0, 1100.0), 150.0)
 		t.tween_property(_starfield_mat, "shader_parameter/scroll", Vector2.ZERO, 150.0)
-	# Vignette between the stars and the panel — depth on the cheap.
+	# Vignette between the stars and the panel — depth on the cheap. It slots
+	# UNDER the apartment corner: the radial falloff is darkest exactly in the
+	# corners, and the hero scene must not sit inside it (the skyline behind
+	# still gets the full depth treatment).
 	var vig := _GameTheme.make_vignette(_GameTheme.with_alpha(_GameTheme.VOID, 0.85))
 	add_child(vig)
-	move_child(vig, $CenterPanel.get_index())
+	move_child(vig, _apartment.get_index() if _apartment else $CenterPanel.get_index())
 	# Faint cyan aurora along the top edge, breathing slowly.
 	var glow: ColorRect = get_node_or_null("GlowTop")
 	if glow:
 		var gt := create_tween().set_loops().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		gt.tween_property(glow, "modulate:a", 0.5, 3.2)
 		gt.tween_property(glow, "modulate:a", 1.0, 3.2)
+
+## Parallax neon skyline between the starfield and the room — an entirely
+## procedural shader wall (menu_skyline.gdshader): three building layers with
+## lit windows and rooftop beacons, drifting a few pixels per second. Sky
+## pixels stay transparent so the starfield keeps showing through.
+func _build_cityscape() -> void:
+	if not ResourceLoader.exists(CITY_SHADER):
+		return
+	var city := ColorRect.new()
+	city.name = "Cityscape"
+	city.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	city.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_city_mat = ShaderMaterial.new()
+	_city_mat.shader = load(CITY_SHADER)
+	# Seed every uniform we ever touch again (tween/resize rule, HANDOVER §4.2).
+	_city_mat.set_shader_parameter("rect_width", maxf(get_viewport_rect().size.x, 1.0))
+	_city_mat.set_shader_parameter("horizon", 0.62)
+	_city_mat.set_shader_parameter("drift_speed", 1.0)
+	_city_mat.set_shader_parameter("window_glow", 1.0)
+	_city_mat.set_shader_parameter("scroll", Vector2.ZERO)
+	_city_mat.set_shader_parameter("haze_color", _GameTheme.with_alpha(_GameTheme.VIOLET, 1.0))
+	_city_mat.set_shader_parameter("cool_color", _GameTheme.with_alpha(_GameTheme.CYAN, 1.0))
+	_city_mat.set_shader_parameter("warm_color", _GameTheme.with_alpha(_GameTheme.AMBER, 1.0))
+	_city_mat.set_shader_parameter("beacon_color", _GameTheme.with_alpha(_GameTheme.RED, 1.0))
+	city.material = _city_mat
+	add_child(city)
+	move_child(city, $Starfield.get_index() + 1)
+
+## The 3AM apartment, suggested rather than built: desk, monitor mid-scroll,
+## the vibe coder silhouetted against the glow. Anchored to the bottom-left so
+## the corner survives every resolution (scaled with the window height in
+## _on_root_resized). Every texture is exists()-guarded per the manifest rule.
+func _build_apartment() -> void:
+	var apt := Control.new()
+	apt.name = "ApartmentScene"
+	apt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	apt.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	add_child(apt)
+	move_child(apt, $CenterPanel.get_index())
+	apt.scale = Vector2.ONE * clampf(get_viewport_rect().size.y / 720.0, 1.0, 2.0)
+	_apartment = apt
+	# Monitor halo first: the light source everything else silhouettes against.
+	var halo := _make_sprite("fx_radial_soft.png", Vector2(150, -185), 3.2, false)
+	if halo:
+		halo.name = "Halo"
+		halo.material = _GameTheme.additive_material()
+		halo.modulate = Color(0.35, 1.5, 1.35, 0.46)
+		apt.add_child(halo)
+		var ht := halo.create_tween().set_loops().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		ht.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		ht.tween_property(halo, "modulate:a", 0.32, 2.7)
+		ht.tween_property(halo, "modulate:a", 0.46, 2.7)
+	var monitor := _make_sprite("furn_monitor.png", Vector2(150, -170), 1.25)
+	if monitor:
+		monitor.name = "Monitor"
+		monitor.modulate = Color(0.72, 0.78, 0.95)
+		apt.add_child(monitor)
+		# The screen runs code_rain (shader_material seeds all four uniforms).
+		var rain_mat := _GameTheme.shader_material(CODE_RAIN_SHADER, {
+			"tint": Color(0.16, 0.95, 0.75, 1.0),
+			"columns": 10.0,
+			"speed": 0.85,
+			"alpha_max": 0.6,
+		})
+		if rain_mat:
+			var rain := ColorRect.new()
+			rain.name = "CodeRain"
+			rain.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			rain.color = Color(0, 0, 0, 0)
+			# The screen well of furn_monitor.png (96x84) spans local -44..44 x
+			# -38..16; inset 1px so the bezel's inner AO ring stays visible and
+			# the glyphs never touch the chin vents below the well.
+			rain.position = Vector2(-43, -37)
+			rain.size = Vector2(86, 53)
+			rain.material = rain_mat
+			monitor.add_child(rain)
+	var desk := _make_sprite("furn_desk.png", Vector2(168, -76), 1.25)
+	if desk:
+		desk.name = "Desk"
+		desk.modulate = Color(0.5, 0.55, 0.72)
+		apt.add_child(desk)
+	var chair := _make_sprite("furn_chair.png", Vector2(84, -118), 1.25)
+	if chair:
+		chair.name = "Chair"
+		chair.modulate = Color(0.28, 0.32, 0.5)
+		apt.add_child(chair)
+	# Rim first (drawn behind): a cyan edge so the silhouette reads as lit
+	# from the screen, per the silhouette law.
+	var rim := _make_sprite("player_idle.png", Vector2(108, -140), 1.25)
+	if rim:
+		rim.name = "PlayerRim"
+		rim.material = _GameTheme.additive_material()
+		rim.modulate = Color(0.3, 1.3, 1.2, 0.3)
+		apt.add_child(rim)
+	var player := _make_sprite("player_idle.png", Vector2(108, -138), 1.25)
+	if player:
+		player.name = "PlayerSil"
+		player.modulate = Color(0.16, 0.2, 0.34)
+		apt.add_child(player)
+	# One warm accent in all that cyan: a desk LED breathing at ~0.1Hz.
+	var led := _make_sprite("fx_glow_dot.png", Vector2(252, -130), 2.2, false)
+	if led:
+		led.name = "DeskLed"
+		led.material = _GameTheme.additive_material()
+		led.modulate = Color(2.0, 1.25, 0.35, 0.8)
+		apt.add_child(led)
+		var lt := led.create_tween().set_loops().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		lt.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+		lt.tween_property(led, "modulate:a", 0.5, 4.8)
+		lt.tween_property(led, "modulate:a", 0.8, 4.8)
+	# Dust caught in the monitor light (emitter 2 of 2 — far under budget).
+	var motes_tex := _load_tex("fx_glow_dot.png")
+	if motes_tex:
+		var motes := CPUParticles2D.new()
+		motes.name = "MonitorMotes"
+		motes.texture = motes_tex
+		motes.amount = 12
+		motes.lifetime = 8.0
+		motes.preprocess = 8.0
+		motes.position = Vector2(150, -180)
+		motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+		motes.emission_rect_extents = Vector2(52, 34)
+		motes.direction = Vector2(0, -1)
+		motes.spread = 180.0
+		motes.gravity = Vector2(0.0, -2.0)
+		motes.initial_velocity_min = 1.0
+		motes.initial_velocity_max = 4.0
+		motes.scale_amount_min = 0.08
+		motes.scale_amount_max = 0.2
+		motes.color = Color(0.55, 1.0, 0.95, 0.3)
+		motes.material = _GameTheme.additive_material()
+		apt.add_child(motes)
+
+## Screen-wide dust motes drifting through the neon — the room feels
+## inhabited. Emitter 1 of 2; both together sit far under the bible's
+## per-region particle budget.
+func _build_ambient_particles() -> void:
+	var tex := _load_tex("fx_glow_dot.png")
+	if tex == null:
+		return
+	var p := CPUParticles2D.new()
+	p.name = "AmbientDrift"
+	p.texture = tex
+	p.amount = 26
+	p.lifetime = 14.0
+	p.preprocess = 14.0
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	p.direction = Vector2(0, -1)
+	p.spread = 180.0
+	p.gravity = Vector2(1.5, -3.0)
+	p.initial_velocity_min = 2.0
+	p.initial_velocity_max = 7.0
+	p.scale_amount_min = 0.1
+	p.scale_amount_max = 0.35
+	p.color = Color(0.62, 0.85, 1.0, 0.16)
+	p.material = _GameTheme.additive_material()
+	p.position = get_viewport_rect().size * 0.5
+	p.emission_rect_extents = get_viewport_rect().size * 0.55
+	add_child(p)
+	move_child(p, $CenterPanel.get_index())
+	_drift = p
+
+## exists()-guarded texture load from the generated-asset manifest.
+func _load_tex(file: String) -> Texture2D:
+	var path := GEN_TEX_DIR + file
+	if not ResourceLoader.exists(path):
+		return null
+	return load(path) as Texture2D
+
+## exists()-guarded Sprite2D factory for the backdrop set dressing. Pixel
+## sprites get NEAREST filtering so they stay crisp when the corner scales.
+func _make_sprite(file: String, pos: Vector2, scl: float, pixel: bool = true) -> Sprite2D:
+	var tex := _load_tex(file)
+	if tex == null:
+		return null
+	var s := Sprite2D.new()
+	s.texture = tex
+	s.position = pos
+	s.scale = Vector2.ONE * scl
+	if pixel:
+		s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	return s
+
+## One resize hook for everything that measures the window: skyline pixel
+## width, apartment corner scale, the screen-wide dust volume, and stale
+## hover-slide baselines (the VBox re-lays rows out after a resize).
+func _on_root_resized() -> void:
+	var vp := get_viewport_rect().size
+	if _city_mat:
+		_city_mat.set_shader_parameter("rect_width", maxf(vp.x, 1.0))
+	if _apartment:
+		_apartment.scale = Vector2.ONE * clampf(vp.y / 720.0, 1.0, 2.0)
+	if _drift:
+		_drift.position = vp * 0.5
+		_drift.emission_rect_extents = vp * 0.55
+	for btn: Button in [$CenterPanel/VBox/NewGame, $CenterPanel/VBox/ContinueBtn,
+			$CenterPanel/VBox/SettingsBtn, $CenterPanel/VBox/QuitBtn]:
+		if btn.has_meta("_slide_base_x"):
+			# Snap the row home BEFORE dropping the baseline: a button mid-slide
+			# (keyboard focus held through the resize) would otherwise donate its
+			# displaced x as the next capture and rest 8px right forever.
+			var old: Variant = btn.get_meta("_slide_tw") if btn.has_meta("_slide_tw") else null
+			if old is Tween and (old as Tween).is_valid():
+				(old as Tween).kill()
+			var base_x: float = btn.get_meta("_slide_base_x")
+			btn.position.x = base_x
+			btn.remove_meta("_slide_base_x")
 
 func _dress_panel() -> void:
 	var panel: PanelContainer = $CenterPanel
@@ -120,6 +344,11 @@ func _dress_title() -> void:
 	title.add_theme_color_override("font_color", _GameTheme.CYAN)
 	var glow := _GameTheme.add_glow_layer(title, 2.2)
 	_GameTheme.pulse(glow, 1.4, 2.3, 3.0)
+	# CRT chromatic fringing: a magenta and a cyan ghost a hair either side of
+	# the title, drifting a pixel in and out. Built AFTER the glow layer so the
+	# duplicate above didn't clone them into itself.
+	_add_chroma_ghost(title, _GameTheme.MAGENTA, -1.8, "ChromaL")
+	_add_chroma_ghost(title, _GameTheme.CYAN, 1.8, "ChromaR")
 	var subtitle: Label = $CenterPanel/VBox/Subtitle
 	subtitle.add_theme_color_override("font_color", _GameTheme.hot_of(_GameTheme.CYAN))
 	subtitle.add_theme_font_override("font", _GameTheme.spaced_font(4))
@@ -134,7 +363,51 @@ func _dress_buttons() -> void:
 	for btn: Button in [$CenterPanel/VBox/NewGame, $CenterPanel/VBox/ContinueBtn,
 			$CenterPanel/VBox/SettingsBtn, $CenterPanel/VBox/QuitBtn]:
 		_GameTheme.style_button(btn, _GameTheme.CYAN, 18)
+		_attach_hover_slide(btn)
 	_GameTheme.stagger_rows($CenterPanel/VBox, 0.06, 0.15)
+
+## One additive off-tint copy of the title, slightly off-center — the pair
+## reads as slow CRT fringing. Drift is ~1px over seconds; nothing strobes.
+func _add_chroma_ghost(title: Label, tint: Color, dx: float, ghost_name: String) -> void:
+	var ghost := Label.new()
+	ghost.name = ghost_name
+	ghost.text = title.text
+	ghost.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ghost.add_theme_font_override("font", title.get_theme_font("font"))
+	ghost.add_theme_font_size_override("font_size", title.get_theme_font_size("font_size"))
+	ghost.add_theme_color_override("font_color", _GameTheme.with_alpha(tint, 0.3))
+	ghost.material = _GameTheme.additive_material()
+	ghost.show_behind_parent = true
+	title.add_child(ghost)
+	ghost.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ghost.position = Vector2(dx, 0.0)
+	var t := ghost.create_tween().set_loops().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	t.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	t.tween_property(ghost, "position:x", dx * 0.35, 3.4)
+	t.tween_property(ghost, "position:x", dx, 3.4)
+
+## Hover/focus nudge: the row slides 8px right and back. Position is only
+## borrowed between layout passes — the base is dropped in _on_root_resized
+## whenever the VBox re-sorts, and re-captured on the next hover.
+func _attach_hover_slide(btn: Button) -> void:
+	btn.mouse_entered.connect(func() -> void: _hover_slide(btn, true))
+	btn.mouse_exited.connect(func() -> void: _hover_slide(btn, false))
+	btn.focus_entered.connect(func() -> void: _hover_slide(btn, true))
+	btn.focus_exited.connect(func() -> void: _hover_slide(btn, false))
+
+func _hover_slide(btn: Button, hovered: bool) -> void:
+	if not is_instance_valid(btn) or not btn.is_inside_tree():
+		return
+	if not btn.has_meta("_slide_base_x"):
+		btn.set_meta("_slide_base_x", btn.position.x)
+	var base_x: float = btn.get_meta("_slide_base_x")
+	var old: Variant = btn.get_meta("_slide_tw") if btn.has_meta("_slide_tw") else null
+	if old is Tween and (old as Tween).is_valid():
+		(old as Tween).kill()
+	var t := btn.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	t.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	t.tween_property(btn, "position:x", base_x + (8.0 if hovered else 0.0), _GameTheme.T_MICRO * 1.4)
+	btn.set_meta("_slide_tw", t)
 
 func _on_new_game() -> void:
 	AudioManager.play_sfx("ui_click")

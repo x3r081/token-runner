@@ -185,6 +185,8 @@ func _purchase(branch: String) -> void:
 		if is_instance_valid(_diagram):
 			_diagram.refresh()
 		_confirm_purchase(bought, debt)
+	else:
+		AudioManager.play_sfx("denied")
 
 ## Comedic receipt, in the subtitle slot, reverting after a few seconds. It
 ## always names what you bought and what it cost you in debt.

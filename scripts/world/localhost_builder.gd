@@ -519,8 +519,16 @@ static func _build_walls(parent: Node2D) -> void:
 	for gx in ROOM_W:
 		var x2 := gx * TILE + TILE / 2
 		_add_collider(walls, Vector2(x2, bottom - 6), Vector2(TILE, 20))
-	# Window (night city) over the desk, and an apartment door.
-	_put(walls, "int_window", Vector2(560, 40), -55)
+	# Floor-to-ceiling window (night city) behind the battlestation — the hero
+	# wall piece that ties the flat to the menu's skyline. It hangs well below
+	# the 64px wall band, and that is the trick: everything in the room draws
+	# in front of it (z -55 vs furniture depth-z, player z = int(y)), so the
+	# desk and its monitors back onto the glass instead of floating under a
+	# porthole. The texture bakes its own sill + feathered contact shadow so
+	# it meets the boards cleanly. Old casement stays as the fallback for a
+	# checkout where the hero texture has not been generated yet.
+	if not _put(walls, "int_window_big", Vector2(545, 150), -55):
+		_put(walls, "int_window", Vector2(560, 40), -55)
 	_put(walls, "furn_door", Vector2(1360, 46), -55)
 	# Whiteboard of doom on the wall
 	_put(walls, "furn_whiteboard", Vector2(950, 60), -50)
@@ -582,8 +590,12 @@ static func _add_monitor(parent: Node2D, pos: Vector2, screen_col: Color, text: 
 		"size": 10, "style": "tag", "color": text_col,
 		"z": mz + 2, "claim": false, "fade": false,
 	})
-	# Screen glow spill (cool cyan against the lamp's amber; the bible's duel)
-	_add_light(parent, pos - Vector2(0, 10), screen_col, 0.75, 1.6, flicker)
+	# Screen glow spill (cool cyan against the lamp's amber; the bible's duel),
+	# plus the screen's own cast pooled on the desk in front of it — a monitor
+	# that doesn't light the surface it stands on reads as a sticker, not a lamp.
+	# mz + 50 clears both desk slabs (388 and 408) without reaching the chairs.
+	_add_light(parent, pos - Vector2(0, 10), screen_col, 0.95, 1.6, flicker)
+	_light_pool(parent, pos + Vector2(0, 54), 180.0, screen_col, 0.20, mz + 50)
 
 # ------------------------------------------------------------ gpu rig -------
 
@@ -641,12 +653,19 @@ static func _build_kitchen(parent: Node2D) -> void:
 	var coffee_z := _depth(230, 46)
 	_drop_shadow(z, Vector2(230, 268), 66.0, coffee_z - 1)
 	_put(z, "furn_coffee", Vector2(230, 230), coffee_z)
-	# empty energy-drink cans on the floor
+	# empty energy-drink cans on the floor — proper tins once the generator has
+	# run (one near-white texture, tinted per flavour of regret); the old
+	# ColorRects stay as the fallback so a fresh checkout still has its litter
+	var can_cols: Array[Color] = [Color(0.2, 0.85, 0.35), Color(0.9, 0.3, 0.3), Color(0.3, 0.6, 0.95)]
 	for i in 5:
+		var cpos := Vector2(185 + i * 22, 308 + (i % 2) * 14)
+		var col: Color = can_cols[i % 3]
+		if _put(z, "int_can", cpos, _depth(cpos.y, 8), 1.0, col):
+			continue
 		var can := ColorRect.new()
 		can.size = Vector2(10, 16)
-		can.position = Vector2(180 + i * 22, 300 + (i % 2) * 14)
-		can.color = [Color(0.2, 0.85, 0.35), Color(0.9, 0.3, 0.3), Color(0.3, 0.6, 0.95)][i % 3]
+		can.position = cpos - Vector2(5, 8)
+		can.color = col
 		can.z_index = _depth(can.position.y, 8)
 		z.add_child(can)
 
@@ -678,15 +697,20 @@ static func _build_clutter(parent: Node2D) -> void:
 	var boxes2_z := _depth(900, 52)
 	_drop_shadow(z, Vector2(300, 932), 96.0, boxes2_z - 1)
 	_put(z, "furn_boxes", Vector2(300, 900), boxes2_z, 0.7)
-	# pizza boxes
-	for p: Vector2 in [Vector2(880, 800), Vector2(930, 820), Vector2(700, 880)]:
-		var box := ColorRect.new()
-		box.size = Vector2(46, 40)
-		box.position = p
-		box.color = Color(0.7, 0.5, 0.25)
-		box.z_index = _depth(p.y, 20)
-		z.add_child(box)
-	# A sad couch nobody sleeps on (drawn from rects)
+	# Pizza-box strata, beside the sign that calls it archaeology: a leaning
+	# tower of closed boxes (deeper layers greasier) plus one open single with
+	# the last slice preserved in situ. The flat rects stay as the fallback.
+	if _put(z, "int_pizza_stack", Vector2(905, 812), _depth(812.0, 27.0)):
+		_put(z, "int_pizza_box", Vector2(723, 896), _depth(896.0, 16.0))
+	else:
+		for p: Vector2 in [Vector2(880, 800), Vector2(930, 820), Vector2(700, 880)]:
+			var box := ColorRect.new()
+			box.size = Vector2(46, 40)
+			box.position = p
+			box.color = Color(0.7, 0.5, 0.25)
+			box.z_index = _depth(p.y, 20)
+			z.add_child(box)
+	# A sad couch nobody sleeps on (textured when generated; rect fallback)
 	_couch(z, Vector2(760, 760))
 	# Dinner, and the drum the cable spaghetti was cut from. Both exists()-guarded
 	# by _put, so a missing generator pass just skips them.
@@ -706,6 +730,19 @@ static func _build_clutter(parent: Node2D) -> void:
 	_catch_light(z, Vector2(950, 380), Color(1.0, 0.75, 0.4))
 	_catch_light(z, Vector2(1250, 380), Color(0.95, 0.4, 0.3))
 	_catch_light(z, Vector2(360, 420), Color(1.0, 0.72, 0.4))
+	# The strip every one of those cables was always heading for: six sockets,
+	# more wall-warts than sockets, one confidently red LED. It lies mid-room so
+	# the player literally steps over the infrastructure, and two more looms
+	# converge on it from both desks (extra cables only when the strip exists,
+	# so no run ever ends at empty floor).
+	if _put(z, "int_power_strip", Vector2(706, 436), -76):
+		_cable(z, [Vector2(1120, 430), Vector2(960, 466), Vector2(812, 452), Vector2(716, 438)], Color(0.11, 0.10, 0.13))
+		_cable(z, [Vector2(696, 436), Vector2(602, 452), Vector2(508, 438), Vector2(452, 458)], Color(0.10, 0.11, 0.14))
+		_catch_light(z, Vector2(960, 466), Color(1.0, 0.62, 0.35))
+		_catch_light(z, Vector2(602, 452), Color(0.22, 0.9, 0.85))
+	# Sticky notes along both desk fronts. Estimates. All of them say TODO.
+	_put(z, "int_sticky_strip", Vector2(476, 349), _depth(340.0, 48.0) + 1)
+	_put(z, "int_sticky_strip", Vector2(1086, 372), _depth(360.0, 48.0) + 1, 0.8)
 	# Wall posters (side walls) for depth + jokes
 	_poster(z, Vector2(30, 420), Color(0.2, 0.3, 0.5), "IT\nWORKS\nLOCALLY", Color(0.4, 0.65, 1.0))
 	_poster(z, Vector2(30, 620), Color(0.4, 0.2, 0.3), "MOVE\nFAST", Color(1.0, 0.35, 0.5))
@@ -717,6 +754,11 @@ static func _build_clutter(parent: Node2D) -> void:
 static func _couch(parent: Node2D, pos: Vector2) -> void:
 	var z := _depth(pos.y, 34)
 	_drop_shadow(parent, pos + Vector2(0, 44), 180.0, z - 1)
+	# Real upholstery once the generator has run — the old rect couch was the
+	# darkest object in the most-seen square metre of the game. Rects remain
+	# as the fallback below.
+	if _put(parent, "int_couch", pos + Vector2(0, 4), z):
+		return
 	var base := Color(0.22, 0.2, 0.3)
 	var body := ColorRect.new()
 	body.size = Vector2(150, 60)
@@ -759,12 +801,16 @@ static func _poster(parent: Node2D, pos: Vector2, color: Color, text: String, gl
 	halo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	halo.z_index = -53
 	parent.add_child(halo)
-	var frame := ColorRect.new()
-	frame.size = Vector2(44, 60)
-	frame.position = pos
-	frame.color = color
-	frame.z_index = -52
-	parent.add_child(frame)
+	# Printed poster art (generated, bright greyscale) tinted toward the creed's
+	# accent; the flat ColorRect remains the ungenerated-checkout fallback.
+	if not _put(parent, "int_poster", pos + Vector2(22, 30), -52, 1.0,
+			Color(minf(color.r + 0.45, 1.0), minf(color.g + 0.45, 1.0), minf(color.b + 0.45, 1.0))):
+		var frame := ColorRect.new()
+		frame.size = Vector2(44, 60)
+		frame.position = pos
+		frame.color = color
+		frame.z_index = -52
+		parent.add_child(frame)
 	# Printed matter: no plate (the frame IS the plate), no float, no fade, and
 	# the poster's own z so it stays flat on the wall.
 	WorldLabel.add(parent, pos + Vector2(5, 6), text, glow_col, {
@@ -788,15 +834,16 @@ static func _build_lighting(parent: Node2D) -> void:
 	# Cool cyan spill unifying the battlestation's three screens.
 	_add_light(z, Vector2(545, 335), Color(0.14, 0.94, 0.86), 0.55, 3.2)
 	_light_pool(z, Vector2(545, 404), 400.0, Color(0.2, 0.9, 0.86), 0.18)
-	# City light through the window, pooling on the floor below it.
-	_add_light(z, Vector2(560, 140), Color(0.45, 0.66, 1.0), 0.7, 2.6)
+	# City light through the big window, washing the boards under the glass —
+	# sized to the hero window's full span so the skyline reads as a SOURCE.
+	_add_light(z, Vector2(545, 170), Color(0.48, 0.64, 1.0), 0.85, 4.2)
 	var pool := Sprite2D.new()
 	pool.texture = _light_tex()
 	pool.material = _additive_mat()
-	pool.position = Vector2(560, 178)
+	pool.position = Vector2(545, 322)
 	var ptw := maxf(1.0, float(pool.texture.get_width()))
-	pool.scale = Vector2(340.0 / ptw, 180.0 / ptw)
-	pool.modulate = Color(0.5, 0.7, 1.0, 0.32)
+	pool.scale = Vector2(500.0 / ptw, 230.0 / ptw)
+	pool.modulate = Color(0.52, 0.68, 1.0, 0.30)
 	pool.z_index = -87
 	z.add_child(pool)
 	# Kitchen counter warmth: the fridge glow of a balanced diet.
@@ -807,6 +854,11 @@ static func _build_lighting(parent: Node2D) -> void:
 	_light_pool(z, Vector2(1320, 872), 340.0, Color(0.55, 0.62, 0.95), 0.16)
 	# The GPU rig's own thermal glow, pooling under the second desk.
 	_light_pool(z, Vector2(1120, 430), 360.0, Color(1.0, 0.5, 0.32), 0.16)
+	# Warm lamplight pooled AROUND both work zones. The round-3 frames put the
+	# desks as silhouettes on a silhouette floor; furniture only reads at this
+	# exposure when there is light behind and beside it, not just on top of it.
+	_light_pool(z, Vector2(545, 468), 540.0, Color(1.0, 0.74, 0.44), 0.15)
+	_light_pool(z, Vector2(1118, 498), 460.0, Color(1.0, 0.68, 0.40), 0.13)
 	# The server corner exhales green onto the boards.
 	_light_pool(z, Vector2(1424, 300), 300.0, Color(0.32, 0.95, 0.55), 0.16)
 	# SHIP OR DIE poster insists, in magenta (follows the poster up the wall).

@@ -27,6 +27,8 @@ func generate_all() -> void:
 	_generate_npcs()
 	var interior = preload("res://scripts/tools/interior_generator.gd").new()
 	interior.generate()
+	_polish_interior_props()
+	_generate_floor_structures()
 	print("Assets generated.")
 
 ## Every speaking character in this world is the same species of sleep-deprived
@@ -2277,6 +2279,352 @@ func _generate_icon() -> void:
 	_fill_rect(img, 34, 104, 60, 2, Color(0.14, 0.94, 0.86))
 	_fill_rect(img, 34, 104, 60, 1, Color(0.55, 1.0, 0.95))
 	img.save_png(ProjectSettings.globalize_path("res://assets/textures/icon.png"))
+
+## ========== Round 4: structured floors + set-dressing fidelity ==========
+## VISUAL_BIBLE Round 4 addendum. Rule 1: structure before noise — a floor set
+## with readable construction (plank runs / panel grids / rock strata / pavers)
+## authored DARK (mean luminance ~0.11-0.14, path ~0.17) so props and characters
+## sit a full value step above the ground. Rule 2: the silhouette law — the
+## dress_/furn_ set gets a post-pass so every labeled prop reads without its
+## label. The composition side consumes these exists()-guarded; the filenames
+## are contract.
+
+func _generate_floor_structures() -> void:
+	# region_builder resolves this set by REGION_TILE_MAP suffix ("gpu",
+	# "cloud", ...), never by family name — so each region gets an alias copy
+	# of its family, or every floor_* lookup misses and the whole set is
+	# authored-but-unreachable (the round-3 lesson, again). The family files
+	# stay as the canonical documented set.
+	var interior_regions: Array[String] = ["localhost", "api_bazaar"]
+	var industrial_regions: Array[String] = ["dependency", "corporate", "production"]
+	var outdoor_regions: Array[String] = ["stackoverflow", "opensource", "gpu"]
+	var ethereal_regions: Array[String] = ["cloud", "vault"]
+	for alt: bool in [false, true]:
+		var suffix := "_alt" if alt else "_base"
+		_save_floor(_floor_interior(alt), "interior", interior_regions, suffix)
+		_save_floor(_floor_industrial(alt), "industrial", industrial_regions, suffix)
+		_save_floor(_floor_outdoor(alt), "outdoor", outdoor_regions, suffix)
+		_save_floor(_floor_ethereal(alt), "ethereal", ethereal_regions, suffix)
+	_save_image(_make_path_tile(), "path_tile.png")
+	_save_image(_make_path_tile_edge(), "path_tile_edge.png")
+
+## One floor family under its canonical name plus one alias per region that
+## uses it (see _generate_floor_structures for why the aliases must exist).
+func _save_floor(img: Image, family: String, regions: Array[String], suffix: String) -> void:
+	_save_image(img, "floor_%s%s.png" % [family, suffix])
+	for rk: String in regions:
+		_save_image(img, "floor_%s%s.png" % [rk, suffix])
+
+## Plank run in dark warm wood: 16px boards, staggered butt joints, grain that
+## runs ALONG the board (see _mat_planks for why), nail heads. The alt variant
+## stains a board and adds a knot. Seamless: every feature is modular in 64,
+## and 0.19635 = TAU/32 so the grain wave wraps exactly.
+func _floor_interior(alt: bool) -> Image:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	var s: int = 4101 + (977 if alt else 0)
+	var base := Color(0.34, 0.27, 0.21)
+	var stain := Color(0.30, 0.20, 0.13)
+	for y in 64:
+		var row := y >> 4
+		var ry := y & 15
+		var pj := (_hash01(row, 3, s) - 0.5) * 0.12
+		var stained: bool = alt and _hash01(row, 41, s) > 0.72
+		var jx := int(_hash01(row, 7, s) * 64.0) % 64  # _hash01 can hit 1.0 exactly
+		for x in 64:
+			var c := base.lightened(pj) if pj > 0.0 else base.darkened(-pj)
+			if stained:
+				c = c.darkened(0.26).lerp(stain, 0.25)
+			var g := sin(float(ry) * 1.35 + float(row) * 2.1 + sin(float(x) * 0.19635) * 1.8)
+			if g > 0.72:
+				c = c.darkened(0.14)
+			elif g < -0.78:
+				c = c.lightened(0.08)
+			c = _pixel_noise(c, x, y, s, 0.03)
+			if ry == 0:
+				c = c.darkened(0.42)      # board seam
+			elif ry == 1:
+				c = c.lightened(0.09)     # lit board edge (light is top-left)
+			elif ry == 15:
+				c = c.darkened(0.16)
+			if x == jx and ry > 0:
+				c = c.darkened(0.36)      # butt joint, staggered per board
+			elif x == (jx + 1) % 64 and ry > 0:
+				c = c.lightened(0.07)
+			_px(img, x, y, c)
+	# a couple of nail heads per board
+	for row in 4:
+		for k in 2:
+			# _hash01 can land exactly on 1.0, so 64-wide picks need the mini().
+			var nx := mini(int(_hash01(row * 7 + k, 11, s) * 64.0), 63)
+			var ny := row * 16 + 3 + int(_hash01(row, 13 + k, s) * 10.0)
+			_px(img, nx, ny, img.get_pixel(nx, ny).darkened(0.34))
+	if alt:
+		var kx := int(_hash01(2, 37, s) * 56.0) + 4
+		var ky := 16 * int(_hash01(3, 37, s) * 4.0) + 8
+		for dy: int in range(-2, 3):
+			for dx: int in range(-2, 3):
+				var dd := dx * dx + dy * dy
+				if dd <= 4:
+					var px := (kx + dx + 64) % 64
+					var py := (ky + dy + 64) % 64
+					_px(img, px, py, img.get_pixel(px, py).darkened(0.48 if dd <= 1 else 0.30))
+	_dim_tile(img, 0.42)
+	return img
+
+## Server-room deck: 32px machined panels, recessed seams with a lit near bevel,
+## corner rivets, brushed-metal streaks. The alt variant vents one panel and
+## wears a faded hazard chevron into another.
+func _floor_industrial(alt: bool) -> Image:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	var s: int = 8213 + (977 if alt else 0)
+	var base := Color(0.34, 0.36, 0.44)
+	var accent := Color(1.0, 0.69, 0.125)
+	for y in 64:
+		for x in 64:
+			var cell := (x / 32) + (y / 32) * 2
+			var cj := (_hash01(cell, 11, s) - 0.5) * 0.10
+			var c := base.lightened(cj) if cj > 0.0 else base.darkened(-cj)
+			if _hash01(0, y * 3 + cell, s) > 0.80:
+				c = c.lightened(0.05)     # brushed-metal streak
+			c = _pixel_noise(c, x, y, s, 0.025)
+			var mx := x % 32
+			var my := y % 32
+			if mx == 0 or my == 0:
+				c = c.darkened(0.44)      # panel seam
+			elif mx == 1 or my == 1:
+				c = c.lightened(0.09)     # bevel catches the light
+			elif mx == 31 or my == 31:
+				c = c.darkened(0.16)      # far bevel in shadow
+			_px(img, x, y, c)
+	for cy in 2:
+		for cx in 2:
+			for rv: Vector2i in [Vector2i(4, 4), Vector2i(27, 4), Vector2i(4, 27), Vector2i(27, 27)]:
+				var px := cx * 32 + rv.x
+				var py := cy * 32 + rv.y
+				_px(img, px, py, img.get_pixel(px, py).darkened(0.55))
+				_px(img, px - 1, py - 1, img.get_pixel(px - 1, py - 1).lightened(0.24))
+	if alt:
+		for i in 4:
+			var yy := 40 + i * 4
+			for xx: int in range(38, 58):
+				_px(img, xx, yy, img.get_pixel(xx, yy).darkened(0.45))
+				_px(img, xx, yy + 1, img.get_pixel(xx, yy + 1).lightened(0.08))
+		for i in 10:
+			for t in 3:
+				var hx := 6 + i + t
+				var hy := 6 + i
+				if hx < 30 and hy < 30:
+					_px(img, hx, hy, img.get_pixel(hx, hy).lerp(accent, 0.30))
+	_dim_tile(img, 0.38)
+	return img
+
+## Rock strata: wavy horizontal beds with a dark crevice and a lit lip between
+## them, per-bed value jitter, pebbles. The alt variant grows moss clumps.
+## The wave uses TAU/32 so every edge wraps seamlessly.
+func _floor_outdoor(alt: bool) -> Image:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	var s: int = 6427 + (977 if alt else 0)
+	var base := Color(0.33, 0.30, 0.24)
+	var moss := Color(0.22, 0.46, 0.28)
+	var edges: Array[int] = [0, 11, 21, 34, 45, 55]
+	# per-column strata edge rows, offset by a wrapped wave
+	var col_edges: Array[PackedInt32Array] = []
+	for x in 64:
+		var es := PackedInt32Array()
+		for e: int in edges:
+			es.append((e + int(roundf(2.2 * sin(float(x) * 0.19635 + float(e) * 1.3))) + 64) % 64)
+		col_edges.append(es)
+	for y in 64:
+		for x in 64:
+			var es: PackedInt32Array = col_edges[x]
+			# the pixel belongs to the bed whose edge it most recently crossed
+			var band := 0
+			var best := 999
+			for i in es.size():
+				var d := posmod(y - es[i], 64)
+				if d < best:
+					best = d
+					band = i
+			var bj := (_hash01(band, 5, s) - 0.5) * 0.20
+			var c := base.lightened(bj) if bj > 0.0 else base.darkened(-bj)
+			var wv := sin(float(x) * 0.19635 + float(band) * 1.7)
+			if wv > 0.55:
+				c = c.lightened(0.06)
+			elif wv < -0.6:
+				c = c.darkened(0.07)
+			c = _pixel_noise(c, x, y, s, 0.04)
+			if best == 0:
+				c = c.darkened(0.46)      # crevice between beds
+			elif best == 1:
+				c = c.lightened(0.13)     # lit lip under the crevice
+			if alt and _hash01(x / 4, y / 4, s + 7) > 0.80:
+				c = c.lerp(moss, 0.45)
+			_px(img, x, y, c)
+	# pebbles, wrapped so none straddles a seam
+	for p in 9:
+		var px := int(_hash01(p, 17, s) * 64.0) % 64
+		var py := int(_hash01(p, 19, s) * 64.0) % 64
+		var sh := base.darkened(0.34)
+		var hi := base.lightened(0.26)
+		_px(img, px, py, hi)
+		_px(img, (px + 1) % 64, py, sh)
+		_px(img, px, (py + 1) % 64, sh)
+		_px(img, (px + 1) % 64, (py + 1) % 64, sh.darkened(0.12))
+	_dim_tile(img, 0.42)
+	return img
+
+## Ethereal glass deck for the cloud/vault mood: 32px panes with faintly glowing
+## violet seams, a dithered diagonal sheen (period 64 — wraps), glyph dots at
+## some intersections. The alt variant runs a faint circuit trace along a seam.
+func _floor_ethereal(alt: bool) -> Image:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	var s: int = 9311 + (977 if alt else 0)
+	var base := Color(0.30, 0.33, 0.48)
+	var violet := Color(0.545, 0.36, 0.965)
+	for y in 64:
+		for x in 64:
+			var cell := (x / 32) + (y / 32) * 2
+			var cj := (_hash01(cell, 23, s) - 0.5) * 0.08
+			var c := base.lightened(cj) if cj > 0.0 else base.darkened(-cj)
+			var d := (x + y) % 64
+			if d >= 20 and d < 30 and (x + y) % 2 == 0:
+				c = c.lightened(0.10)     # dithered diagonal sheen
+			c = _pixel_noise(c, x, y, s, 0.02)
+			var mx := x % 32
+			var my := y % 32
+			if mx == 0 or my == 0:
+				c = c.darkened(0.30).lerp(violet, 0.22)  # seams glow faintly
+			elif mx == 1 or my == 1:
+				c = c.lightened(0.07)
+			_px(img, x, y, c)
+	for cy in 2:
+		for cx in 2:
+			if _hash01(cx, cy, s + 3) > 0.5:
+				var gx := cx * 32 + 16
+				var gy := cy * 32 + 16
+				_px(img, gx, gy, base.lerp(violet, 0.55).lightened(0.2))
+				_px(img, gx - 1, gy, base.lerp(violet, 0.3))
+				_px(img, gx + 1, gy, base.lerp(violet, 0.3))
+	if alt:
+		for x: int in range(8, 56):
+			_px(img, x, 33, img.get_pixel(x, 33).lerp(violet, 0.18))
+			if x % 12 == 0:
+				_px(img, x, 34, img.get_pixel(x, 34).lerp(violet, 0.30))
+	_dim_tile(img, 0.36)
+	return img
+
+## One running-bond paver pixel. Shared by path_tile and path_tile_edge so an
+## edge tile placed against a path tile continues the same bond exactly.
+func _paver_px(x: int, y: int, s: int) -> Color:
+	var row := y >> 3
+	var ry := y & 7
+	var off := 8 if row % 2 == 1 else 0
+	var col := ((x + off) % 64) >> 4
+	var rx := (x + off) % 16
+	var base := Color(0.44, 0.41, 0.36)
+	var pj := (_hash01(col * 7 + row, 29, s) - 0.5) * 0.13
+	var c := base.lightened(pj) if pj > 0.0 else base.darkened(-pj)
+	c = _pixel_noise(c, x, y, s, 0.03)
+	if ry == 0 or rx == 0:
+		c = c.darkened(0.38)      # joint
+	elif ry == 1 or rx == 1:
+		c = c.lightened(0.10)     # lit bevel (top-left light)
+	elif ry == 7 or rx == 15:
+		c = c.darkened(0.14)      # far bevel
+	if _hash01(col * 13 + row, 31, s) > 0.8 and rx == 12 and ry == 3:
+		c = c.darkened(0.30)      # chipped paver
+	return c
+
+## Walkable path: running-bond pavers, authored a step BRIGHTER than every
+## region floor (mean ~0.17 vs ~0.12) so "walk here" reads in a 1-second glance
+## at a static frame — Round 4 rule 1.
+func _make_path_tile() -> Image:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	for y in 64:
+		for x in 64:
+			_px(img, x, y, _paver_px(x, y, 7717))
+	_dim_tile(img, 0.42)
+	return img
+
+## Path edge: pavers on top, a lit curb row, then a dithered feather down to
+## TRANSPARENT so the composition side can border a path against any region
+## floor. Rotate the sprite to orient the edge; the paver half matches
+## path_tile row-for-row (same seed, same bond).
+func _make_path_tile_edge() -> Image:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	var s := 7717
+	var soil := Color(0.14, 0.15, 0.20)
+	for y in 64:
+		for x in 64:
+			if y < 48:
+				_px(img, x, y, _paver_px(x, y, s))
+			elif y == 48:
+				_px(img, x, y, Color(0.62, 0.58, 0.50))   # curb catches the light
+			elif y <= 51:
+				_px(img, x, y, Color(0.26, 0.24, 0.21).darkened(0.14 * float(y - 49)))
+			else:
+				var t := float(y - 52) / 11.0
+				var a := maxf(0.0, 0.85 * (1.0 - t))
+				if _hash01(x, y, s) < t * 0.8:
+					a = 0.0                                # ragged dithered feather
+				var c := _pixel_noise(soil, x, y, s, 0.03)
+				_px(img, x, y, Color(c.r, c.g, c.b, a))
+	_dim_tile(img, 0.42)
+	return img
+
+## ---------- Round 4 rule 2: the silhouette law, applied to the dressing ----------
+## interior_generator draws the dress_/furn_ set with its own rim + outline, but
+## the round-3 QA frames still show them as dark smudges at game zoom: their
+## midtones crush once the region ambient (0.6-0.8) and the builders' prop
+## modulates multiply in. This post-pass reloads each finished PNG and widens it
+## to >= 3 clear value steps, re-asserts the lit-side rim, sinks the base, and
+## bakes a contact shadow — in place, same filename, same canvas, so every
+## consumer keeps positioning by size. Floor decals (decal_*) are deliberately
+## NOT run through this chain: they are translucent overlay marks that already
+## carry a dark core / mid ring / lit lip, and an outline or shadow would turn
+## grime into an object (and break Round 4 rule 1's "noise on top at low
+## opacity").
+func _polish_interior_props() -> void:
+	var grounded: Array[String] = [
+		"dress_stall", "dress_monolith", "dress_cooling_tower", "dress_ore_cart",
+		"dress_whiteboard", "dress_filing_cabinet", "dress_cubicle",
+		"dress_laser_emitter", "dress_noodle_cup", "dress_cable_spool",
+		"dress_pipe_stack",
+		"furn_desk", "furn_monitor", "furn_server", "furn_bed", "furn_fridge",
+		"furn_coffee", "furn_plant", "furn_boxes", "furn_shelf", "furn_chair",
+	]
+	# Hung or wall-mounted: everything except the ground shadow.
+	var mounted: Array[String] = ["dress_awning", "furn_door", "furn_whiteboard"]
+	for fname: String in grounded:
+		_polish_prop(fname, true)
+	for fname: String in mounted:
+		_polish_prop(fname, false)
+
+func _polish_prop(fname: String, grounded: bool) -> void:
+	var img := _load_generated(fname + ".png")
+	if img == null:
+		return
+	# Same order as the enemy readability chain: widen the interior BEFORE any
+	# edge work so the existing outline stays the darkest thing on the sprite.
+	_readability_pass(img, 0.30, 0.30, 0.10)
+	_underside_ao(img, 4, 0.30)
+	# The lit-side rim lands on the top-left outline pixels (sel-out). Near-white
+	# survives any region tint, where a coloured rim would just be tinted away.
+	_rim_light_pass(img, Color(0.94, 0.95, 1.0), 0.38)
+	if grounded:
+		_contact_shadow(img)
+	_save_image(img, fname + ".png")
+
+## Reload a PNG this run already wrote. Returns null when a prop doesn't exist
+## (the interior set can evolve independently); the caller skips it.
+func _load_generated(filename: String) -> Image:
+	var path := ProjectSettings.globalize_path(OUT_DIR + filename)
+	if not FileAccess.file_exists(path):
+		return null
+	var img := Image.new()
+	if img.load(path) != OK:
+		return null
+	return img
 
 func _save_image(img: Image, filename: String) -> void:
 	img.save_png(ProjectSettings.globalize_path(OUT_DIR + filename))
