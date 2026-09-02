@@ -19,10 +19,10 @@ Hackathon project. Complete and playable, not a prototype.
 |---|---|
 | Engine | Godot **4.7.2** (`/opt/homebrew/bin/godot` on this machine) |
 | Language | GDScript, typed, **tabs** for indent |
-| Size | ~28k lines GDScript, 15 shaders, 10 regions, 15 quests, 9-branch upgrade tree |
+| Size | ~40k lines GDScript, 16 shaders, 10 regions, 31 quests, 76 events, 99 achievements, 9-branch upgrade tree |
 | Tests | 28 headless suites, ~297 assertions |
 | Repo | `github.com/x3r081/token-runner` |
-| Branch | `cursor/game-quality-overhaul-2ae1` (**92+ commits ahead of `main`**, clean fast-forward, unmerged) |
+| Branch | `cursor/game-quality-overhaul-2ae1` (**~99 commits ahead of `main`**, clean fast-forward, unmerged) |
 
 ### Two checkouts exist — do not confuse them
 
@@ -80,6 +80,7 @@ obvious in a frame.
 |---|---|
 | `docs/VISUAL_BIBLE.md` | **Authoritative art direction.** Palette, per-region colours, the 15-shader API, HDR bloom recipes, pixel-art quality bar, lighting/particle budgets, UI tokens. Read before any visual work. |
 | `docs/COMEDY_BIBLE.md` | Tone rules, NPC voices, recurring gags. Read before writing any player-facing text. |
+| `docs/AUDIO_BIBLE.md` | Audio contract: identity, mixing law, loop-exactness, generator/runtime split. Audio is ON by default. Read before any sound work. |
 | `docs/ARCHITECTURE.md` | System map. |
 | `docs/QUALITY_BACKLOG.md` | P0–P3 defect list from 55 prior iterations. |
 | `docs/AUTONOMOUS_STATUS.md` | 50KB iteration log. Skim the tail for recent history. |
@@ -149,30 +150,38 @@ Each of these cost a debugging cycle. They will bite you too.
 
 ## 5. State as of this handover
 
-Committed on the branch:
+Committed on the branch, newest first:
 
-- `a3388d9` — **round 1**: art-direction contract + 10-shader library, full lighting/atmosphere/art/UI/VFX overhaul.
-- `054d8b6` — **round 2**: player guidance system, comedy expansion, second graphics iteration.
+- `111f1a5` — **round 5**: deep graphics + gameplay pass (47 agents across 3
+  workflows). Per-type enemy behaviours with telegraphs, multi-phase bosses,
+  encounter staging (guard posts, ambush pockets, boss arenas) replacing random
+  scatter, player feel (weight, recoil, perfect-dodge, low-HP state), ~950 lines
+  of new content. Irregular kerbed region zones, depth planes, per-region filmic
+  grade, boss art with real silhouettes.
+- `ee77691` — **round 4**: full graphics + **sound** overhaul. Audio went from
+  mute-by-default sine beeps to a generated musical score (menu leitmotif,
+  explore/combat/boss/victory, region ambience beds) plus 30 layered SFX and a
+  rebuilt AudioManager with crossfades, dialogue ducking and pitch jitter.
+  `docs/AUDIO_BIBLE.md` is the contract. Menu hero scene, region composition and
+  silhouette passes.
+- `de60bdb` — dialogue choices overflowed off-screen; panel now grows upward
+  from its anchored bottom edge, ability bar hides during conversation, and
+  gameplay keys are gated while dialogue is active.
+- `97f44ff` — closed the four carried findings (quest kill counts vs spawns,
+  `_meets()` failing open, dialogue choices dropping `achievement`, the legacy
+  art generator).
 - `af6fd1a` — **round 3**: world typography system, portal vortexes, per-region
-  atmosphere/weather, focal set-pieces, combat spectacle, comedy-as-gameplay.
-  Also fixed four bugs no test could see — NPCs going permanently silent after
-  one conversation (`.clear()` on references into the parsed JSON was destroying
-  the dialogue database), the shop selling on credit, `Continue` re-arming every
-  completed storyline, and guidance pointing at where a quest was *given* rather
-  than where it can be *completed*.
+  atmosphere, focal set-pieces, combat spectacle, comedy-as-gameplay. Fixed four
+  bugs no test could see, including NPCs going permanently silent after one
+  conversation (`.clear()` on references into the parsed JSON was destroying the
+  dialogue database) and the shop selling on credit.
+- `054d8b6` — **round 2**: player guidance system, comedy expansion.
+- `a3388d9` — **round 1**: art-direction contract + shader library, full
+  lighting/atmosphere/art/UI/VFX overhaul.
 
-- round 5 — deep graphics+gameplay pass (47 agents): enemy behaviours with
-  telegraphs, boss phases, encounter staging, player feel, +950 lines of
-  content; region material transitions, depth planes, menu skyline, and a
-  31-defect frame-critique sweep. NOTE: the pattern that found the most real
-  bugs was an INDEPENDENT CRITIC reading every QA frame cold — run one.
-- round 4 — full graphics+sound overhaul: generated musical score + 30 layered
-  SFX + rebuilt AudioManager (docs/AUDIO_BIBLE.md is the contract, audio now ON
-  by default), menu hero scene, region composition/readability pass, silhouette
-  polish, post-FX grade. See AUTONOMOUS_STATUS.md tail.
-
-Working tree clean, all 28 suites green. Branch is **3 commits ahead of its own
-origin** (unpushed) and ~95 ahead of `main`.
+**Verified state:** working tree clean, in sync with `origin` at `111f1a5`, all
+28 suites green, JSON valid, clean boot. (`--quit-after` prints one benign
+"1 resources still in use at exit" line — a shutdown-order warning, not a fault.)
 
 ### The guidance system (the player's biggest past complaint)
 
@@ -186,14 +195,6 @@ The user could not tell what to do and wandered. Quests said *what*, nothing sai
 **Design rule for all future work:** after any 5-second glance, the player must
 be able to name their next physical action. Comedy rides *alongside* the
 information and never replaces it — never make a label ambiguous for a joke.
-
-### ⚠️ In flight right now
-
-A **round-3 workflow was still running** when this file was written: ~124
-uncommitted modified files across world text/composition, HUD layout, portals and
-atmosphere shaders, character and environment art, combat spectacle, and
-comedy-as-gameplay. **Check `git status` before assuming the tree is clean.** If
-that round finished, validate and commit it before starting new work.
 
 ---
 
@@ -226,18 +227,28 @@ The pattern that has repeatedly paid off:
 
 ## 7. Known open items
 
-All findings carried in earlier rounds were closed in `97f44ff` (quest kill
-counts vs spawns, `_meets()` failing open, dialogue choices dropping
-`achievement`, the legacy generator). Nothing known is outstanding.
+No carried findings are outstanding. Round 5's own frame critique closed 31
+defects, including a root cause worth remembering: the Dream App console was
+rendering at ~30% alpha because **two tweens were fighting over `modulate:a`** —
+the style values were fine, so reading the stylebox would never have found it.
 
-Two things to be aware of rather than fix:
+Three things to know rather than fix:
 
 - **`tests/region_winnable_test.gd` asserts the first combat region has <= 4
-  enemies.** That is not an arbitrary number — it codifies a playtest that
-  rejected a difficulty spike there. If you need more enemies for a quest,
-  change the quest, not the spawn table. (I tried it the other way; the guard
-  caught me.)
+  enemies.** Not arbitrary — it codifies a playtest that rejected a difficulty
+  spike there. If a quest needs more kills, change the quest, not the spawn
+  table. (I tried it the other way; the guard caught me.)
+- **`--quit-after` prints `1 resources still in use at exit`.** Benign
+  shutdown-ordering warning, not a fault. Do not chase it.
 - `main` still has none of this work; the branch fast-forwards cleanly.
+
+### The technique that finds the most real bugs
+
+An **independent critic reading every QA frame cold** — no knowledge of what was
+intended — has out-performed every other check on this project. It is how the
+30%-alpha console, the invisible nameplates, the faded world map and the enemies
+drawing behind props were all caught, none of which any suite could see. Capture
+the frames, then have someone (or some agent) look at them with fresh eyes.
 
 ## 8. Ground rules
 
