@@ -395,6 +395,15 @@ static func _build_floor(parent: Node2D) -> void:
 			var e := (1.0 if (hv % 100) < 62 else 1.06) * _floor_ao(p, w, h)
 			_put(floor, "int_floor_%d" % v, p, -100, 1.0, Color(e, e, e))
 
+## The rug, on the grid: 320x224 of texture at scale 1.0 on an even-integer
+## centre, so one texel is one world unit exactly as the floorboards are.
+##
+## Round-11 critique #8 also names "a vector-drawn rug diamond" here. That shape
+## is baked into the TEXTURE — interior_generator.gd draws the medallion with
+## `int(abs(x-cx)*0.7) + int(abs(y-cy))`, a 1:1.43 slope, which quantises to a
+## ragged stair that reads as an anti-aliased vector line rather than as woven
+## pattern. Nothing in this file can fix that; it is raised as a contract for the
+## texture's owner (a 1:1 or 1:2 slope steps cleanly, a 1:1.43 one never does).
 static func _build_rug(parent: Node2D) -> void:
 	_put(parent, "int_rug", Vector2(560, 600), -90)
 
@@ -727,43 +736,58 @@ static func _couch(parent: Node2D, pos: Vector2) -> void:
 	bl.z_index = z + 2
 	parent.add_child(bl)
 
-## Resample an authored polyline into a SLACK cable: Catmull-Rom through the
-## anchors so the corners round off instead of kinking, plus a gravity droop that
-## is zero at every anchor and peaks mid-span — a cable is pinned where it is
-## clipped and lazy everywhere else.
+## Even-integer snap. LAW 1: static world objects sit on the grid, and a cable
+## whose points are on it can only ever draw grid-aligned pixels.
+static func _snap2(p: Vector2) -> Vector2:
+	return Vector2(round(p.x * 0.5) * 2.0, round(p.y * 0.5) * 2.0)
+
+## Route an authored polyline as an ORTHODIAGONAL cable run — round-11 critique
+## #8: "three smooth anti-aliased bezier cables ... break the pixel grid in the
+## reference room".
 ##
-## The round-5 frames are the reason this exists. The runs were 4px pure-black
-## straight polylines: no sag, no highlight, no endpoints, uniform width. At game
-## zoom they did not read as cable at all, they read as stray primitives ruled
-## across the floor. `sag` is the droop at a 180px span and scales with the span,
-## so a short jumper between two desks stays taut and a haul to the server corner
-## dips.
-static func _cable_path(points: Array, sag: float) -> PackedVector2Array:
+## What was here resampled every span through a Catmull-Rom spline at seven steps
+## and then added a sine droop on top: it MANUFACTURED a curve, fifty-odd points
+## on no grid at all, stroked 4 units wide with round joints and round caps, in a
+## room where every other pixel is one world unit square. Round 5 introduced it to
+## stop the runs reading as "stray primitives ruled across the floor" — and it
+## worked, in the sense that they now read as stray VECTOR primitives instead.
+##
+## A pixel-art line has three legal bearings: horizontal, vertical and exactly 45
+## degrees. So each span is routed as a 45-degree leg (the shorter axis, all of
+## it) followed by a straight run along the longer one. Every point is an even
+## integer, the diagonal legs have equal even deltas so they step exactly 1:1, and
+## the corners are where the ties go — which is the same place the eye already
+## stops. `sag` is accepted and ignored: gravity is not on the grid.
+static func _cable_path(points: Array, _sag: float) -> PackedVector2Array:
 	var src: Array[Vector2] = []
 	for p: Vector2 in points:
-		src.append(p)
+		var q := _snap2(p)
+		if src.is_empty() or src[src.size() - 1] != q:
+			src.append(q)
 	var out := PackedVector2Array()
 	if src.size() < 2:
 		for q: Vector2 in src:
 			out.append(q)
 		return out
-	var steps := 7
+	out.append(src[0])
 	for i in src.size() - 1:
-		var p0: Vector2 = src[maxi(i - 1, 0)]
-		var p1: Vector2 = src[i]
-		var p2: Vector2 = src[i + 1]
-		var p3: Vector2 = src[mini(i + 2, src.size() - 1)]
-		var droop := sag * clampf(p1.distance_to(p2) / 180.0, 0.30, 1.35)
-		for s in steps:
-			var t := float(s) / float(steps)
-			var pt: Vector2 = p1.cubic_interpolate(p2, p0, p3, t)
-			out.append(pt + Vector2(0.0, sin(PI * t) * droop))
-	out.append(src[src.size() - 1])
+		var a: Vector2 = src[i]
+		var b: Vector2 = src[i + 1]
+		var dx := b.x - a.x
+		var dy := b.y - a.y
+		# The diagonal leg is as long as the SHORTER axis, rounded down to an
+		# even step so both of its deltas stay even and the slope stays 1:1.
+		var d := float(int(minf(absf(dx), absf(dy)) / 2.0) * 2)
+		var knee := a + Vector2(signf(dx) * d, signf(dy) * d)
+		if knee != a:
+			out.append(knee)
+		if b != knee:
+			out.append(b)
 	return out
 
-## One pass of a cable run. Rounded caps as well as rounded joints: a square cap
-## on a 4px line is a visible chisel end, and half of what made these read as
-## drawn-on rather than laid-down.
+## One pass of a cable run. Antialiasing OFF, sharp joints, square caps: every one
+## of the round-5 "softening" options (round joints, round caps, and the spline
+## above) was a way of drawing a smooth line, and smooth is the defect.
 static func _cable_line(parent: Node2D, path: PackedVector2Array, width: float, col: Color, z: int, offset: Vector2 = Vector2.ZERO) -> void:
 	if path.size() < 2:
 		return
@@ -771,9 +795,10 @@ static func _cable_line(parent: Node2D, path: PackedVector2Array, width: float, 
 	line.width = width
 	line.default_color = col
 	line.z_index = z
-	line.joint_mode = Line2D.LINE_JOINT_ROUND
-	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
-	line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	line.antialiased = false
+	line.joint_mode = Line2D.LINE_JOINT_SHARP
+	line.begin_cap_mode = Line2D.LINE_CAP_NONE
+	line.end_cap_mode = Line2D.LINE_CAP_NONE
 	for p: Vector2 in path:
 		line.add_point(p + offset)
 	parent.add_child(line)
@@ -782,61 +807,58 @@ static func _cable_line(parent: Node2D, path: PackedVector2Array, width: float, 
 ## edge and two screw heads. Every cable now ENDS in one, so a bundle terminates
 ## at hardware instead of simply stopping in mid-floor with no explanation.
 static func _cable_clip(parent: Node2D, pos: Vector2, z: int) -> void:
-	_rect(parent, pos + Vector2(1.0, 2.0), Vector2(14.0, 9.0), Color(0.0, 0.0, 0.0, 0.30), z - 1)
-	_rect(parent, pos, Vector2(13.0, 8.0), Color(0.06, 0.06, 0.09, 0.96), z)
-	_rect(parent, pos - Vector2(0.0, 3.5), Vector2(13.0, 1.0), Color(1.0, 0.80, 0.52, 0.30), z + 1)
+	# Every size and offset here is even (LAW 1): a 13x8 rect centred on an even
+	# point starts at x.5, i.e. the clip was the one piece of hardware in the room
+	# drawn half a pixel off the grid the cable was just put back onto.
+	_rect(parent, pos + Vector2(2.0, 2.0), Vector2(14.0, 8.0), Color(0.0, 0.0, 0.0, 0.30), z - 1)
+	_rect(parent, pos, Vector2(12.0, 8.0), Color(0.06, 0.06, 0.09, 0.96), z)
+	_rect(parent, pos - Vector2(0.0, 4.0), Vector2(12.0, 2.0), Color(1.0, 0.80, 0.52, 0.30), z + 1)
 	for k: float in [-1.0, 1.0]:
-		_rect(parent, pos + Vector2(k * 4.5, 0.5), Vector2(2.0, 2.0), Color(0.58, 0.62, 0.74, 0.68), z + 1)
+		_rect(parent, pos + Vector2(k * 4.0, 0.0), Vector2(2.0, 2.0), Color(0.58, 0.62, 0.74, 0.68), z + 1)
 
 ## A tie-wrap at an interior anchor — the reason the run turns there. Drawn
-## ACROSS the bundle, on the bearing of the two anchors either side of it, with
-## the same top-left key light as the clips.
+## ACROSS the bundle, so a mostly-horizontal run gets an upright tie.
 ##
-## Two things went wrong in the round-5 frames and the sag curve only fixes one
-## of them. The other is that a run held the same 4px stroke for seven hundred
-## units and changed direction for no visible reason: nothing in the picture said
-## why the bundle bent at (360,420). A tie is the cheapest possible answer, and
-## it breaks the uniform stroke at exactly the places the eye already stops.
+## AXIS-ALIGNED since round 11, for the same reason RegionBuilder ignores every
+## rotation it is handed: a rotated ColorRect is an anti-aliased quad, and four
+## of them scattered along a cable run in the reference room are four more smooth
+## marks in a frame the critique is counting them in (LAW 1).
 static func _cable_tie(parent: Node2D, pos: Vector2, ang: float) -> void:
-	# _rect's long axis is its local +Y, which rotation carries to
-	# (-sin r, cos r); that is perpendicular to a run bearing `ang` exactly when
-	# r == ang. (Adding a right angle here — the obvious-looking thing — lays the
-	# tie ALONG the bundle instead of across it, which just reads as a bright
-	# dash in the middle of the cable.)
-	_rect(parent, pos, Vector2(3.0, 9.0), Color(0.05, 0.05, 0.08, 0.92), CABLE_Z + 1, ang)
-	_rect(parent, pos - Vector2(0.6, 0.9), Vector2(1.0, 9.0), Color(1.0, 0.82, 0.55, 0.26), CABLE_Z + 1, ang)
+	var upright: bool = absf(cos(ang)) >= absf(sin(ang))
+	var body: Vector2 = Vector2(4.0, 8.0) if upright else Vector2(8.0, 4.0)
+	var lit: Vector2 = Vector2(4.0, 1.0) if upright else Vector2(1.0, 4.0)
+	var off: Vector2 = Vector2(0.0, -2.0) if upright else Vector2(-2.0, 0.0)
+	_rect(parent, pos, body, Color(0.05, 0.05, 0.08, 0.92), CABLE_Z + 1)
+	_rect(parent, pos + off, lit, Color(1.0, 0.82, 0.55, 0.26), CABLE_Z + 1)
 
-## A cable run with the craft the frames were missing: a contact shadow beneath
-## it, the bundle itself, a warm specular along the top-left edge (the bible's
-## light direction, consistent with every other surface in the room), a tie at
-## every corner and a screwed-down clip at each end — all drawn as one slack
-## curve.
+## A cable run: a contact shadow beneath it, the bundle itself, a tie at every
+## authored corner and a screwed-down clip at each end.
 ##
-## The specular is doing most of the work. A black line with a warm rim reads as
-## vinyl sheathing catching the lamp; the same line without one reads as a hole.
-## It is 1.6 units wide rather than 1: the room is played at ~1.16x zoom, and a
-## 1-unit rim at 0.5 alpha over near-black is a sub-pixel that the capture proved
-## invisible — which is the same as not having drawn it. It is still dimmer than
-## the floorboards it lies on, so the cables gain craft without gaining weight
-## they have not earned; set dressing must never out-shout the wayfinding.
+## ROUND 11, critique #8 (LAW 1). The old run was three Line2Ds at three different
+## widths — a 6-unit shadow, a 4-unit bundle and a 1.6-unit warm specular offset
+## by (-1,-1.5) — laid along a spline. Every one of those numbers is off the
+## pixel grid, and the specular in particular is a sub-unit stroke, i.e. a smear
+## by definition. Two passes at 2 units, both on even offsets, on an
+## orthodiagonal path: the bundle and the shadow it casts, and nothing else. The
+## warmth that specular was buying comes back from the lamp the run lies under.
+##
+## `sag` is accepted and ignored (see _cable_path).
 static func _cable(parent: Node2D, points: Array, color: Color, sag: float = 9.0) -> void:
 	var path := _cable_path(points, sag)
 	if path.size() < 2:
 		return
 	# Contact shadow, offset down-and-right because the key light is up-and-left.
-	_cable_line(parent, path, 6.0, Color(0.0, 0.0, 0.0, 0.32), CABLE_Z - 2, Vector2(2.0, 3.0))
-	_cable_line(parent, path, 4.0, Color(color.r, color.g, color.b, 1.0), CABLE_Z)
-	var lit := color.lerp(Color(1.0, 0.82, 0.55), 0.46)
-	_cable_line(parent, path, 1.6, Color(lit.r, lit.g, lit.b, 0.6), CABLE_Z + 1, Vector2(-1.0, -1.5))
+	_cable_line(parent, path, 2.0, Color(0.0, 0.0, 0.0, 0.34), CABLE_Z - 2, Vector2(2.0, 2.0))
+	_cable_line(parent, path, 2.0, Color(color.r, color.g, color.b, 1.0), CABLE_Z)
 	_cable_clip(parent, path[0], CABLE_Z)
 	_cable_clip(parent, path[path.size() - 1], CABLE_Z)
-	# Interior AUTHORED anchors only: the spline's resampled points are not
-	# corners, and the two endpoints already carry a clip.
+	# Interior AUTHORED anchors only: the routed knees are not corners the player
+	# needs explained, and the two endpoints already carry a clip.
 	for i in maxi(points.size() - 2, 0):
 		var before: Vector2 = points[i]
 		var corner: Vector2 = points[i + 1]
 		var after: Vector2 = points[i + 2]
-		_cable_tie(parent, corner, (after - before).angle())
+		_cable_tie(parent, _snap2(corner), (after - before).angle())
 
 ## A poster on the wall. The additive halo that used to radiate its ideology
 ## behind the frame is gone: LAW 3 says signs do not glow, and a poster is a
@@ -902,12 +924,16 @@ static func _build_lighting(parent: Node2D) -> void:
 	pool.modulate = Color(0.50, 0.62, 0.92, 0.14)
 	pool.z_index = -87
 	z.add_child(pool)
-	# Everything else in the room gets a puddle and no light — and round 8 cuts
+	# Everything else in the room gets a puddle and no light — and round 8 cut
 	# that list from five to two. The 540px pool "around the desk" and the 460px
 	# one "around the rig" were unmotivated fill: they sat under the two pools
 	# that DO have a source, doubled their footprint, and turned two lights with
 	# an edge into one continuous wash across the middle of the flat.
-	_light_pool(z, Vector2(1320, 872), 300.0, Color(0.42, 0.48, 0.66), 0.10)  # the unslept bed
+	#
+	# ROUND 11 (critique (f), "delete every pool that is not a source") takes the
+	# BED's with them: a 300px cold puddle in the corner of a dark bedroom with
+	# nothing above it to be coming from. The rig's stays — a rack of GPUs at
+	# load is a heat source you can point at, and the flat's fiction is built on it.
 	_light_pool(z, Vector2(1120, 424), 300.0, WARM, 0.14)         # the rig's thermals
 	# 4. The exit fixture, DARK (critique #9: "5 monitors + cyan tube" alight in a
 	# room LAW 3 gives two motivated sources). A flickering overbright tube on the
@@ -923,23 +949,27 @@ static func _build_lighting(parent: Node2D) -> void:
 	_rect(z, Vector2(PORTAL_POS.x, 371.0), Vector2(94, 3), Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.16), _depth(366.0, 7.0))
 	_light_pool(z, PORTAL_POS + Vector2(-20, 10), 380.0, ACCENT, 0.15)
 
-## Claude, standing in the one honest spotlight in the apartment, plus a quiet
-## puddle on each of the two things the opening actually asks you to touch.
+## Claude, standing in the one honest spotlight in the apartment. That is the
+## whole function now.
 ##
-## The twelve-rect ring of dashes around Claude's feet is gone (it read as a
-## summoning circle, not as lighting), and so are four of the six coloured
+## The twelve-rect ring of dashes around his feet went in round 8 (it read as a
+## summoning circle, not as lighting), and so did four of the six coloured
 ## point-of-interest pools — a blue one, a cyan one, an orange one, a green one,
 ## a violet one and a red one, six hues in a three-hue room, all at the same
-## value, which is the definition of no reading order. The waypoint chevron and
-## the [E] prompt are the real affordance; these two are the confirmation.
+## value, which is the definition of no reading order. Round 11 takes the last two.
 static func _build_poi_pools(parent: Node2D) -> void:
 	var z := Node2D.new()
 	z.name = "PoiPools"
 	parent.add_child(z)
 	_add_light(z, Vector2(820, 552), Color(1.0, 0.87, 0.62), 0.55, 3.0)
 	_light_pool(z, Vector2(820, 586), 240.0, Color(1.0, 0.85, 0.58), 0.26)
-	_light_pool(z, Vector2(650, 384), 150.0, ACCENT, 0.18)   # dream app terminal
-	_light_pool(z, Vector2(760, 404), 150.0, WARM, 0.18)     # deploy button
+	# The last two point-of-interest puddles — one on the Dream App terminal, one
+	# on the deploy button — are gone with round-11 critique (f). They were the
+	# final survivors of a set of six, and they were doing the job the [E] prompt
+	# and the waypoint chevron already do, with light that has no source: two
+	# 150px coloured discs on open floorboards. Claude keeps his key, because an
+	# NPC you must talk to IS the current objective (LAW 3, item 2) and the
+	# opening asks you to find him in the first ten seconds.
 
 ## Foreground framing: a ceiling beam at the top edge and a skirting board at the
 ## bottom, neither of them anywhere the player can stand.

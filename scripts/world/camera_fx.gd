@@ -1,7 +1,8 @@
 extends Node
 ## Camera juice, attached at runtime to the player's Camera2D by world.gd
-## (the player scene itself stays untouched). Trauma shake, look-ahead and
-## impact punches, per the VISUAL_BIBLE camera standards.
+## (the player scene itself stays untouched). Trauma shake and look-ahead, per
+## the VISUAL_BIBLE camera standards. Both write camera.offset and nothing else
+## — the zoom belongs to the scene now (see "Round 11" below).
 ##
 ## Other systems reach it via the "camera_fx" group and must null-check:
 ##   var fx := get_tree().get_first_node_in_group("camera_fx")
@@ -32,17 +33,46 @@ extends Node
 ##                are running INTO. Written into camera.offset (the same
 ##                channel as the shake) and eased on its own curve, because
 ##                Camera2D's position smoothing does not touch offset.
-##   punch        impacts push the frame IN and let it fall back out, at HALF
-##                round 5's amplitude (LAW 9: motion is small). Attack is
-##                near-instant, release is a quarter of a second, and the whole
-##                thing is a pair of exponentials — no springs, no overshoot,
-##                nothing that can oscillate on a low frame rate.
 ##   trauma       capped at 3px (LAW 9), down from 6.
+##
+## Round 11 — the punch and settle ZOOMS are gone too, for the same reason the
+## speed frame was. Round 6 deleted the continuous one and kept the two
+## transients, on the grounds that they "decay back to exactly 1.0". They do,
+## but the whole way there they are a non-integer magnification.
+##
+## The stage is 640x360 and the camera sits at zoom 0.5 (pixel_stage.gd), so a
+## 32px sprite drawn at scale 2.0 covers exactly 32 stage pixels: one art pixel,
+## one stage pixel. That holds at zoom 0.5 and at NO zoom within 90% of it — the
+## next magnification where an art pixel is a whole number of stage pixels is
+## 1.0, a doubling. A 3-5% punch is therefore not a small violation of LAW 1, it
+## is the same resampling the whole round-11 stage was built to remove: one art
+## pixel column in ~30 comes out double width, and it moves while the envelope
+## decays.
+##
+## Measured, because "3% is surely invisible" is exactly the reasoning that put
+## 2.75 screen pixels per art pixel in the shipping build: region_settle() takes
+## the camera to zoom 0.5222, and in that frame the player's two pupils are
+## different widths. region_settle() runs on EVERY region entry, for about a
+## second — the first second the player looks at fresh art.
+##
+## No frame in docs/screenshots/qa can show this. The capture never fires a
+## punch, and even if it did, the composed SCREEN runs stay multiples of K
+## whatever the zoom does (the blit doubles whatever the stage holds), so the
+## grid proof passes either way. It has to be reasoned about, not screenshotted.
+##
+## The impact itself is not lost: every punch_zoom() call site in the project
+## (enemy_base x2, ability_fx x6) calls FxLib.add_trauma() on the same frame,
+## and trauma IS grid-safe — it moves the camera by whole stage pixels via
+## _snap_offset(). The zoom was garnish on top of a shake that stays.
 
 const TRAUMA_DECAY := 2.2
-## LAW 9 caps shake at 3 world px. Squared trauma still means small hits
-## whisper; the ceiling is simply half what it was.
-const MAX_OFFSET := 3.0
+## LAW 9 caps shake at TWO STAGE PIXELS, and this is the number in world units:
+## the camera runs at zoom 0.5 inside a 640x360 stage (pixel_stage.gd), so one
+## stage pixel is 2 world units and the ceiling is 4. Quoted in world units
+## because that is what `offset` is measured in; quantised to whole stage pixels
+## by `_snap_offset()`, because a shake of 1.5 stage pixels is a shake that
+## dissolves the grid it is shaking.
+const MAX_OFFSET := 4.0
 const SHAKE_SPEED := 11.0
 ## Player walk speed (player.gd SPEED). Used only to normalise "how fast is
 ## fast" — a wrong value here changes the strength of the effect, never its
@@ -56,29 +86,14 @@ const SPEED_REF := 220.0
 const LOOK_DIST := 26.0
 const LOOK_RATE := 5.5            # look-ahead ease, per second
 const SPEED_SMOOTH := 4.5         # how fast the "am I moving" signal reacts
-const PUNCH_ATTACK := 30.0        # impact rise
-const PUNCH_RELEASE := 8.5        # impact fall
-## A chase toward a decaying target never reaches that target — with the rates
-## above it peaks at ~61% of it, and 1.65 used to buy that back exactly so
-## punch_zoom(0.07) meant "7% tighter at the peak". Round 6 halves it: every
-## existing caller now lands at half the amplitude it asked for, which is the
-## cheapest possible way to quiet every impact in the game at once without
-## touching a single call site.
-const PUNCH_GAIN := 0.82
-const SETTLE_RATE := 3.6          # region-entry zoom settle
 
 var _trauma := 0.0
 var _noise_t := 0.0
 var _noise := FastNoiseLite.new()
 var _cam: Camera2D
 var _body: Node2D
-var _base_zoom := Vector2.ONE
 var _look := Vector2.ZERO
 var _speed_s := 0.0
-var _punch := 0.0
-var _punch_target := 0.0
-var _settle := 0.0
-var _applied_zoom := 0.0          # last zoom scalar written, to skip idle writes
 
 func _ready() -> void:
 	add_to_group("camera_fx")
@@ -90,7 +105,6 @@ func _ready() -> void:
 		# Snappier than round 4's 6.0. With look-ahead doing the anticipation,
 		# a slow follow just reads as lag.
 		_cam.position_smoothing_speed = 9.0
-		_base_zoom = _cam.zoom
 		# The camera hangs off the player, which is where the velocity lives.
 		# Anything else (a test rig, a cutscene camera) simply gets no
 		# look-ahead and no speed framing.
@@ -106,15 +120,30 @@ func _process(delta: float) -> void:
 	_update_framing(d)
 	_update_shake(d)
 	# LAW 1, the last step of every frame: the composed offset (GameCamera's
-	# legacy shake + look-ahead + trauma) is snapped to whole world units, so
-	# scrolling moves the world by whole pixels and the 2x grid never smears.
-	# It has to happen here, after both writers, or the rounding is undone by
-	# whichever one runs second.
-	_cam.offset = _cam.offset.round()
+	# legacy shake + look-ahead + trauma) is snapped to whole STAGE pixels, so
+	# scrolling moves the world by whole pixels and the grid never smears. It has
+	# to happen here, after both writers, or the rounding is undone by whichever
+	# one runs second.
+	#
+	# Whole WORLD units is not enough any more: at zoom 0.5 a world unit is half
+	# a stage pixel, so an odd offset shifts the whole frame by half a pixel and
+	# every edge in it lands between two screen pixels.
+	_cam.offset = _snap_offset(_cam.offset)
 
-## Look-ahead and the punch/settle zoom. The smoothed "how fast, which way"
-## signal drives the look-ahead only now — the speed-framing zoom that used to
-## share it is gone (LAW 1).
+## Quantise to the stage's own pixel: one stage pixel is 1/zoom world units (2.0
+## at the authored zoom of 0.5). Falls back to whole world units for a camera
+## with no zoom, which is what a test rig has.
+func _snap_offset(v: Vector2) -> Vector2:
+	var q := Vector2(
+		1.0 / maxf(absf(_cam.zoom.x), 0.0001),
+		1.0 / maxf(absf(_cam.zoom.y), 0.0001))
+	return Vector2(roundf(v.x / q.x) * q.x, roundf(v.y / q.y) * q.y)
+
+## Look-ahead. The smoothed "how fast, which way" signal drives it and nothing
+## else: every zoom term this function used to carry — the speed frame, the
+## impact punch, the region settle — is gone, because none of them can be
+## expressed at this stage's magnification without resampling the art (LAW 1;
+## see the header). `_cam.zoom` is now written exactly once, by the scene.
 func _update_framing(delta: float) -> void:
 	var vel := Vector2.ZERO
 	if is_instance_valid(_body):
@@ -130,32 +159,13 @@ func _update_framing(delta: float) -> void:
 	_look = _look.lerp(target, 1.0 - exp(-LOOK_RATE * delta))
 	_cam.offset += _room_clamped(_look)
 
-	# Impact punch: a fast chase toward a target that is itself decaying. Two
-	# exponentials instead of a spring — it cannot overshoot, so it cannot
-	# induce the pumping that makes zoom effects nauseating.
-	_punch_target = lerpf(_punch_target, 0.0, 1.0 - exp(-PUNCH_RELEASE * delta))
-	_punch = lerpf(_punch, _punch_target, 1.0 - exp(-PUNCH_ATTACK * delta))
-	_settle = lerpf(_settle, 0.0, 1.0 - exp(-SETTLE_RATE * delta))
-
-	# Zoom is a Camera2D magnification, so "wider frame" is a SMALLER number.
-	# There is no speed term any more (see the header): at rest and at a walk
-	# this is exactly 1.0, so the camera sits on the scene's authored zoom and
-	# the pixel grid holds. Only a transient impact or a region entry moves it,
-	# and both decay back to exactly 1.0 rather than near it.
-	var zoom_scale := 1.0 + _punch + _settle
-	if absf(zoom_scale - 1.0) < 0.0005:
-		zoom_scale = 1.0
-	if absf(zoom_scale - _applied_zoom) > 0.0005:
-		_applied_zoom = zoom_scale
-		_cam.zoom = _base_zoom * zoom_scale
-
 ## Camera2D's limits clamp POSITION; `offset` is applied on top of the clamped
 ## result, so a raw look-ahead can push the frame past the room edge and show
 ## the off-map starfield — world.gd sets those limits precisely so that never
 ## happens. Re-apply the engine's own clamp to the offset instead of trusting a
-## small constant to stay small: the room is 1280x960 and the frame is wider
-## than that at zoom 1.35, so the horizontal axis is already un-clampable and
-## the vertical one is not. An axis whose limits are narrower than the view is
+## small constant to stay small: the room is 1280x960 and the frame is exactly
+## 1280x720 at the stage zoom of 0.5, so the horizontal axis is already
+## un-clampable (view == room width) and the vertical one is not. An axis whose limits are narrower than the view is
 ## left alone (clamping it would pin a constant offset, which is worse than the
 ## thing it prevents), and the default +/-10000000 limits make this a no-op
 ## before world.gd has applied any bounds.
@@ -197,31 +207,30 @@ func add_trauma(amount: float) -> void:
 		return
 	_trauma = clampf(_trauma + amount, 0.0, 1.0)
 
-## Micro zoom pulse for impacts/pickups. 0.03 is subtle, 0.08 is rude. Negative
-## values punch outward. Kicks are taken at their strongest, never summed, so a
-## burst of ten hits is one punch and not a zoom to the moon.
+## The impact-punch entry point, kept so the eight call sites (enemy_base x2,
+## ability_fx x6) need no edit — and so a future pixel-safe punch has a home.
 ##
-## A kick in the OPPOSITE direction always wins, whatever its size: pulling the
-## frame back is a different statement from slamming it in, not a weaker one.
-## Without that exception ability_fx's Ctrl+Z pull-back (the only negative
-## caller in the game) is silently eaten whenever any inward punch is still in
-## flight — and a signature beat that plays only sometimes is worse than one
-## that never plays at all.
-func punch_zoom(amount: float = 0.04) -> void:
-	if not _cam:
-		return
-	var a := clampf(amount, -0.2, 0.2) * PUNCH_GAIN
-	if absf(a) > absf(_punch_target) or (a * _punch_target) < 0.0:
-		_punch_target = a
+## It no longer touches the zoom. It cannot: see the header. A few percent of
+## magnification on a stage where one art pixel is one stage pixel resamples
+## every sprite in the frame, which is the exact artifact round 11 exists to
+## remove. Every one of those call sites already calls FxLib.add_trauma() on the
+## same frame, so the impact still lands — through the shake, which is snapped
+## to whole stage pixels and stays on the grid.
+##
+## Deliberately NOT re-expressed as extra trauma: that would raise the shake
+## amplitude at eight tuned call sites as a side effect of a rendering fix.
+func punch_zoom(_amount: float = 0.04) -> void:
+	pass
 
-## Region-entry settle: arrive framed slightly tight, ease out to normal.
+## Region entry. The "arrive framed slightly tight, ease out" zoom is gone with
+## the rest of them — it was the worst of the three, because it ran for a second
+## on every single region entry, over the first frames of art the player sees.
+##
+## What remains is the state reset, which is the part that was load-bearing: a
+## look-ahead built up while running INTO the portal must not ride through it
+## and frame the new region off-centre on arrival.
 func region_settle() -> void:
 	if not _cam:
 		return
-	_settle = 0.05
 	_look = Vector2.ZERO
 	_speed_s = 0.0
-	# A kill punch taken on the last frame of the old region has no business
-	# riding the portal into the new one — the settle owns this transition.
-	_punch = 0.0
-	_punch_target = 0.0

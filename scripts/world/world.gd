@@ -117,11 +117,20 @@ const AMBIENT_LIFE := {
 	"token_vault": {"hue": Color("#FFD34D"), "fixtures": 2, "energy": 0.50},
 }
 
-@onready var player: CharacterBody2D = $Player
-@onready var camera: Camera2D = $Player/Camera2D
-@onready var region_container: Node2D = $RegionContainer
+## THE PIXEL STAGE (VISUAL_BIBLE_V2 LAW 1). The world renders into a fixed
+## 640x360 SubViewport blitted at an integer scale K; see pixel_stage.gd for why.
+## Everything WORLD-space lives under `stage_view`; everything SCREEN-space (HUD,
+## dialogue, popups) stays a direct child of World so `world.get_node("HUD")` and
+## every UI path in the project still resolve. The two are joined by exactly two
+## things: `world_rect`, which the UI layers are fitted into, and
+## `PixelStage.world_to_ui()`, which is how the objective chevron finds a target.
+@onready var stage: PixelStage = $PixelStage
+@onready var stage_view: SubViewport = $PixelStage/Viewport
+@onready var player: CharacterBody2D = $PixelStage/Viewport/Player
+@onready var camera: Camera2D = $PixelStage/Viewport/Player/Camera2D
+@onready var region_container: Node2D = $PixelStage/Viewport/RegionContainer
 @onready var hud: CanvasLayer = $HUD
-@onready var ambient: CanvasModulate = $AmbientLight
+@onready var ambient: CanvasModulate = $PixelStage/Viewport/AmbientLight
 
 var _current_region_node: Node2D
 var _postfx: CanvasLayer
@@ -141,12 +150,23 @@ var _life_tick := 0.0
 var _soft_tex: Texture2D
 var _life_add_mat: CanvasItemMaterial
 
+## Screen-space CanvasLayers that were created INSIDE the stage and had to be
+## moved out of it (see `_adopt_layer`), paired with the node that made them.
+var _adopted: Array = []
+var _adopted_hosts: Array = []
+
 func _ready() -> void:
 	GameManager.state = GameManager.GameState.PLAYING
+	stage.stage_changed.connect(_on_stage_changed)
+	# A CanvasLayer is screen space, but "screen" for a node inside the stage is
+	# 640x360 — and boss_hud.gd (a CanvasLayer parented to the boss) lays its card
+	# out in HUD units. Catch them as they appear rather than naming them.
+	get_tree().node_added.connect(_on_node_added)
 	_setup_glow()
 	_setup_postfx()
 	_setup_starfield()
 	_setup_camera_fx()
+	_fit_ui()
 	_load_region(GameManager.current_region)
 	QuestManager.on_region_entered(GameManager.current_region)
 	GameManager.region_changed.connect(_on_region_changed)
@@ -169,9 +189,98 @@ func _ready() -> void:
 			if player.has_method("grant_spawn_grace"):
 				player.grant_spawn_grace()
 
+## --- the pixel stage -------------------------------------------------------
+
+## Re-fit every screen-space layer whenever the letterbox moves (window resize,
+## and once at startup). The layers are not re-created and no Control is touched:
+## a CanvasLayer transform maps the whole UI onto the world's rect at once.
+func _on_stage_changed(_rect: Rect2) -> void:
+	_fit_ui()
+
+func _fit_ui() -> void:
+	if stage == null:
+		return
+	for c in get_children():
+		if c is CanvasLayer and c != _postfx:
+			stage.fit_layer(c)
+	var guide := UIManager.guide() if UIManager.has_method("guide") else null
+	if guide is CanvasLayer:
+		stage.fit_layer(guide)
+
+## The guide overlay is an autoload's child: it outlives this scene, so the
+## world's letterbox must not follow it into the main menu.
+func _exit_tree() -> void:
+	var guide := UIManager.guide() if UIManager.has_method("guide") else null
+	if guide is CanvasLayer:
+		PixelStage.reset_layer(guide)
+
+## A CanvasLayer born inside the stage renders against a 640x360 "screen", which
+## is not the space any of this project's HUD code is written in (boss_hud.gd
+## centres a 720px band; ability_fx.gd's death red-out wants the whole frame).
+## Move it out to World and fit it like every other UI layer. Deferred, because
+## `node_added` fires BEFORE the node's own `_ready`, and boss_hud.gd reads its
+## parent there to find the boss it belongs to.
+func _on_node_added(n: Node) -> void:
+	if n is CanvasLayer:
+		call_deferred("_adopt_layer", n)
+	elif n is CanvasItem and n.get_parent() == self:
+		call_deferred("_reclaim_world_child", n)
+
+## The mirror image of _adopt_layer. A handful of nodes in the project spawn
+## WORLD-space visuals into `get_tree().current_scene` — token_pickup.gd's "+5"
+## float being the live one — which is this Node2D, and this Node2D now sits
+## OUTSIDE the stage. Left there they draw at their world coordinates in window
+## space: a "+5" at world (630,460) lands 630px from the left edge of the WINDOW,
+## nowhere near the token. Anything world-space that arrives on World is put back
+## where it belongs, in the viewport that has the camera.
+##
+## Excluded: the stage itself, and anything screen-space (CanvasLayer, handled
+## above; Controls that world.gd/show_overlay parent to the HUD never land here).
+func _reclaim_world_child(n: Node) -> void:
+	if not is_instance_valid(n) or n == stage or not is_inside_tree():
+		return
+	if n.get_parent() != self or n is CanvasLayer:
+		return
+	remove_child(n)
+	stage_view.add_child(n)
+
+func _adopt_layer(l: CanvasLayer) -> void:
+	if not is_instance_valid(l) or l == _postfx or not is_inside_tree():
+		return
+	if l.get_viewport() != stage_view:
+		return
+	var host := l.get_parent()
+	if host == null:
+		return
+	host.remove_child(l)
+	add_child(l)
+	_adopted.append(l)
+	_adopted_hosts.append(host)
+	stage.fit_layer(l)
+
+## An adopted layer is no longer parented to the thing that made it, so a region
+## change (which frees the whole region, boss included) would otherwise leave its
+## card hanging on the screen. Deferred from _load_region, i.e. after the old
+## region node is actually gone.
+func _purge_adopted() -> void:
+	for i in range(_adopted.size() - 1, -1, -1):
+		var l = _adopted[i]
+		var host = _adopted_hosts[i]
+		if not is_instance_valid(l):
+			_adopted.remove_at(i)
+			_adopted_hosts.remove_at(i)
+			continue
+		if is_instance_valid(host) and (host as Node).is_inside_tree():
+			continue
+		_adopted.remove_at(i)
+		_adopted_hosts.remove_at(i)
+		(l as Node).queue_free()
+
 func _start_opening_sequence() -> void:
 	var intro := preload("res://scenes/ui/opening_sequence.tscn").instantiate()
 	add_child(intro)
+	if intro is CanvasLayer and stage:
+		stage.fit_layer(intro)
 	intro.sequence_finished.connect(_on_opening_finished)
 	# Safety net: no matter what, restore control shortly after the intro window.
 	get_tree().create_timer(18.0).timeout.connect(_ensure_player_control)
@@ -216,6 +325,7 @@ func _load_region(region_id: String) -> void:
 		_postfx.set_region(region_id)
 	_refresh_stress(true)
 	_region_flourish()
+	call_deferred("_purge_adopted")
 	# Production greets you with an incident (once).
 	if region_id == "production" and not EventManager.is_script_completed("production_incident"):
 		call_deferred("_trigger_production_incident")
@@ -273,14 +383,21 @@ func _setup_glow() -> void:
 	var we := WorldEnvironment.new()
 	we.name = "GlowEnvironment"
 	we.environment = env
-	add_child(we)
+	# INSIDE the stage. The SubViewport owns its World3D, so this Environment
+	# applies to the 640x360 world render and to nothing else: the bloom happens
+	# before the blit, at the resolution the art was drawn for, and the main
+	# viewport (which carries the HUD) has no environment at all.
+	stage_view.add_child(we)
 
 ## Full-screen grade/vignette/grain layer. Sits at CanvasLayer 0 — above the
 ## world canvas, below every UI layer — so menus stay crisp.
 func _setup_postfx() -> void:
 	_postfx = _PostFXLayer.new()
 	_postfx.name = "PostFXLayer"
-	add_child(_postfx)
+	# Inside the stage: the grade and the region curtain belong to the WORLD, and
+	# a screen-reading pass has to run at the resolution it is grading. It is
+	# excluded from _adopt_layer for exactly that reason.
+	stage_view.add_child(_postfx)
 
 ## The void outside rooms: a huge parallax starfield instead of dead black.
 ## Scroll is bound to the camera each frame (one uniform write, that's all).
@@ -306,7 +423,7 @@ func _setup_starfield() -> void:
 	# NOTE: _process is NOT disabled when the starfield shader is missing — the
 	# ambient-life flicker also lives in there, and a missing starfield used to
 	# silently freeze the whole world's lighting.
-	add_child(_starfield)
+	stage_view.add_child(_starfield)
 	_recenter_starfield(Vector2.ZERO)
 
 ## Trauma shake + zoom punches, attached to the player's camera at runtime so

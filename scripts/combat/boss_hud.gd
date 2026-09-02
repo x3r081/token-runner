@@ -8,23 +8,36 @@ extends CanvasLayer
 ## popups (15) and dialogue (20) — a conversation, an incident ticket and the
 ## player's own readout all outrank a boss.
 ##
-## ROUND 7 — ONE STACK, NO PLATES.
+## ROUND 10 — NOTHING AT REST.
 ##
-## The round-6 frames announced a boss with TWO plated panels: a gradient banner
-## at the top carrying an incident number, the name and an epithet — which in
-## region_cloud_district.png sat straight over the set-piece caption "THE CLOUD"
-## — plus a second plate at the bottom of the screen carrying the name AGAIN, a
-## live percentage, an 8px gradient bar, the epithet AGAIN and a phase chip. Two
-## boxes, five text registers and the name printed twice, for one enemy.
+## Round 7 deleted the two plated panels. What round 9's frames still showed was
+## worse than a plate, because it was a lie: region_stackoverflow_ruins.png,
+## region_cloud_district.png and region_token_vault.png all captured a quiet room
+## — no fight, the player standing still — with "THE MERGE CONFLICT" / "THE $700
+## CLOUD BILL" / "THE INFINITE CONTEXT" burning across the middle of the frame in
+## red, over a red rule. Two separate faults produced that:
 ##
-## What it is now, per VISUAL_BIBLE_V2 LAW 8:
-##   NAME CARD   ONE line — the boss's name, HEADING size, in HOSTILE, on its
-##               own 1px shadow. No plate, no gradient, no incident number, no
-##               sub-line, no rule under it. On screen for 2.5s, then gone.
-##   HEALTH      ONE 4px bar directly under where the name was, in the same
-##               HOSTILE. No border, no label, no percentage, no phase chip, no
-##               plate. The bar getting shorter is the readout, and it stays up
-##               until the boss dies.
+##   1. IT PLAYED AT REGION ENTRY. enemy_base.gd calls `play_entrance()` the
+##      moment the boss is within 620 units, and region_builder spawns enemies
+##      420 units from the region's own spawn point — so every boss room
+##      announced itself on arrival, before the player had taken a step. The
+##      card is now GATED here (see `_poll_engagement`): the layer arms on that
+##      call and shows nothing until the boss is actually engaged — inside
+##      ENGAGE_RADIUS, or the first time it takes damage.
+##   2. THE BAR READ AS AN UNDERLINE. A 600px hairline six pixels under a
+##      centred 26px title is a text rule, not a gauge, and it was the same
+##      colour as the title. The rows are further apart now (BAR_ROW), and the
+##      colour is the ROOM's, not the enemy's (see ACCENT below).
+##
+## What it is, per VISUAL_BIBLE_V2 LAW 8:
+##   NAME CARD   ONE line — the boss's name, HEADING size, in the region ACCENT,
+##               on its own 1px shadow. No plate, no gradient, no incident
+##               number, no sub-line, no rule under it. It appears when the fight
+##               starts, holds 2.5s, and is gone. Never at region entry.
+##   HEALTH      ONE 4px bar, in the band's second row, same accent. No border,
+##               no label, no percentage, no phase chip, no plate. It arrives
+##               with the card and stays until the boss dies; before the fight
+##               starts there is nothing on this layer at all.
 ##   NOTHING     else. No scrim, no edge flare, no glow, no letterboxing. The
 ##               HUD is never dimmed by a cinematic and the world is never
 ##               darkened to make our text legible.
@@ -40,8 +53,8 @@ extends CanvasLayer
 ##                       of the top 372 units while a boss is alive, which
 ##                       covers every row below.
 ##       y 222..256      the name line, and later the defeat stamp (transient)
-##       y 262..266      the health bar (persistent)
-##       y 278..300      phase call-outs, and the defeat stamp's note
+##       y 280..284      the health bar (persistent, once engaged)
+##       y 300..326      phase call-outs, and the defeat stamp's note
 ## Every row goes through `_band()`, which is what guarantees no call-out can
 ## land on the player, on a HUD lane, or across the bar.
 ##
@@ -62,14 +75,41 @@ const BAND_TOP := 222.0
 const BAND_W := 720.0
 ## The three rows of the band, as offsets from BAND_TOP.
 const NAME_ROW_H := 34.0
-const BAR_ROW := 40.0
-const CALLOUT_ROW := 56.0
+## 58 and not 40. At 40 the bar sat six pixels under the descender line of a
+## 26px title the full width of which it exceeded, and every QA frame read it as
+## an underline rule rather than as a health gauge — the critic named it as one.
+## 58 puts two dozen pixels of clear air between the sentence and the bar, which
+## is the difference between a rule and a second object.
+const BAR_ROW := 58.0
+const CALLOUT_ROW := 78.0
 ## How long the whole entrance lasts: 0.25 in + ENTRANCE_DWELL + 0.32 out.
 ## Round 6 held it inside EnemyBase's 2.2s `_intro_lock` because the card was an
 ## opaque plate covering a third of the screen. One line of text is not a
 ## curtain, so the card is now allowed to finish fading ~0.3s after the boss
 ## starts acting, which is what "shown 2.5s then gone" costs.
 const ENTRANCE_DWELL := 1.93
+
+## ENGAGEMENT — the gate that keeps this layer off the screen at rest.
+##
+## enemy_base.gd emits no "engaged" signal. It decides in `_physics_process`
+## that a boss has noticed you at 620 units and calls `play_entrance()` there,
+## and region_builder.gd spawns enemies 420 units from the region spawn — so
+## that call arrives on the frame the player walks into the room, which is
+## exactly the frame the card must NOT play on.
+##
+## `play_entrance()` therefore only ARMS this layer. The card waits for one of
+## two things, both of which mean "you are in a fight":
+##   * the boss is inside ENGAGE_RADIUS — the last 200 units of its own aggro,
+##     close enough that it is already coming for you;
+##   * the boss takes its first damage — `set_health()` sees current < maximum,
+##     which is the honest signal that you started it (sniping a boss from
+##     across the room still announces the fight).
+## Polled every ENGAGE_POLL rather than every frame: a card that lands within a
+## quarter second of the boss closing is indistinguishable from one that lands
+## on the exact frame, and this is a comparison per boss per quarter second
+## instead of sixty per second.
+const ENGAGE_RADIUS := 420.0
+const ENGAGE_POLL := 0.25
 
 ## Comedy bible: the joke rides ALONGSIDE the information. The name is the
 ## information (which boss is this) and it is what the card prints; the epithet
@@ -101,22 +141,28 @@ const PHASE_BANNERS := [
 	"PHASE 4 — the postmortem has been pre-written",
 ]
 
-## THE ONE COLOUR THIS LAYER SPENDS — and it is not the boss's own.
+## THE ONE COLOUR THIS LAYER SPENDS — and it is the ROOM's, not the enemy's.
 ##
-## VISUAL_BIBLE_V2 LAW 2 gives a scene three hues and reserves HOSTILE #FF4757
-## for enemy tells; LAW 7 says enemies read as hostile by silhouette plus one
-## red tell and do NOT each get a rainbow colour. `setup()` was handed
-## `enemy_base.gd`'s DEATH_ACCENTS entry — magenta for the Merge Conflict, cyan
-## for the Infinite Context, violet for Scope Creep — and painted the name card
-## and the health bar with it. In region_stackoverflow_ruins.png that put a
-## magenta title across a gold room, and in region_token_vault.png a cyan one
-## across a gold vault: a fourth hue, on the single loudest element in the
-## frame, chosen by which enemy happens to be attacking.
+## Round 7 read `enemy_base.gd`'s DEATH_ACCENTS entry — magenta for the Merge
+## Conflict, cyan for the Infinite Context, violet for Scope Creep — and painted
+## the card and the bar with it: a fourth hue, on the loudest element in the
+## frame, chosen by which enemy happened to be attacking. Round 9 replaced that
+## with HOSTILE #FF4757 for every boss in every room, which fixed the rainbow and
+## introduced a subtler version of the same fault: a red title and a red rule
+## across a gold vault is still one more saturated hue than LAW 2 allows the
+## scene, and the frames show exactly that.
 ##
-## A boss is an enemy. Every boss card is HOSTILE, in every room, which is both
-## the law and the more useful signal — the colour now means "this is the thing
-## hurting you" instead of "this is boss number six".
+## LAW 2 is explicit about which colour a UI element gets: "The UI uses one
+## accent: the region ACCENT for the world-linked elements". A boss is as
+## world-linked as an element gets — it is the room's set-piece — so the card and
+## the bar are painted in the accent the objective line, the waypoint and the
+## ready ability slots are already wearing. One accent on screen, and it belongs
+## to where you are standing.
 ##
+## Hostility is carried where LAW 7 puts it: on the enemy's own silhouette and
+## its one red tell. It does not need the title too.
+##
+## HOSTILE stays as the fallback for a region nobody has authored an accent for.
 ## The same value as `GameTheme.RED`, spelled out because this is a class-level
 ## const; if one moves, move both.
 const HOSTILE := Color("#FF4757")
@@ -146,6 +192,18 @@ var _shake_tween: Tween
 var _entrance_tween: Tween
 var _entered := false
 var _frac := 1.0
+## The engagement gate. `_armed` is "the boss has noticed you and wants its
+## card"; `_engaged` is "the fight is on and the card has been spent". Nothing
+## on this layer is visible while the first is true and the second is not.
+var _armed := false
+var _engaged := false
+var _poll_t := 0.0
+## The enemy this layer belongs to, and the thing it measures distance to. Both
+## are cached and both are re-checked with `is_instance_valid` — `detach()`
+## hands this layer to the scene when the boss dies, and the player can be
+## replaced by a respawn.
+var _host: Node2D
+var _player: Node2D
 
 func _init() -> void:
 	layer = 3
@@ -154,6 +212,11 @@ func _init() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
 func _ready() -> void:
+	# The enemy that owns this layer — `_build_boss_presence()` adds it as a
+	# child, so the parent at _ready IS the boss. Captured before anything can
+	# reparent it.
+	_host = get_parent() as Node2D
+	accent = _region_accent()
 	_root = Control.new()
 	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -168,13 +231,49 @@ func _ready() -> void:
 ## read here, so the bar steps out of the way rather than showing through. It
 ## keeps animating while paused — nothing freezes half-faded (HANDOVER §4.4) —
 ## it is only hidden.
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var tree := get_tree()
 	if tree == null or not is_instance_valid(_root):
 		return
 	var want := not tree.paused
 	if _root.visible != want:
 		_root.visible = want
+	# Nothing moves behind a modal, so nothing can become engaged behind one
+	# either — and a card that fired while the tree was paused would be waiting
+	# at full opacity when the panel closed.
+	if want and _armed and not _engaged:
+		_poll_engagement(delta)
+
+## Has the boss actually closed on the player? See ENGAGE_RADIUS.
+func _poll_engagement(delta: float) -> void:
+	_poll_t -= delta
+	if _poll_t > 0.0:
+		return
+	_poll_t = ENGAGE_POLL
+	if not is_instance_valid(_host):
+		return
+	if not is_instance_valid(_player):
+		_player = get_tree().get_first_node_in_group("player") as Node2D
+		if _player == null:
+			return
+	if _host.global_position.distance_to(_player.global_position) <= ENGAGE_RADIUS:
+		_engage()
+
+## The fight has started: spend the card, and never arm again.
+func _engage() -> void:
+	if _engaged:
+		return
+	_mark_engaged()
+	_run_entrance()
+
+## "The fight is on" without playing the card — for the beats that can only
+## happen mid-fight and are taking the band for themselves (a phase call-out, the
+## defeat stamp). Without this, `_cancel_entrance()` could not tell a boss that
+## was never engaged from one whose card has already been and gone, and would
+## fade a health bar in under a stamp that is closing the incident.
+func _mark_engaged() -> void:
+	_engaged = true
+	_armed = false
 
 ## Every tween on this layer survives `get_tree().paused` — see the header.
 func _tw() -> Tween:
@@ -184,12 +283,12 @@ func _tw() -> Tween:
 
 ## Called by EnemyBase before the entrance plays.
 ##
-## `tint` is recorded and NOT painted with — see HOSTILE. The signature is
-## unchanged so the call site does not have to know that the boss layer stopped
-## having opinions about colour.
+## `tint` is recorded and NOT painted with — see the ACCENT block. The signature
+## is unchanged so the call site does not have to know that the boss layer
+## stopped having opinions about colour.
 func setup(enemy_type: String, tint: Color) -> void:
 	requested_tint = tint
-	accent = HOSTILE
+	accent = _region_accent()
 	var card: Array = BOSS_CARDS.get(enemy_type, [])
 	if card.size() == 2:
 		boss_name = str(card[0])
@@ -197,7 +296,8 @@ func setup(enemy_type: String, tint: Color) -> void:
 	else:
 		boss_name = enemy_type.replace("_", " ").to_upper()
 		boss_sub = "severity: yes · owner: unassigned"
-	# The bar is built before setup() runs, so it is built in the DEFAULT red.
+	# The bar is built in `_ready`, which already resolved the room's accent; this
+	# only matters if the region changed between the two calls, which it cannot.
 	_apply_accent()
 
 # ------------------------------------------------------------- the bar ----
@@ -242,8 +342,14 @@ func _build_bar() -> void:
 
 	_apply_accent()
 
-## Re-tint everything the boss colour drives. Safe to call before or after the
-## nodes exist; `setup()` calls it once the real tint is known.
+## The room's accent, straight out of LAW 2's table. `GameTheme.region_accent`
+## is the one place that table lives, so the HUD, the waypoint, the map and this
+## layer cannot hold four opinions about what colour a region is.
+func _region_accent() -> Color:
+	return GameTheme.region_accent(GameManager.current_region)
+
+## Re-tint everything the accent drives. Safe to call before or after the nodes
+## exist; `setup()` calls it once the boss's identity is known.
 func _apply_accent() -> void:
 	if is_instance_valid(_fill):
 		_fill.color = accent
@@ -252,6 +358,12 @@ func _apply_accent() -> void:
 ## kicks it sideways. The lagging red ghost, the white leading-edge chip and the
 ## live percentage are gone — the bar getting shorter is the readout.
 func set_health(current: int, maximum: int) -> void:
+	# First blood is engagement, whatever the distance: a boss you have shot is a
+	# boss you are fighting, and the fight must never be anonymous. EnemyBase
+	# calls this once at full health while building the rig, which is not damage
+	# and must not trip the gate.
+	if current < maximum:
+		_engage()
 	if not is_instance_valid(_fill):
 		return
 	var f := clampf(float(current) / float(maxi(1, maximum)), 0.0, 1.0)
@@ -323,18 +435,33 @@ func _band_label(host: Control, text: String, size: int, col: Color,
 
 # ------------------------------------------------------------ entrance ----
 
+## ARM the layer. Called by EnemyBase the moment the boss notices the player,
+## which is 620 units out and, in every boss room in the game, on the frame the
+## player arrives — so this deliberately shows NOTHING. The card plays when the
+## boss is genuinely engaged; see the ENGAGEMENT block and `_poll_engagement`.
+##
+## The name and the signature are unchanged: the call site asks for an entrance
+## and gets one, a second or two later, when it means something.
+func play_entrance() -> void:
+	if _entered or _engaged or not is_instance_valid(_root):
+		return
+	_armed = true
+	# Poll on the next tick rather than after a full quarter second, so a player
+	# who walks straight into the arena is not kept waiting for a timer.
+	_poll_t = 0.0
+
 ## The name fades in on the world, the bar fades in under it, the name fades out
 ## again. Nothing covers the player, nothing covers a world caption, and nothing
 ## touches a HUD lane.
 ##
 ## Length: 0.25 in + ENTRANCE_DWELL + 0.32 out = 2.50s.
-func play_entrance() -> void:
+func _run_entrance() -> void:
 	if _entered or not is_instance_valid(_root):
 		return
 	_entered = true
 	_card = _band(NAME_ROW_H)
 
-	# ONE line. HEADING size, the boss accent, the theme's 1px shadow — the same
+	# ONE line. HEADING size, the room's accent, the theme's 1px shadow — the same
 	# treatment the region name in the HUD strip gets, because it is the same
 	# kind of statement: this is where you are, this is what you are fighting.
 	_band_label(_card, boss_name, GameTheme.HEADING, accent, 0.0, NAME_ROW_H, 2)
@@ -378,14 +505,17 @@ func _cancel_entrance() -> void:
 		_entrance_tween.kill()
 	_entrance_tween = null
 	_clear_card()
-	# Unconditional on purpose: these are where a COMPLETED entrance leaves
-	# things, so running them when there was nothing to cancel is a no-op, and
-	# running them when `play_entrance()` never fired is the difference between a
-	# defeat draining a visible bar and draining an invisible one.
-	if is_instance_valid(_bar_root):
-		_bar_root.modulate.a = 1.0
+	_armed = false
 	if is_instance_valid(_frame):
 		_frame.position = Vector2.ZERO
+	# Where a COMPLETED entrance leaves the bar — so running this when there was
+	# nothing to cancel is a no-op, and running it when the entrance was cut
+	# short is the difference between a defeat draining a visible bar and
+	# draining an invisible one. A boss that was NEVER ENGAGED never showed a
+	# bar, and being dismissed is not a reason to reveal one for 0.3s on its way
+	# out; `_mark_engaged()` is how the mid-fight callers say otherwise.
+	if is_instance_valid(_bar_root):
+		_bar_root.modulate.a = 1.0 if _engaged else 0.0
 
 # -------------------------------------------------------------- phases ----
 
@@ -403,8 +533,11 @@ func announce_phase(phase_index: int) -> void:
 	var text: String = PHASE_BANNERS[phase - 1]
 	if text.is_empty():
 		return
-	# One hit big enough to cross a gate inside EnemyBase's intro lock would
-	# otherwise stack this line on the entrance card, in the same band.
+	# A phase gate can only be crossed by damage, so the fight is on by
+	# definition — and one hit big enough to cross a gate inside EnemyBase's
+	# intro lock would otherwise stack this line on the entrance card, in the
+	# same band.
+	_mark_engaged()
 	_cancel_entrance()
 
 	var host := _band(26.0, BAND_TOP + CALLOUT_ROW)
@@ -441,7 +574,9 @@ func play_death() -> void:
 	if not is_instance_valid(_root):
 		return
 	# The stamp goes in the announcement band; a card still fading in it would
-	# read as two incidents at once. Also settles the bar and its alpha.
+	# read as two incidents at once. Also settles the bar and its alpha — and a
+	# boss that died was fought, whatever the gate saw.
+	_mark_engaged()
 	_cancel_entrance()
 	if _fill_tween and _fill_tween.is_valid():
 		_fill_tween.kill()

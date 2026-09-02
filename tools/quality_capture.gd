@@ -32,10 +32,12 @@ func _run() -> void:
 	if world == null:
 		push_error("world failed to load")
 		return
-	var player: Node = world.get_node_or_null("Player")
+	var player: Node = _player_of(world)
 	if player and "can_move" in player:
 		player.can_move = true
 	await _shot("region_localhost.png")
+	_prove_grid(world, player, "region_localhost.png")
+	await _wide_shot(world)
 
 	# Dialogue surface.
 	DialogueManager.start_dialogue("roommate_ai")
@@ -53,6 +55,34 @@ func _run() -> void:
 			await _shot(m[1])
 			world.call(m[0])  # close again
 			await _settle(0.3)
+
+	# The two full-screen modals nothing else in this project ever photographs.
+	# They are the surfaces most likely to break silently: both are mounted on the
+	# HUD layer AFTER world._ready() has run, so they inherit the pixel stage's
+	# letterbox fit from their parent rather than being fitted themselves — and if
+	# that parenting ever changes they will anchor to the WINDOW, 320px outside
+	# the world, with no test able to say so. Photograph them.
+	if world.has_method("_open_pause"):
+		world.call("_open_pause")
+		await _settle(0.6)
+		await _shot("ui_pause.png")
+		var pause: Node = world.get("hud").get_node_or_null("PauseMenu")
+		if pause:
+			pause.queue_free()
+		get_tree().paused = false
+		GameManager.state = GameManager.GameState.PLAYING
+		await _settle(0.4)
+
+	if world.has_method("_on_player_died"):
+		world.call("_on_player_died", "the agent deleted the database")
+		await _settle(0.7)
+		await _shot("ui_death.png")
+		var death: Node = world.get("hud").get_node_or_null("DeathScreen")
+		if death:
+			death.queue_free()
+		get_tree().paused = false
+		GameManager.state = GameManager.GameState.PLAYING
+		await _settle(0.4)
 
 	# The [H] guide overlay — the answer to "what do I do now". UIManager owns
 	# the only instance and the methods are open_guide/close_guide, NOT
@@ -79,6 +109,135 @@ func _run() -> void:
 		await _shot("region_%s.png" % rid)
 
 	print("QA capture complete -> ", ProjectSettings.globalize_path(OUT))
+
+## The player moved into the pixel stage's SubViewport this round, so
+## `world.get_node("Player")` no longer resolves. The group is the stable handle
+## and always was.
+func _player_of(world: Node) -> Node:
+	var p := world.get_node_or_null("PixelStage/Viewport/Player")
+	if p != null:
+		return p
+	return get_tree().get_first_node_in_group("player")
+
+# ---------------------------------------------------------- the grid proof --
+##
+## VISUAL_BIBLE_V2 LAW 1 asks for exactly K screen pixels per art pixel, K a
+## whole number, and until this round the game did not deliver it: a 1649x928
+## window under `canvas_items` stretch against a 1920x1080 base magnified every
+## sprite by 0.859, so a 2.0-scaled 32px character at camera zoom 1.6 landed on
+## 2.75 screen pixels and the frames showed runs of 2 and 3 alternating down its
+## edges. A screenshot cannot be eyeballed for that; it has to be measured.
+##
+## The test: take the row through the player's centre and the column through it,
+## walk them, and record the length of every run of identical pixels. If the grid
+## is real, every run INSIDE the sprite is a multiple of K — the art has no
+## feature narrower than one art pixel, and one art pixel is K screen pixels. The
+## two runs at either end of the scan are allowed to be partial: they begin and
+## end in the middle of whatever the sprite is standing on.
+func _prove_grid(world: Node, player: Node, fname: String) -> void:
+	var stage: Node = world.get_node_or_null("PixelStage")
+	if stage == null or player == null:
+		push_error("grid proof: no stage or no player")
+		return
+	var k: int = int(stage.get("stage_k"))
+	var rect: Rect2 = stage.get("world_rect")
+	var img := Image.load_from_file(ProjectSettings.globalize_path(OUT) + "/" + fname)
+	if img == null:
+		push_error("grid proof: could not reload " + fname)
+		return
+	# The player's feet are their origin; the body is up and to the left of it.
+	# Convert through the stage, which is the only thing that knows the framing.
+	var at: Vector2 = stage.call("world_to_stage", (player as Node2D).global_position + Vector2(0, -20))
+	var px := Vector2i(rect.position + at * float(k))
+	px.x = clampi(px.x, 0, img.get_width() - 1)
+	px.y = clampi(px.y, 0, img.get_height() - 1)
+	print("GRID PROOF  K=%d  world_rect=%s  window=%dx%d  sample=%s"
+		% [k, str(rect), img.get_width(), img.get_height(), str(px)])
+	# THE ASSERTION runs over the sprite and the ground it stands on: SPRITE_SPAN
+	# each way is 220 screen pixels, comfortably more than a 32px character drawn
+	# at scale 2 through a K=2 stage (128px) plus its shadow and floor.
+	#
+	# It is deliberately NOT the whole letterbox. The HUD is a screen-space layer
+	# fitted onto the world rect (pixel_stage.fit_layer) — aliased text at a
+	# fractional layer scale, which is what UI has always been in this project and
+	# is not what LAW 1 is about. Scanning the full width would measure hud.gd's
+	# glyph edges and call the renderer broken. The full-rect histogram is printed
+	# underneath as information, with the same caveat.
+	const SPRITE_SPAN := 220
+	_report_runs("row  y=%d  (sprite)" % px.y,
+		_runs(img, px.y, true, px.x - SPRITE_SPAN, px.x + SPRITE_SPAN), k, true)
+	_report_runs("col  x=%d  (sprite)" % px.x,
+		_runs(img, px.x, false, px.y - SPRITE_SPAN, px.y + SPRITE_SPAN), k, true)
+	_report_runs("row  y=%d  (full letterbox, incl. HUD)" % px.y,
+		_runs(img, px.y, true, int(rect.position.x), int(rect.end.x)), k, false)
+	_report_runs("col  x=%d  (full letterbox, incl. HUD)" % px.x,
+		_runs(img, px.x, false, int(rect.position.y), int(rect.end.y)), k, false)
+
+## Run lengths of identical colours along one scanline, clipped to the world's
+## letterbox rect (the bars either side of it are one enormous run of clear
+## colour and say nothing about the grid).
+func _runs(img: Image, line: int, horizontal: bool, from: int, to: int) -> PackedInt32Array:
+	var out := PackedInt32Array()
+	var lo := maxi(from, 0)
+	var hi := mini(to, (img.get_width() if horizontal else img.get_height()))
+	if hi - lo < 2:
+		return out
+	var prev := img.get_pixel(lo, line) if horizontal else img.get_pixel(line, lo)
+	var run := 1
+	for i in range(lo + 1, hi):
+		var c := img.get_pixel(i, line) if horizontal else img.get_pixel(line, i)
+		if c.is_equal_approx(prev):
+			run += 1
+		else:
+			out.append(run)
+			run = 1
+			prev = c
+	out.append(run)
+	return out
+
+func _report_runs(label: String, runs: PackedInt32Array, k: int, assertive: bool) -> void:
+	if runs.is_empty():
+		print("GRID PROOF  %s  (no samples)" % label)
+		return
+	var hist := {}
+	var bad := 0
+	# The first and last runs start/end at the clip, not at an art edge.
+	for i in runs.size():
+		var r := runs[i]
+		hist[r] = int(hist.get(r, 0)) + 1
+		if i == 0 or i == runs.size() - 1:
+			continue
+		if r % k != 0:
+			bad += 1
+	var keys := hist.keys()
+	keys.sort()
+	var parts := PackedStringArray()
+	for key in keys:
+		parts.append("%d:%d" % [key, hist[key]])
+	print("GRID PROOF  %s  runs=%d  histogram(len:count) %s" % [label, runs.size(), " ".join(parts)])
+	if not assertive:
+		print("GRID PROOF  %s  %d interior runs off the grid (HUD glyphs live here)" % [label, bad])
+		return
+	if bad == 0:
+		print("GRID PROOF  %s  PASS — every interior run is a multiple of %d" % [label, k])
+	else:
+		push_error("GRID PROOF %s FAIL — %d interior runs are not multiples of %d" % [label, bad, k])
+		print("GRID PROOF  %s  FAIL — %d interior runs are not multiples of %d" % [label, bad, k])
+
+## One frame on an ultrawide window, to prove the UI stays inside the world's
+## letterbox rather than running off to the window corners 960px away. The size
+## is restored afterwards so every later shot matches the rest of the set.
+func _wide_shot(world: Node) -> void:
+	var was := DisplayServer.window_get_size()
+	DisplayServer.window_set_size(Vector2i(3840, 1040))
+	await _settle(0.8)
+	await _shot("region_localhost_wide.png")
+	var stage: Node = world.get_node_or_null("PixelStage")
+	if stage:
+		print("WIDE  K=%d  world_rect=%s  window=%s"
+			% [int(stage.get("stage_k")), str(stage.get("world_rect")), str(DisplayServer.window_get_size())])
+	DisplayServer.window_set_size(was)
+	await _settle(0.8)
 
 ## Random events fire on a timer, pause the tree and cover the frame — none of
 ## which belongs in a visual QA capture.

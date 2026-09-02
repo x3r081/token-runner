@@ -174,11 +174,17 @@ func _ready() -> void:
 ## The player carries a soft warm light (the world is dark on purpose) and kicks
 ## up dust while moving. Missing art degrades to generated textures, never errors.
 func _setup_fx() -> void:
-	# LAW 4 names the energy: 0.45, and steady. The looping 0.50<->0.62 lamp
-	# tween is gone with the rest of round 5's idle motion — LAW 9 allows a
-	# light 6% of flicker and that was 11%, on the one light that is on screen
-	# in literally every frame of the game.
-	_light = FxLib.point_light(self, Color(1.0, 0.93, 0.82), 0.45, 3.4, Vector2(0, -12))
+	# LAW 4 names the energy band 0.4-0.9 and steady; the looping 0.50<->0.62 lamp
+	# tween is gone with the rest of round 5's idle motion.
+	#
+	# ROUND 11 — 0.45 at radius 3.4 was measured, in the QA frames, as a warm
+	# wash across roughly half the visible floor: it stopped reading as a light
+	# the character CARRIES and started reading as a colour grade with a hole in
+	# it, which is also how localhost's amber ended up on the api_bazaar rug.
+	# 0.30 at 2.2 is a pool the player stands in — still the brightest thing at
+	# their feet (LAW 3 puts the player first), but the floor two tiles away is
+	# the floor's own colour again.
+	_light = FxLib.point_light(self, Color(1.0, 0.93, 0.82), 0.30, 2.2, Vector2(0, -12))
 	_dust = CPUParticles2D.new()
 	_dust.emitting = false
 	# Halved, and dimmer: this is a footfall, not a dust storm. It reads at
@@ -996,7 +1002,16 @@ func _fire_projectile(type: String, damage: int, pierce: bool = false, weak: boo
 	proj.weak = weak
 	proj.crit = crit
 	proj.global_position = global_position + dir * 20
-	get_tree().current_scene.add_child(proj)
+	# OUR OWN PARENT, not current_scene. Since round 11 the world renders inside
+	# a SubViewport (pixel_stage.gd) and `current_scene` is the World node
+	# OUTSIDE it — a viewport owns its own World2D, so a bolt parented there is
+	# in a different canvas AND a different physics space: invisible, and unable
+	# to touch an enemy. The player's parent is the world, by definition, in the
+	# game and in every test rig that mounts a bare player.
+	var host: Node = get_parent()
+	if host == null:
+		host = get_tree().current_scene
+	host.add_child(proj)
 	AudioManager.play_sfx("projectile_shoot")
 	# Kickback. Small enough that it never fights your walk (it is spent in
 	# ~0.1s), big enough that the gun has a butt. Stack Trace shoves harder,

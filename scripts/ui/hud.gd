@@ -79,7 +79,6 @@ var _cycle_warn := -1
 var _player: Node
 var _ability_bar: Control
 var _ability_slots: Array = []
-var _ability_panels: Array = []
 var _ability_overlays: Array = []
 var _ability_boxes: Array = []
 var _ability_keys: Array = []
@@ -521,6 +520,11 @@ func _on_running_gag(gag_id: String, note: String) -> void:
 	var title: String = GAG_TITLES.get(gag_id, "Noted")
 	push_toast("alert", "%s — %s" % [title, note], "", "gag_%s" % gag_id)
 
+## A pickup is a toast, and it uses the ONE toast lane — same 36px clear of the
+## ability slots, same single line, same TEXT. It is not a floating world number
+## and it is not a second notifier: `merge_key` "tokens" is what turns a run
+## through a cluster into `+34 tokens ×10` instead of ten lines fighting for the
+## same row.
 func _on_tokens_gained(amount: int, _source: String) -> void:
 	push_toast("token", "+%d tokens" % amount, "", "tokens", amount, "+%d tokens")
 
@@ -557,8 +561,21 @@ func _on_dialogue_ended(_npc_id: String) -> void:
 ## sixth of LAW 2's entire budget spent on a legend.
 ##
 ## What survives is what you act on: which key, is it ready, can I afford it.
+## LAW 8's three readings, and there are only three:
+##   READY         ACCENT border, ACCENT glyph, full opacity
+##   RECHARGING    TEXT_DIM border, TEXT_DIM glyph, and the sweep draining down
+##                 the slot behind the glyph
+##   UNAFFORDABLE  the whole slot at 40%
+## A frame at rest, with every resource full and nothing on cooldown, is SIX LIT
+## SLOTS — that is not the bug, that is six abilities you can use. The bug the
+## critic could not have seen from a still frame was that the recharging state
+## never animated: see "THE SWEEP" in `_setup_ability_bar`.
 const SLOT_SIZE := Vector2(28, 28)
 const SLOT_GAP := 6
+## The cooldown shutter's tone. Dark enough to read at 28px across a lit floor,
+## and it now sits BEHIND the key glyph (see `_setup_ability_bar`), so it may be
+## this dark without erasing the one thing the slot exists to print.
+const SLOT_SWEEP_ALPHA := 0.68
 # ABILITY_BAR_TOP / _BOTTOM / _HALF_W live up in the "bottom band" block, with
 # the toast lane that has to clear them.
 
@@ -601,31 +618,44 @@ func _setup_ability_bar() -> void:
 		panel.add_theme_stylebox_override("panel", sb)
 		slot.add_child(panel)
 
+		# THE SWEEP. A dark shutter filling the slot the moment the ability is
+		# spent, whose top edge then travels down and out of the slot as it
+		# recharges — LAW 8's "on cooldown = a vertical sweep", and the only
+		# element on this strip that says HOW LONG.
+		#
+		# Driven by `offset_top` against a full-rect preset, NOT by
+		# `anchor_bottom`, which is what it used to be and which never moved a
+		# pixel: Control's anchor setter recomputes the offset to PRESERVE that
+		# edge's current position, so every `anchor_bottom = frac` cancelled
+		# itself out. The slot went flat black for the whole cooldown and then
+		# snapped clear — the one state LAW 8 asks this bar to animate was the one
+		# state it never animated. An offset moves an edge; an anchor only decides
+		# what the offset is measured from.
+		var ov := ColorRect.new()
+		ov.color = _GameTheme.with_alpha(_GameTheme.VOID, SLOT_SWEEP_ALPHA)
+		ov.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ov.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		ov.visible = false
+		slot.add_child(ov)
+
+		# The glyph goes ON TOP of the sweep. It used to be a child of the panel,
+		# which the shutter then covered: a recharging slot spent its whole
+		# cooldown as an unreadable black square, which is what an empty slot
+		# looks like too. Keeping the key legible is the difference between "not
+		# yet" and "not there".
 		var key := Label.new()
 		key.text = str(def.key)
 		key.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		key.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		key.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		key.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		key.add_theme_font_size_override("font_size", _GameTheme.SMALL)
 		key.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
 		_GameTheme.outline_text(key)
-		panel.add_child(key)
-
-		# Cooldown: a dark shutter covering the slot from the top, sweeping
-		# downward out of frame as the ability recharges.
-		var ov := ColorRect.new()
-		ov.color = _GameTheme.with_alpha(_GameTheme.VOID, 0.72)
-		ov.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		ov.anchor_left = 0.0
-		ov.anchor_right = 1.0
-		ov.anchor_top = 0.0
-		ov.anchor_bottom = 1.0
-		ov.visible = false
-		slot.add_child(ov)
+		slot.add_child(key)
 
 		bar.add_child(slot)
 		_ability_slots.append(slot)
-		_ability_panels.append(panel)
 		_ability_overlays.append(ov)
 		_ability_boxes.append(sb)
 		_ability_keys.append(key)
@@ -645,24 +675,32 @@ func _update_ability_bar() -> void:
 		if state != _ability_state[i]:
 			_ability_state[i] = state
 			_paint_slot(i, state)
+		# 1.0 = just spent (the shutter fills the slot), 0.0 = ready (gone). The
+		# slot's REAL height, because the HBox owns it; SLOT_SIZE is the fallback
+		# for the one frame before the container has laid out.
 		var frac := _cooldown_frac(def.id)
 		var ov: ColorRect = _ability_overlays[i]
-		ov.anchor_bottom = frac
+		var h: float = maxf((_ability_slots[i] as Control).size.y, SLOT_SIZE.y)
+		ov.offset_top = roundf((1.0 - frac) * h)
 		ov.visible = frac > 0.004
 
 ## One slot, in the CURRENT accent. Monochrome, three readings: lit in the
-## region accent when it is yours to spend, plain when it is coming back, 40%
-## when you are short (LAW 8).
+## region accent when it is yours to spend, dropped to TEXT_DIM while it is
+## coming back, the whole slot at 40% when you are short (LAW 8).
+##
+## The 40% is applied to the SLOT, not to the panel behind it: the glyph and the
+## sweep are siblings of the panel now, and dimming only the panel would have
+## left a full-strength key floating in a slot that had faded out from under it.
 ##
 ## Split out of `_update_ability_bar` so that a REGION CHANGE can repaint the
 ## row without waiting for a state change — see `_paint_accent`.
 func _paint_slot(i: int, state: int) -> void:
 	if i < 0 or i >= _ability_boxes.size():
 		return
-	var panel: Control = _ability_panels[i]
+	var slot: Control = _ability_slots[i]
 	var box: StyleBoxFlat = _ability_boxes[i]
 	var key: Label = _ability_keys[i]
-	panel.modulate.a = 1.0 if state != 2 else 0.4
+	slot.modulate.a = 1.0 if state != 2 else 0.4
 	# state -1 is "never painted"; it reads as not-yours-yet until the next
 	# update resolves it, which is one frame away.
 	if state == 0:

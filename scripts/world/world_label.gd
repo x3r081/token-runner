@@ -124,8 +124,8 @@ const BAND_EDGE := 18.0
 ## Boss reserved band, added to the TOP band only while a boss is alive.
 ##
 ## ROUND 9: the whole boss layer now lives in the top announcement band —
-## boss_hud.gd draws the name at y 222..256, a 4px health bar at y 262..266 and
-## its phase call-outs at y 278..300, all of it inside the existing 372 above.
+## boss_hud.gd draws the name at y 222..256, a 4px health bar at y 280..284 and
+## its phase call-outs at y 300..326, all of it inside the existing 372 above.
 ## BOSS_BAND_BOTTOM used to reserve 242px at the FOOT of the screen for the
 ## round-6 status plate, which was deleted with the plates; captions spent every
 ## boss fight dodging a lane nothing occupies. It is 0 rather than removed so the
@@ -138,12 +138,35 @@ const BOSS_BAND_BOTTOM := 0.0
 ## units. It has to be PUSH_MAX expressed in world units, or the two caps
 ## silently disagree and the smaller one wins: _hud_push measures and caps in
 ## CANVAS units, _retarget re-caps the same vector in WORLD units against this.
-## The conversion is the camera's zoom, 1.5 (scenes/player/player.tscn), so
-## 156 / 1.5 = 104. The zoom moved from 1.35 to 1.5 this round: LAW 1 wants one
-## art pixel to be a whole number of screen pixels, and 2.0 sprite scale x 1.35
-## is 2.7. At 1.5 it is exactly 3, and a 1280-wide region also fills a 1920
-## viewport exactly instead of leaving void bars down both sides.
+## Both are derived at runtime now (`_push_cap`, `_dodge_cap`) because since
+## round 11 the two spaces are no longer the same one: captions live in the
+## 640x360 pixel stage while the HUD lanes they dodge are authored in window
+## units. In the 1920x928 window the pair resolves to 156 UI px -> 60.5 stage px
+## -> 121 world units; DODGE_MAX itself is now only the fallback for a rig with
+## no stage (a bare label mounted in a test).
 const DODGE_MAX := 104.0
+
+## HUD lanes are authored in UI units; this caption is measured in STAGE pixels.
+## One conversion, asked of the stage itself, so the two cannot drift apart if
+## the letterbox changes. Vector2.ONE when there is no stage (a test rig, or the
+## label mounted outside the world), which is exactly the pre-stage behaviour.
+func _ui_to_stage() -> Vector2:
+	var st := PixelStage.find(get_tree())
+	if st == null:
+		return Vector2.ONE
+	return st.ui_to_stage_scale()
+
+## PUSH_MAX in the space _hud_push actually measures in.
+func _push_cap() -> float:
+	return PUSH_MAX * _ui_to_stage().y
+
+## The same cap in WORLD units — the camera's magnification is what converts
+## them, and it is read off the live canvas rather than assumed.
+func _dodge_cap() -> float:
+	var sc := get_global_transform_with_canvas().get_scale().y
+	if sc < 0.0001:
+		return DODGE_MAX
+	return _push_cap() / sc
 
 ## Where the player's own pixels are, relative to their global_position (which is
 ## at their FEET). MEASURED off the round-5 localhost frame: the character's ink
@@ -696,8 +719,9 @@ func _retarget() -> void:
 			_hud_hide = push.length() > 10.0 and _hud_over > BOLT_CLIP
 	else:
 		_dodge_to = push
-		if _dodge_to.length() > DODGE_MAX:
-			_dodge_to = _dodge_to.normalized() * DODGE_MAX
+		var cap := _dodge_cap()
+		if _dodge_to.length() > cap:
+			_dodge_to = _dodge_to.normalized() * cap
 	var vis := _peak
 	if _hud_hide:
 		vis = 0.0
@@ -816,8 +840,9 @@ func _clear_of_player(vis: float) -> float:
 	else:
 		slide = Vector2(ex * (-1.0 if d.x >= 0.0 else 1.0), 0.0)
 	var want := _dodge_to + slide
-	if want.length() > DODGE_MAX:
-		want = want.normalized() * DODGE_MAX
+	var wcap := _dodge_cap()
+	if want.length() > wcap:
+		want = want.normalized() * wcap
 	_dodge_to = want
 	# Did the capped slide actually get clear? If the HUD push and the player were
 	# pulling in different directions there may be nothing left to spend, and a
@@ -868,14 +893,17 @@ func _hud_push() -> Vector2:
 	# Fully off-screen: not a HUD problem, let the distance fade decide.
 	if not r.intersects(Rect2(Vector2.ZERO, view)):
 		return Vector2.ZERO
-	var top := maxf(BAND_TOP, view.y * 0.157)
-	var bottom_pad := maxf(BAND_BOTTOM, view.y * 0.105)
+	# The absolute band figures are HUD units; `u` puts them in this viewport's
+	# space. The fractional terms are already resolution-independent and stay.
+	var u := _ui_to_stage()
+	var top := maxf(BAND_TOP * u.y, view.y * 0.157)
+	var bottom_pad := maxf(BAND_BOTTOM * u.y, view.y * 0.105)
 	# A boss owns two more bands while it is alive. boss_hud.gd braces both with
 	# opaque plates, but an opaque plate only stops a caption being READ THROUGH.
 	# Not being covered is the boss HUD's job; not being THERE is this one's.
 	if _boss_active():
-		top = maxf(top, BOSS_BAND_TOP)
-		bottom_pad = maxf(bottom_pad, BOSS_BAND_BOTTOM)
+		top = maxf(top, BOSS_BAND_TOP * u.y)
+		bottom_pad = maxf(bottom_pad, BOSS_BAND_BOTTOM * u.y)
 	var bottom := view.y - bottom_pad
 	var down := maxf(0.0, top - r.position.y)
 	var up := maxf(0.0, r.end.y - bottom)
@@ -891,14 +919,14 @@ func _hud_push() -> Vector2:
 	# vertical clearance the bar bands already asked for — overwriting it meant a
 	# caption took the sideways exit out of the objective panel and parked itself
 	# under the ability bar instead.
-	var obj_w := maxf(BAND_OBJECTIVE_W, view.x * 0.200)
-	var obj_top := view.y - maxf(BAND_OBJECTIVE_H, view.y * 0.244)
+	var obj_w := maxf(BAND_OBJECTIVE_W * u.x, view.x * 0.200)
+	var obj_top := view.y - maxf(BAND_OBJECTIVE_H * u.y, view.y * 0.244)
 	if r.position.x < obj_w and r.end.y > obj_top:
 		var side := obj_w - r.position.x
 		var lift := r.end.y - obj_top
 		push = Vector2(side, push.y) if side <= lift else Vector2(push.x, -lift)
-	var map_x := view.x - maxf(BAND_MINIMAP_W, view.x * 0.107)
-	var map_top := view.y - maxf(BAND_MINIMAP_H, view.y * 0.220)
+	var map_x := view.x - maxf(BAND_MINIMAP_W * u.x, view.x * 0.107)
+	var map_top := view.y - maxf(BAND_MINIMAP_H * u.y, view.y * 0.220)
 	if r.end.x > map_x and r.end.y > map_top:
 		var side2 := r.end.x - map_x
 		var lift2 := r.end.y - map_top
@@ -908,8 +936,9 @@ func _hud_push() -> Vector2:
 	# the left of the frame reads as the same clipping bug. Applied as a
 	# floor/ceiling rather than added, so it cannot compound with the corner
 	# panels.
-	var out_l := maxf(0.0, BAND_EDGE - r.position.x)
-	var out_r := maxf(0.0, r.end.x - (view.x - BAND_EDGE))
+	var edge := BAND_EDGE * u.x
+	var out_l := maxf(0.0, edge - r.position.x)
+	var out_r := maxf(0.0, r.end.x - (view.x - edge))
 	if out_l > 0.0 and out_r > 0.0:
 		# Wider than the frame: there is no sideways move that helps.
 		_hud_hide = true
@@ -930,15 +959,16 @@ func _hud_push() -> Vector2:
 	# The off-frame strips count too, so a PINNED caption sliced by the side of
 	# the frame fades rather than sitting there as half a word.
 	_hud_over = maxf(_hud_over, maxf(
-		_clip_frac(r, Rect2(-view.x, 0.0, view.x + BAND_EDGE, view.y)),
-		_clip_frac(r, Rect2(view.x - BAND_EDGE, 0.0, view.x + BAND_EDGE, view.y))))
-	if push.length() > PUSH_MAX:
+		_clip_frac(r, Rect2(-view.x, 0.0, view.x + edge, view.y)),
+		_clip_frac(r, Rect2(view.x - edge, 0.0, view.x + edge, view.y))))
+	var pcap := _push_cap()
+	if push.length() > pcap:
 		# Give up on clearing the band, but keep the slide we DO have instead of
 		# snapping home. Returning ZERO here made the caption travel back INTO the
 		# HUD over the ~0.3s the fade takes, so the last thing the player saw was
 		# it walking under the ability bar. Hold at the cap and fade.
 		_hud_hide = true
-		push = push.normalized() * PUSH_MAX
+		push = push.normalized() * pcap
 	return Vector2(push.x / sc.x, push.y / sc.y)
 
 ## Is a boss on the field? Shared across every label and recomputed at most once

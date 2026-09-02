@@ -30,7 +30,13 @@ const POSTFX_SHADER := "res://assets/shaders/postfx.gdshader"
 ## the shader entirely, grain <= 0.012, vignette 0.14 on a wide plateau, and a
 ## neutral grade (no lift, gamma 1.0, saturation 1.0).
 const VIGNETTE := 0.14
-const GRAIN := 0.010
+## ZERO, not 0.010. This layer now lives INSIDE the 640x360 pixel stage
+## (pixel_stage.gd), so a grain sample is one STAGE pixel and gets blitted out at
+## K screen pixels: a barely-there dither at 1080p becomes visible 2x2 and 3x3
+## chunks crawling over the floor. LAW 5 says the post must never be nameable, and
+## chunky grain is the first thing a viewer names. The vignette is a smooth ramp
+## over the whole frame and survives the upscale unharmed, so it stays.
+const GRAIN := 0.0
 
 var _mat: ShaderMaterial
 var _fade: ColorRect

@@ -141,6 +141,11 @@ Each of these cost a debugging cycle. They will bite you too.
 9. **`timeout` is not installed** on this macOS box. Use background tasks with
    an `until` poll loop instead.
 
+10. **Only `run_generate.gd` generates art.** A legacy `generate_assets.gd`
+    EditorScript used to write much older art into the same output dir and would
+    silently clobber the pipeline; it was deleted in `97f44ff`. If it ever comes
+    back, it is a landmine, not a tool.
+
 11. **`hdr_2d=true` means the framebuffer is LINEAR — a screenshot must be
     converted to sRGB or it is ~2 stops too dark.** For several rounds every
     QA frame was captured without that conversion, and visual judgements
@@ -158,11 +163,6 @@ Each of these cost a debugging cycle. They will bite you too.
 13. **Aliased vector text below ~16px is illegible** with hinting off
     ("compiled on hope" rendered as "complled"). Aliased + `HINTING_NORMAL`
     at ≥16px reads as crisp pixel text; below that, keep antialiasing.
-
-10. **Only `run_generate.gd` generates art.** A legacy `generate_assets.gd`
-    EditorScript used to write much older art into the same output dir and would
-    silently clobber the pipeline; it was deleted in `97f44ff`. If it ever comes
-    back, it is a landmine, not a tool.
 
 ---
 

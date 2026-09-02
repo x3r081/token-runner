@@ -372,7 +372,7 @@ func _place() -> void:
 	var view := get_viewport_rect().size
 	if view != _view_size:
 		_refresh_exclusions(view)
-	var sp: Vector2 = vp.get_canvas_transform() * (_target.global_position + Vector2(0, -SP_NUDGE))
+	var sp: Vector2 = _world_to_ui(_target.global_position + Vector2(0, -SP_NUDGE), vp)
 	var rect_pos := Vector2(MARGIN_X, MARGIN_TOP)
 	var rect_size := Vector2(
 		maxf(view.x - MARGIN_X * 2.0, 96.0),
@@ -510,11 +510,32 @@ func _push_rect_out(c: Vector2, s: Vector2, r: Rect2) -> Vector2:
 		c.x = g.end.x + s.x * 0.5
 	return c
 
-## Camera zoom, as the factor that turns world units into screen pixels. Every
+## WORLD -> UI. This chevron is a HUD element pointing at a world object, and
+## since round 11 the two live in different viewports: the world renders inside
+## the 640x360 pixel stage (pixel_stage.gd) while this Control lays out in window
+## units on a CanvasLayer that has been fitted onto the stage's letterbox rect.
+## `PixelStage.world_to_ui` is the single conversion that joins them — the old
+## `vp.get_canvas_transform()` now reads the MAIN viewport, which has no camera
+## and would pin the chevron to the world's raw coordinates.
+##
+## The fallback is the pre-stage path, so a test rig that mounts this Control
+## without a world still behaves.
+func _world_to_ui(world_pos: Vector2, vp: Viewport) -> Vector2:
+	var st := PixelStage.find(get_tree())
+	if st != null:
+		return st.world_to_ui(world_pos)
+	return vp.get_canvas_transform() * world_pos
+
+## Camera zoom, as the factor that turns world units into UI pixels. Every
 ## clearance below is quoted in SCREEN pixels but measured off WORLD geometry, so
-## it has to pass through here or the beacon drifts every time the zoom moves
-## (it went 1.35 -> 1.5 this round).
+## it has to pass through here or the beacon drifts every time the framing moves.
+## Inside the stage the chain is zoom (0.5) x stage-to-UI, which is what
+## `world_to_ui_scale()` returns.
 func _zoom_of(vp: Viewport) -> float:
+	var st := PixelStage.find(get_tree())
+	if st != null:
+		var f := st.world_to_ui_scale()
+		return f if f > 0.01 else 1.0
 	var zoom: float = absf(vp.get_canvas_transform().get_scale().y)
 	return zoom if zoom > 0.01 else 1.0
 
