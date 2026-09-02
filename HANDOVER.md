@@ -187,6 +187,12 @@ Each of these cost a debugging cycle. They will bite you too.
 
 Committed on the branch, newest first:
 
+- `2c07dd6` — **restraint pass 5**: stale boss HUD across regions fixed at the
+  source (world.gd purged adopted layers before the tree's delete queue
+  flushed); boss card gated on real engagement; waypoint no longer freezes
+  under a pausing event; floors re-lit via REGION_AMBIENT (64–78 measured);
+  bazaar floor rebuilt; modals opaque with the stage dimmed behind them.
+  Cold critic: 5.2.
 - `823a408` — **restraint pass 4**: the pixel-perfect pipeline above; boss
   card gating; placeholder quads, bunting and off-grid cables removed.
 - `c56d07a` — **restraint pass 3**: readable floors — one material per region
@@ -196,7 +202,7 @@ Committed on the branch, newest first:
   room's own accent, unified enemy language, legible font.
 - `3ce576a` — **restraint round**: `docs/VISUAL_BIBLE_V2.md` ("Restraint", ten
   laws), −11k lines of noise. Triggered by the user calling the game "AI slop".
-  Scored by a **cold Fable critic** reading frames only: 3.6 → 4.75 → 4.9 → 5.0.
+  Scored by a **cold Fable critic** reading frames only: 3.6 → 4.75 → 4.9 → 5.0 → 5.2.
 
 - `111f1a5` — **round 5**: deep graphics + gameplay pass (47 agents across 3
   workflows). Per-type enemy behaviours with telegraphs, multi-phase bosses,
