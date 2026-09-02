@@ -195,7 +195,14 @@ func _build_shell() -> void:
 	vb.add_child(title)
 
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(760, 420)
+	# 480, not the old 420: this screen is the answer to "what do I do now", and
+	# the two lines it has to end on are the last ship requirement and the "you
+	# can afford X, press [B]" prompt. At 420 the SMALL tier's move from 14 to 16
+	# pushed both of them under the fold behind a scrollbar most players will not
+	# think to drag. Height was measured against the longest state this panel
+	# reaches (five requirement rows, four loop steps and the affordability line);
+	# the panel still finishes ~160px clear of the viewport.
+	scroll.custom_minimum_size = Vector2(760, 480)
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	vb.add_child(scroll)

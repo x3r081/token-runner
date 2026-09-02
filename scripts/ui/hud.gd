@@ -247,6 +247,13 @@ func _dress_objective() -> void:
 	next_action.add_theme_color_override("font_color", _accent)
 	_GameTheme.outline_text(next_action)
 	next_action.text = ""
+	# The box reserves two lines (hud.tscn: QuestPanel offset_top -96) so a
+	# region prefix can stack above its action instead of being guillotined into
+	# one. A single-line objective therefore has to sit at the BOTTOM of that
+	# box, or a short instruction would float 24px off its own corner and the
+	# line would appear to move whenever the objective changed shape.
+	var vb: VBoxContainer = $QuestPanel/Margin/VBox
+	vb.alignment = BoxContainer.ALIGNMENT_END
 	# Alive at their scene paths, silent. Anything that writes to them is free to
 	# keep doing so; nothing reads them back onto the screen.
 	quest_name_label.visible = false
@@ -868,23 +875,73 @@ func _quest_headline(qid: String, authored: String) -> String:
 	var over := str(QUEST_HEADLINE_NAMES.get(qid, ""))
 	return over if over != "" else authored
 
+## Longest a single objective line may run before it is cut.
+##
+## Round 6 fed the raw quest action into a 760px box and left
+## `text_overrun_behavior = TRIM_ELLIPSIS` to sort it out, so seven of the ten QA
+## frames printed "→ Head to Localhost — Run the coffee machine in the apartment
+## kitchen (walk onto i…": a sentence guillotined mid-word, inside a bracket, at
+## whatever glyph the pixel budget happened to land on. 56 characters is what
+## fits at BODY size with the "  ·  12m W" suffix still to come, and the cut now
+## happens where a reader would put it.
+const OBJECTIVE_MAX_CHARS := 56
+
 ## The one line that fixes "I don't know what to do": a concrete NEXT ACTION,
 ## how far and which way. Everything that used to sit under it — the quest name,
-## the checklist, the progress counters — is in [J].
+## the checklist, the progress counters — is in [J], and so is the full,
+## uncut text of this instruction.
 func _update_quest_tracker(_qid: String = "") -> void:
 	var obj := QuestManager.get_current_objective()
 	if obj.is_empty():
 		_set_next_action("→ Ship the Dream App  ·  [B]")
 		return
-	var action := str(obj.get("action", obj.get("text", "")))
+	# The parenthetical goes before anything is measured: "(walk onto it)" is a
+	# quarter of the line's budget and it is the half a player already standing
+	# in the room does not need. It survives in full in [J] and [H].
+	var action := _clip_words(_strip_parenthetical(
+		str(obj.get("action", obj.get("text", "")))), OBJECTIVE_MAX_CHARS)
 	# If the objective is in another region the honest instruction is "get there
 	# first" — the chevron is already pointing at the door. ("region" objectives
 	# already say "Travel to X"; prefixing those just stutters.)
 	var region := str(obj.get("region", ""))
+	var line := action
 	if region != "" and region != GameManager.current_region \
 			and str(obj.get("kind", "")) != "region":
-		action = "Head to %s — %s" % [_format_region(region), action]
-	_set_next_action("→ %s%s" % [action, _where_suffix()])
+		# The ONE case that earns a second line. Joined with an em-dash the two
+		# halves overran the box every single time; stacked, the prefix answers
+		# "where" and the action answers "what", and neither is truncated.
+		line = "Head to %s\n   %s" % [
+			_clip_words(_format_region(region), OBJECTIVE_MAX_CHARS), action]
+	_set_next_action("→ %s%s" % [line, _where_suffix()])
+
+## Everything inside "(...)" removed, brackets included. An unclosed bracket
+## takes the rest of the string with it: that is a typo in the quest data, and
+## printing half a parenthesis is worse than printing none of it.
+func _strip_parenthetical(text: String) -> String:
+	var out := text
+	while true:
+		var a := out.find("(")
+		if a < 0:
+			break
+		var b := out.find(")", a + 1)
+		# Each pass removes one "(", so this always terminates.
+		if b < 0:
+			out = out.substr(0, a)
+		else:
+			out = out.substr(0, a) + out.substr(b + 1)
+	return out.replace("  ", " ").strip_edges()
+
+## Cut to at most `limit` characters at a WORD boundary, with an ellipsis. The
+## boundary search gives up below half the budget rather than leaving two words
+## and a dot — a very long single token is better shown clipped than erased.
+func _clip_words(text: String, limit: int) -> String:
+	if text.length() <= limit:
+		return text
+	var cut := text.substr(0, limit)
+	var space := cut.rfind(" ")
+	if space * 2 > limit:
+		cut = cut.substr(0, space)
+	return "%s…" % cut.strip_edges().rstrip(" ,;:·—-")
 
 ## "  ·  28m NE" when the waypoint has a fix on something, "" otherwise.
 func _where_suffix() -> String:

@@ -4,6 +4,9 @@ extends Node
 ## Preloaded rather than referenced by class_name: GameManager is an autoload and
 ## resolves before the global class cache is guaranteed to be populated.
 const _ComedyLines = preload("res://scripts/ui/comedy_lines.gd")
+## Same reason as _ComedyLines: FxLib is static-state-only, and an autoload must
+## not depend on the global class cache being warm.
+const _FxLib = preload("res://scripts/combat/fx_lib.gd")
 
 signal game_started
 signal game_paused(paused: bool)
@@ -43,7 +46,10 @@ var player_position: Vector2 = Vector2.ZERO
 ## for respawns so the player never re-materializes inside the enemy pile that
 ## just killed them.
 var region_spawn: Vector2 = Vector2.ZERO
-var session_stats: Dictionary = {
+## The counters the end-of-run screen reads. ONE definition, because there used
+## to be three (this initialiser, the copy in start_new_game(), and whatever a
+## save file happened to contain) and they were free to drift apart.
+const SESSION_STAT_DEFAULTS := {
 	"quests_completed": 0,
 	"tokens_collected": 0,
 	"enemies_defeated": 0,
@@ -51,6 +57,8 @@ var session_stats: Dictionary = {
 	"api_calls": 0,
 	"reloads_detected": 0,
 }
+
+var session_stats: Dictionary = SESSION_STAT_DEFAULTS.duplicate()
 
 var show_opening_sequence: bool = true
 
@@ -103,14 +111,7 @@ func start_new_game() -> void:
 	death_count = 0
 	regions_unlocked = ["localhost", "dependency_district"]
 	player_position = Vector2.ZERO
-	session_stats = {
-		"quests_completed": 0,
-		"tokens_collected": 0,
-		"enemies_defeated": 0,
-		"debt_accepted": 0,
-		"api_calls": 0,
-		"reloads_detected": 0,
-	}
+	session_stats = SESSION_STAT_DEFAULTS.duplicate()
 	show_opening_sequence = true
 	story_flags.clear()
 	ResourceManager.reset()
@@ -129,6 +130,13 @@ func start_new_game() -> void:
 	# otherwise inherit the previous run's exhausted pools and repeat itself.
 	# main_menu._on_new_game() covers the normal path; this covers all of them.
 	_ComedyLines.reset_session()
+	# FxLib's hit-stop and FX-budget counters are static too, and fx_lib.gd's own
+	# header says outright that "anything that tears the world down (new game,
+	# death, scene swap) can call this" — but nothing ever did. A run that began
+	# while a hit-stop freeze owned Engine.time_scale, or after the emitter /
+	# flare counters had drifted upward, inherited slow motion or a combat layer
+	# that had silently stopped spawning bursts for the rest of the session.
+	_FxLib.release_hit_stop()
 	state = GameState.PLAYING
 	game_started.emit()
 	_change_scene("res://scenes/world/world.tscn")
@@ -151,6 +159,7 @@ func pause_game(paused: bool) -> void:
 func return_to_menu() -> void:
 	state = GameState.MENU
 	get_tree().paused = false
+	_FxLib.release_hit_stop()
 	_change_scene("res://scenes/main/main_menu.tscn")
 
 func change_region(region_id: String, spawn_pos: Vector2 = Vector2.ZERO) -> void:
@@ -197,6 +206,10 @@ func handle_player_death(cause: String = "") -> void:
 func respawn_player() -> void:
 	state = GameState.PLAYING
 	get_tree().paused = false
+	# You died mid-hit-stop more often than not — the killing blow IS a freeze —
+	# and the world you die in is torn down before the restore timer's 40ms are
+	# up on a slow load. Hand the clock and the FX budget back explicitly.
+	_FxLib.release_hit_stop()
 
 func trigger_victory() -> void:
 	state = GameState.VICTORY
@@ -277,7 +290,10 @@ func _calculate_ship_results() -> Dictionary:
 		"security": app.security,
 		"technical_debt": res.technical_debt,
 		"tokens_spent": session_stats.get("tokens_collected", 0),
-		"quests_completed": session_stats.quests_completed,
+		# .get(), not `.quests_completed`: the property form RAISES on a
+		# dictionary that lacks the key, and the one caller that can arrive here
+		# with a short dictionary is the victory screen after a Continue.
+		"quests_completed": session_stats.get("quests_completed", 0),
 		"play_time": play_time_seconds,
 		"deaths": death_count,
 		"architecture_ridiculousness": ArchitectureManager.ridiculousness,
@@ -310,9 +326,26 @@ func _change_scene(path: String) -> void:
 	state = GameState.LOADING
 	get_tree().change_scene_to_file(path)
 
+## Bump one end-of-run counter.
+##
+## The old guard was `if session_stats.has(key)`, which meant a stat SILENTLY
+## VANISHED for the rest of the run whenever the dictionary was incomplete — and
+## SaveManager handed it `data.get("session_stats", {})` verbatim, so continuing
+## from any save written before a key existed dropped every increment of that
+## key without a word. adopt_session_stats() now guarantees the dictionary is
+## complete; this seeds a genuinely new key rather than throwing the count away.
+## Take session counters off a save file WITHOUT losing the keys it predates.
+## SaveManager calls this instead of assigning the loaded dictionary straight
+## through, so a run continued from an older save still has every counter the
+## current build reads.
+func adopt_session_stats(loaded: Dictionary) -> void:
+	var merged: Dictionary = SESSION_STAT_DEFAULTS.duplicate()
+	for k in loaded:
+		merged[k] = int(loaded[k])
+	session_stats = merged
+
 func record_stat(key: String, amount: int = 1) -> void:
-	if session_stats.has(key):
-		session_stats[key] = int(session_stats[key]) + amount
+	session_stats[key] = int(session_stats.get(key, 0)) + amount
 
 func is_region_unlocked(region_id: String) -> bool:
 	return region_id in regions_unlocked

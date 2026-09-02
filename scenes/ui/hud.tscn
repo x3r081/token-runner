@@ -122,7 +122,7 @@ mouse_filter = 2
 
 [node name="RegionSub" type="Label" parent="TopBar/HBox/RegionPanel/RegionBlock"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 16
 text = "Cycle 1"
 horizontal_alignment = 1
 
@@ -160,7 +160,7 @@ show_percentage = false
 [node name="HPValue" type="Label" parent="TopBar/HBox/BarsPanel/Bars/HPBlock"]
 custom_minimum_size = Vector2(44, 0)
 layout_mode = 2
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 16
 text = "100"
 horizontal_alignment = 2
 vertical_alignment = 1
@@ -188,7 +188,7 @@ show_percentage = false
 [node name="FocusValue" type="Label" parent="TopBar/HBox/BarsPanel/Bars/FocusBlock"]
 custom_minimum_size = Vector2(44, 0)
 layout_mode = 2
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 16
 text = "100"
 horizontal_alignment = 2
 vertical_alignment = 1
@@ -198,9 +198,10 @@ anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 28.0
-offset_top = -72.0
+offset_top = -96.0
 offset_right = 788.0
 offset_bottom = -40.0
+grow_vertical = 0
 mouse_filter = 2
 
 [node name="Margin" type="MarginContainer" parent="QuestPanel"]
@@ -244,7 +245,7 @@ offset_top = -30.0
 offset_right = 400.0
 offset_bottom = -10.0
 mouse_filter = 2
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 16
 text = "[E] interact   ·   [T] model   ·   [H] help"
 horizontal_alignment = 1
 

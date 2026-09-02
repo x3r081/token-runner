@@ -27,6 +27,12 @@ const MAGENTA := Color("#FF2D95")
 const VIOLET := Color("#8B5CF6")
 const RED := Color("#FF4757")
 const AMBER := Color("#FFB020")
+## VISUAL_BIBLE_V2 LAW 2's HUD ink. The aim reticle is a HUD mark drawn in the
+## world, so it is painted in this and not in a region accent.
+const TEXT_DIM := Color("#7C8BB0")
+## Screen-space stroke of the aim reticle, in pixels. The reticle is scaled to
+## its target, so `sample()` divides this by that factor before writing it.
+const RETICLE_STROKE := 1.0
 
 ## Rewind buffer: 48 samples at 16 Hz ~= 3 seconds of the player's own past,
 ## which is exactly the window Ctrl+Z can undo. Fixed size, written in place —
@@ -159,7 +165,7 @@ func _build_rim() -> void:
 		_rim.animation = src.animation
 		_rim.frame = src.frame
 	_rim.material = FxLib.additive_material()
-	_rim.modulate = Color(accent.r * 1.5, accent.g * 1.5, accent.b * 1.5, 0.34)
+	_rim.modulate = Color(accent.r * 1.5, accent.g * 1.5, accent.b * 1.5, 0.30)
 	_rim.scale = src.scale * 1.07
 	_rim.position = src.position
 	_rim.z_index = -1
@@ -171,9 +177,10 @@ func _build_rim() -> void:
 		src.frame_changed.connect(_sync_rim_frame)
 	if not src.animation_changed.is_connected(_sync_rim_anim):
 		src.animation_changed.connect(_sync_rim_anim)
-	var pulse := _rim.create_tween().set_loops()
-	pulse.tween_property(_rim, "modulate:a", 0.44, 1.5).set_trans(Tween.TRANS_SINE)
-	pulse.tween_property(_rim, "modulate:a", 0.24, 1.5).set_trans(Tween.TRANS_SINE)
+	# LAW 9: nothing glows on a loop at rest. The player stands still in every QA
+	# frame, and this halo spent that whole time breathing 0.24 <-> 0.44 on a 3s
+	# cycle. It is now a fixed 0.30 — the mid-point of what it used to swing
+	# through, so the separation it buys is unchanged and the motion is gone.
 
 func _sync_rim_frame() -> void:
 	if is_instance_valid(_rim) and sprite is AnimatedSprite2D:
@@ -216,6 +223,14 @@ func sample(delta: float, moving_dir: Vector2 = Vector2.ZERO) -> void:
 			var ts: float = clampf(maxf(_reticle_target.scale.x, _reticle_target.scale.y),
 				0.85, 3.2)
 			_reticle.scale = Vector2(ts, ts)
+			# A Line2D's width is scaled by its ancestors' transform, so framing
+			# a 2x boss would otherwise triple the stroke. Divide it back out so
+			# the outline stays exactly RETICLE_STROKE screen pixels on every
+			# target (LAW 1: one pixel is one pixel).
+			var want_w: float = RETICLE_STROKE / ts
+			for b in _reticle.get_children():
+				if b is Line2D and not is_equal_approx((b as Line2D).width, want_w):
+					(b as Line2D).width = want_w
 		else:
 			_reticle.visible = false
 	if is_instance_valid(_rim) and is_instance_valid(sprite):
@@ -266,7 +281,17 @@ func _build_reticle() -> void:
 	root.name = "AimReticle"
 	root.top_level = true
 	root.z_index = CombatFx.Z_FX - 8
-	root.modulate = Color(CYAN.r * 1.5, CYAN.g * 1.5, CYAN.b * 1.5, 0.5)
+	# ROUND 9 — VISUAL_BIBLE_V2 defect #4, "a cyan HUD reticle on a pixel enemy".
+	#
+	# This was CYAN at x1.5 over an ADDITIVE x1.8 stroke: a saturated, overbright
+	# frame around the one object in the room whose whole job is to read by
+	# silhouette. Every runtime glow layer was stripped off the enemies this
+	# round (enemy_base no longer builds a halo, a backing plate or a body
+	# light), so the reticle was the last thing painting light onto them.
+	#
+	# It is now TEXT_DIM at 60% — a HUD mark in the HUD's own colour, LAW 2 —
+	# with a 1px flat stroke and no additive material: an outline, not a lamp.
+	root.modulate = Color(TEXT_DIM.r, TEXT_DIM.g, TEXT_DIM.b, 0.6)
 	h.add_child(root)
 	for i in 4:
 		var sx: float = 1.0 if i % 2 == 0 else -1.0
@@ -274,16 +299,16 @@ func _build_reticle() -> void:
 		var bracket := Line2D.new()
 		bracket.points = PackedVector2Array([
 			Vector2(sx * 20.0, sy * 9.0), Vector2(sx * 20.0, sy * 20.0), Vector2(sx * 9.0, sy * 20.0)])
-		bracket.width = 2.0
-		bracket.material = FxLib.additive_material()
-		bracket.default_color = Color(CYAN.r * 1.8, CYAN.g * 1.8, CYAN.b * 1.8, 0.85)
+		# sample() scales the whole reticle to the target (0.85..3.2), and a
+		# Line2D's width scales with it — so the authored width is divided by the
+		# largest factor it can be multiplied by, and the stroke stays at or
+		# under one screen pixel on a boss instead of blowing out to three.
+		bracket.width = RETICLE_STROKE
+		bracket.default_color = Color(TEXT_DIM.r, TEXT_DIM.g, TEXT_DIM.b, 0.6)
 		root.add_child(bracket)
-	# The breathe is on ALPHA, not scale: sample() owns `scale` (it sizes the
-	# brackets to the target), and a looping scale tween would fight it every
-	# frame and win.
-	var pulse := root.create_tween().set_loops()
-	pulse.tween_property(root, "modulate:a", 0.72, 0.7).set_trans(Tween.TRANS_SINE)
-	pulse.tween_property(root, "modulate:a", 0.34, 0.7).set_trans(Tween.TRANS_SINE)
+	# LAW 9: nothing pulses at rest, and this sits on enemies that are standing
+	# still. The looping 0.72 <-> 0.34 alpha breathe is gone; the reticle is a
+	# static mark that is either on a target or not on screen at all.
 	_reticle = root
 
 ## Recent positions, oldest first, covering roughly `seconds` of the past.

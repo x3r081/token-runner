@@ -27,7 +27,12 @@ const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 ## text crisp on pixel art. A per-label FontVariation reaches past the theme and
 ## lands back on the smooth fallback face; that is how the old headings ended up
 ## anti-aliased over a 2x pixel grid.
-const SMALL := 14
+## ROUND 9: SMALL is 16, not 14, and MUST stay equal to GameTheme.SMALL — the
+## nine screens that size their small tier off this constant were still printing
+## at the size that rasterised "compiled" as "complled". The value lives in two
+## places only because modal_panel.gd is deliberately free of a GameTheme
+## dependency; if one ever moves, move the other.
+const SMALL := 16
 const BODY := 18
 const HEADING := 26
 

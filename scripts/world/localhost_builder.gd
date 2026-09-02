@@ -33,7 +33,13 @@ static var _add_mat_cache: CanvasItemMaterial
 ## neon and the reserved label boxes all key off this one constant so they can
 ## never drift apart again (they had: the EXIT sign used to draw straight
 ## through the portal's own destination plate).
-const PORTAL_POS := Vector2(ROOM_W * TILE - 90, ROOM_H * TILE * 0.5)
+##
+## ROUND 8, critique #9: it stood at x 1510, 90 units off a 1600-wide room, and
+## region_portal.gd centres its own destination label on the portal with the text
+## overflowing a 160-unit box — so "→ Dependency District" ran off the right edge
+## of the world and the frame caught it as "→ Depen". 170 units in, the widest
+## label this door can carry (~210 units) clears the wall at both ends.
+const PORTAL_POS := Vector2(ROOM_W * TILE - 170, ROOM_H * TILE * 0.5)
 
 ## VISUAL_BIBLE_V2 LAW 2, the localhost row: BASE #0E0C14, ACCENT #24F0DC cyan,
 ## WARM #FFB74A amber. Three hues, and the round-6 apartment had eleven — five
@@ -274,6 +280,12 @@ static func _rect(parent: Node2D, center: Vector2, size: Vector2, col: Color, z:
 	parent.add_child(r)
 	return r
 
+## Ceiling on every puddle in the flat. Round-8 critique #7, "props outshine the
+## player": capped on the way IN, so no number of call sites can add up to a room
+## with nothing dark in it. 0.22 is the two motivated sources' own value, and
+## nothing in the room may exceed the lamp and the monitor bank.
+const POOL_MAX := 0.22
+
 ## An additive puddle of light ON the floor. Real PointLight2Ds are budgeted; a
 ## pool costs one sprite, and it is what makes a lamp look like it is LIGHTING
 ## something instead of merely being bright.
@@ -284,7 +296,7 @@ static func _light_pool(parent: Node2D, pos: Vector2, width: float, col: Color, 
 	s.position = pos
 	var tw := maxf(1.0, float(s.texture.get_width()))
 	s.scale = Vector2(width / tw, width * 0.6 / tw)
-	s.modulate = Color(col.r, col.g, col.b, alpha)
+	s.modulate = Color(col.r, col.g, col.b, minf(alpha, POOL_MAX))
 	s.z_index = z
 	parent.add_child(s)
 
@@ -308,12 +320,17 @@ static func _floor_patch(parent: Node2D, pos: Vector2, width: float, col: Color,
 ## Reserved before any sign is placed, so signs move out of THEIR way.
 static func _reserve_labels() -> void:
 	WorldLabel.begin(Rect2(0.0, 0.0, float(ROOM_W * TILE), float(ROOM_H * TILE)))
-	WorldLabel.reserve(Rect2(PORTAL_POS + Vector2(-88, -70), Vector2(176, 44)))
-	WorldLabel.reserve(Rect2(PORTAL_POS + Vector2(-104, -104), Vector2(208, 208)))
+	# ONE box, 260x220, centred on the door (round-8 critique #9). The old pair —
+	# a plate box and a body box, both hung ABOVE centre — left the portal's own
+	# destination label (region_portal.gd draws it BELOW the disc, at +64..+90)
+	# and the guidance chevron's column unprotected.
+	WorldLabel.reserve(Rect2(PORTAL_POS + Vector2(-130, -110), Vector2(260, 220)))
 	# Claude's nameplate AND the column his idle barks rise through: npc.gd
 	# puts the plate at y -106..-86 and stacks bubbles up to about -175, so a
 	# sign anywhere in that box would be spoken over.
-	WorldLabel.reserve(Rect2(Vector2(820, 560) + Vector2(-170, -200), Vector2(340, 140)))
+	# 360x150 since round 8: the frames show the name tag clipping captions at
+	# both ends of a 340px box.
+	WorldLabel.reserve(Rect2(Vector2(820, 560) + Vector2(-180, -210), Vector2(360, 150)))
 	# Claude's actual silhouette (npc sprite is 2.2x a 32px texture, drawn 18px
 	# high of centre) — deliberately tight, because "← talk to Claude first" has
 	# to stay right next to him to mean anything.
@@ -395,33 +412,33 @@ static func _build_floor(parent: Node2D) -> void:
 			var hv := _cell_hash(gx, gy)
 			# Board variant per 2x1 BLOCK, so planks run in short courses.
 			var v := _cell_hash(gx >> 1, gy) % 3
-			var e := 1.22 if (hv % 100) < 62 else 1.29
+			# x0.85 since round 8. The QA capture was fixed (the linear HDR buffer
+			# is converted to sRGB now), and at the corrected exposure this room
+			# reads FLAT: the boards were being lifted to 1.22-1.29 to survive a
+			# capture that was two stops dark. Darker ambient is what lets the two
+			# motivated pools below — the monitor bank and the desk lamp — read as
+			# light falling on a floor instead of as a slightly brighter floor.
+			var e := (1.22 if (hv % 100) < 62 else 1.29) * 0.85
 			var mod := Color(e, e, e * 0.96)
 			_put(floor, "int_floor_%d" % v, Vector2(gx * TILE + TILE / 2, gy * TILE + TILE / 2), -100, 1.0, mod)
 
 static func _build_rug(parent: Node2D) -> void:
 	_put(parent, "int_rug", Vector2(560, 600), -90)
 
-## The worn track this person walks forty times a day: chair -> the middle of the
-## room -> Claude -> the door. It is a lived-in floor AND the quietest possible
-## answer to "where am I supposed to go" — you follow the path someone wore. It
-## survives the subtraction round for that second reason; what it lost is the
-## bright second pass laid over the dark one (two ellipses per step, eighty
-## sprites) and the two coloured corner washes that tinted a third of the room.
+## ONE hand-placed floor shadow, and that is the entire floor overlay budget.
+##
+## ROUND 8 removed the twenty-seven-patch "worn track" that ran from the chair
+## through the middle of the room to Claude and on to the door. It was defended
+## as wayfinding, but it is a drag mark drawn on the ground — LAW 4 puts floor
+## overlays at zero and names drag marks specifically — and the round-8 critique
+## reads exactly this shape, a line arcing from the player to the portal, as one
+## of the signatures that makes every room look like the same room. The waypoint
+## chevron is the wayfinding. What survives is the dark under the desk, which is
+## an object casting a shadow rather than a path drawn on a floor.
 static func _build_floor_zones(parent: Node2D) -> void:
 	var z := Node2D.new()
 	z.name = "FloorZones"
 	parent.add_child(z)
-	var track: Array[Vector2] = [
-		Vector2(560, 520), Vector2(660, 600), Vector2(720, 648), Vector2(810, 606),
-		Vector2(900, 590), Vector2(1030, 566), Vector2(1160, 548), Vector2(1290, 534),
-		Vector2(1420, 520), Vector2(1500, 514),
-	]
-	for i in track.size() - 1:
-		var a: Vector2 = track[i]
-		var b: Vector2 = track[i + 1]
-		for s in 3:
-			_floor_patch(z, a.lerp(b, float(s) / 3.0), 120.0, Color(0.03, 0.025, 0.02), 0.18, -96)
 	# Under the desk: a dark cave of cables and abandoned socks.
 	_floor_patch(z, Vector2(540, 420), 340.0, Color(0.02, 0.02, 0.04), 0.30, -94)
 
@@ -436,13 +453,13 @@ static func _build_walls(parent: Node2D) -> void:
 	# Top wall band (behind everything), with a window and a door cut in.
 	for gx in ROOM_W:
 		var x := gx * TILE + TILE / 2
-		_put(walls, "int_wall", Vector2(x, 16), -60)
+		_put(walls, "int_wall", Vector2(x, 16), -60, 1.0, Color(0.85, 0.85, 0.85))
 		_add_collider(walls, Vector2(x, 24), Vector2(TILE, 56))
 	# Side + bottom borders (thin dark strips + colliders)
 	for gy in ROOM_H:
 		var y := gy * TILE + TILE / 2
-		_put(walls, "int_wall_side", Vector2(20, y), -58, 1.0, Color(0.8, 0.8, 0.9))
-		_put(walls, "int_wall_side", Vector2(right - 20, y), -58, 1.0, Color(0.7, 0.7, 0.8))
+		_put(walls, "int_wall_side", Vector2(20, y), -58, 1.0, Color(0.68, 0.68, 0.77))
+		_put(walls, "int_wall_side", Vector2(right - 20, y), -58, 1.0, Color(0.60, 0.60, 0.68))
 		_add_collider(walls, Vector2(6, y), Vector2(20, TILE))
 		_add_collider(walls, Vector2(right - 6, y), Vector2(20, TILE))
 	for gx in ROOM_W:
@@ -527,9 +544,11 @@ static func _add_monitor(parent: Node2D, pos: Vector2, screen_col: Color, text: 
 			"size": 10, "style": "tag", "color": text_col,
 			"z": mz + 2, "claim": false, "fade": false,
 		})
-	# The screen's own cast, pooled on the desk in front of it — a monitor that
-	# does not light the surface it stands on reads as a sticker.
-	_light_pool(parent, pos + Vector2(0, 54), 180.0, screen_col, 0.16, mz + 50)
+	# NO spill halo. This was an additive puddle drawn at z (mz + 50) — i.e. ON
+	# TOP of the desk and the monitor rather than on the floor — five of them
+	# across the two workstations, and round-8 critique #7 names it: the props
+	# out-shine the player. The bank is lit as one source by _build_lighting, and
+	# THAT pool lands on the floor, where a pool belongs (LAW 4).
 
 # ------------------------------------------------------------ gpu rig -------
 
@@ -872,29 +891,37 @@ static func _build_lighting(parent: Node2D) -> void:
 	var z := Node2D.new()
 	z.name = "Lighting"
 	parent.add_child(z)
-	# 1. Warm amber key, breathing slightly (cheap bulb, obviously).
+	# 1. Warm amber key, breathing slightly (cheap bulb, obviously). The pool is
+	# tighter and one step stronger than round 7's: a 520px wash at 0.18 lit half
+	# the flat to one value, which is the flatness critique #7 is looking at. A
+	# lamp POOLS — it has a centre and an edge.
 	_add_light(z, Vector2(300, 250), WARM, 0.9, 5.0, true)
-	_light_pool(z, Vector2(300, 320), 520.0, WARM, 0.18)
-	# 2. The monitor bank, lit as ONE source across all three screens.
+	_light_pool(z, Vector2(300, 322), 400.0, WARM, 0.22)
+	# 2. The monitor bank, lit as ONE source across all three screens, pooling on
+	# the floor in front of the desk.
 	_add_light(z, Vector2(545, 335), ACCENT, 0.6, 3.4)
-	_light_pool(z, Vector2(545, 404), 400.0, ACCENT, 0.15)
-	# 3. City light through the big window.
-	_add_light(z, Vector2(545, 170), Color(0.48, 0.60, 0.88), 0.7, 4.2)
+	_light_pool(z, Vector2(545, 410), 360.0, ACCENT, 0.22)
+	# 3. City light through the big window — a cool FILL behind the desk, not a
+	# third key. LAW 3 allows two motivated sources and this room's two are the
+	# lamp and the monitor bank; at 0.7 energy and a 0.22 wash the window was
+	# quietly making a third, which is most of why the flat reads evenly lit.
+	_add_light(z, Vector2(545, 170), Color(0.48, 0.60, 0.88), 0.5, 4.2)
 	var pool := Sprite2D.new()
 	pool.texture = _light_tex()
 	pool.material = _additive_mat()
 	pool.position = Vector2(545, 322)
 	var ptw := maxf(1.0, float(pool.texture.get_width()))
 	pool.scale = Vector2(500.0 / ptw, 230.0 / ptw)
-	pool.modulate = Color(0.50, 0.62, 0.92, 0.22)
+	pool.modulate = Color(0.50, 0.62, 0.92, 0.14)
 	pool.z_index = -87
 	z.add_child(pool)
-	# Everything else in the room gets a puddle and no light.
-	_light_pool(z, Vector2(180, 288), 300.0, WARM, 0.16)          # kitchen counter
-	_light_pool(z, Vector2(1320, 872), 340.0, Color(0.42, 0.48, 0.66), 0.12)  # the unslept bed
-	_light_pool(z, Vector2(1120, 430), 360.0, WARM, 0.13)         # the rig's thermals
-	_light_pool(z, Vector2(545, 468), 540.0, WARM, 0.12)          # around the desk
-	_light_pool(z, Vector2(1118, 498), 460.0, WARM, 0.11)         # around the rig
+	# Everything else in the room gets a puddle and no light — and round 8 cuts
+	# that list from five to two. The 540px pool "around the desk" and the 460px
+	# one "around the rig" were unmotivated fill: they sat under the two pools
+	# that DO have a source, doubled their footprint, and turned two lights with
+	# an edge into one continuous wash across the middle of the flat.
+	_light_pool(z, Vector2(1320, 872), 300.0, Color(0.42, 0.48, 0.66), 0.10)  # the unslept bed
+	_light_pool(z, Vector2(1120, 424), 300.0, WARM, 0.14)         # the rig's thermals
 	# 4. Exit-door neon, in the region ACCENT rather than a fourth hue. It is the
 	# one piece of signage in the flat allowed to emit, because it is the answer
 	# to "where do I go".
@@ -911,7 +938,7 @@ static func _build_lighting(parent: Node2D) -> void:
 	tube.z_index = WorldLabel.Z_PLATE - 1
 	z.add_child(tube)
 	_add_light(z, Vector2(1402, 374), ACCENT, 0.55, 3.0)
-	_light_pool(z, Vector2(1490, 520), 460.0, ACCENT, 0.15)
+	_light_pool(z, PORTAL_POS + Vector2(-20, 10), 380.0, ACCENT, 0.15)
 
 ## Claude, standing in the one honest spotlight in the apartment, plus a quiet
 ## puddle on each of the two things the opening actually asks you to touch.
@@ -1022,12 +1049,17 @@ static func _build_signs(parent: Node2D) -> void:
 	var z := Node2D.new()
 	z.name = "Signs"
 	parent.add_child(z)
-	_sign(z, Vector2(1276, 356), "EXIT \u2192", ACCENT, 3, "headline")
-	# On Claude's FAR side, clear of the spawn footprint, the walk lane, his
-	# silhouette and his bark column (all reserved in _reserve_labels). The arrow
-	# points back at him: he is the next thing to the left.
-	_sign(z, Vector2(886, 520), "\u2190 talk to Claude first", ACCENT, 3, "headline")
-	_sign(z, Vector2(600, 424), "\u2191 Dream App terminal", ACCENT, 3)
+	# Above the door and clear of both the rig's monitor faces (reserved to y 350)
+	# and the portal's own 260x220 box (which starts at y 402).
+	_sign(z, Vector2(1276, 366), "EXIT \u2192", ACCENT, 3, "headline")
+	# On Claude's FAR side and at the height of his FEET, never above him
+	# (round-8 critique #9): his name tag owns the whole column above his head and
+	# the frames show this line landing in it. His silhouette is reserved to
+	# y 584, the player's lane to x 866; the arrow points back at him.
+	_sign(z, Vector2(892, 570), "\u2190 talk to Claude first", ACCENT, 3, "headline")
+	# Down-left of the terminal, OUTSIDE Claude's widened name box (x >= 640) and
+	# above the player's own reserved lane (y < 500).
+	_sign(z, Vector2(460, 452), "\u2191 Dream App terminal", ACCENT, 3)
 
 static func _sign(parent: Node2D, pos: Vector2, text: String, color: Color, prio: int = 1, style: String = "plate") -> void:
 	WorldLabel.add(parent, pos, text, color, {"size": 12, "style": style, "priority": prio})
@@ -1074,7 +1106,9 @@ static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 	# a new player can explore/collect/talk before combat is encountered by heading
 	# for the door. (Respawns return to the spawn point, never into this cluster.)
 	var enemy_scene := preload("res://scenes/combat/enemy.tscn")
-	for pos: Vector2 in [Vector2(1360, 540), Vector2(1440, 760)]:
+	# Moved out of the doorway when PORTAL_POS came in off the wall: a bug
+	# standing in the portal's mouth is a fight the player did not choose.
+	for pos: Vector2 in [Vector2(1330, 706), Vector2(1490, 820)]:
 		var en = enemy_scene.instantiate()
 		en.enemy_type = "bug"
 		en.max_hp = 20
@@ -1148,7 +1182,7 @@ static func _add_interact(parent: Node2D, scene: PackedScene, id: String, pos: V
 static func _dim(interactable: Node) -> void:
 	var rect := interactable.get_node_or_null("ColorRect")
 	if rect:
-		rect.color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.18)
+		rect.color = Color(ACCENT.lerp(TEXT_DIM, 0.7), 0.18)
 		rect.offset_left = -6.0
 		rect.offset_top = -6.0
 		rect.offset_right = 6.0
@@ -1169,7 +1203,14 @@ static func _tint(interactable: Node, _color: Color) -> void:
 		# Same 14px footprint as the flavour markers, one clear value step
 		# above them, which is exactly the distinction the old green/violet/red
 		# colour-coding was carrying.
-		rect.color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.34)
+		# ROUND 9: still one value step above the flavour markers, but the hue is
+		# pulled 55% toward TEXT_DIM. At full chroma these three 14px chips read
+		# from across the apartment as saturated cyan LITTER lying on the boards
+		# with no object under them (region_localhost.png, three of them) — LAW 3
+		# gives ACCENT to a screen's lit surface, not to floor decals. Muted,
+		# they read as "something is marked here", which is all they have to do:
+		# the floating [E] prompt is the actual affordance on approach.
+		rect.color = Color(ACCENT.lerp(TEXT_DIM, 0.55), 0.30)
 		rect.offset_left = -7.0
 		rect.offset_top = -7.0
 		rect.offset_right = 7.0

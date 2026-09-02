@@ -8,35 +8,41 @@ extends CanvasLayer
 ## popups (15) and dialogue (20) — a conversation, an incident ticket and the
 ## player's own readout all outrank a boss.
 ##
-## ROUND 6 — ONE PANEL, ONE ACCENT, NO DARKENING.
+## ROUND 7 — ONE STACK, NO PLATES.
 ##
-## Round 5 announced a boss with: a radial scrim over the band, an overbright
-## duplicated glow layer behind the title, two hairlines wiping outward from the
-## centre, an additive accent vignette flaring around all four screen edges, an
-## opaque near-VOID plate with a hot accent lip and an 18px tinted shadow halo, a
-## gradient bar fill with a WHITE_HOT top edge, a red damage ghost, a white chip
-## at the leading edge, and a frame that flashed to 1.7x on every phase. Eleven
-## effects to say "this one hits harder".
+## The round-6 frames announced a boss with TWO plated panels: a gradient banner
+## at the top carrying an incident number, the name and an epithet — which in
+## region_cloud_district.png sat straight over the set-piece caption "THE CLOUD"
+## — plus a second plate at the bottom of the screen carrying the name AGAIN, a
+## live percentage, an 8px gradient bar, the epithet AGAIN and a phase chip. Two
+## boxes, five text registers and the name printed twice, for one enemy.
 ##
 ## What it is now, per VISUAL_BIBLE_V2 LAW 8:
-##   NAME CARD   one modal panel in the announcement band — BASE 96%, 1px LINE
-##               border, radius 2, no shadow — with the boss name in the accent
-##               and two SMALL dim lines. Fades in, fades out.
-##   STATUS BAR  a plain plate, the name, the live percentage, an 8px bar with a
-##               flat accent fill, an epithet and a phase chip.
+##   NAME CARD   ONE line — the boss's name, HEADING size, in the boss accent,
+##               on its own 1px shadow. No plate, no gradient, no incident
+##               number, no sub-line. On screen for 2.5s, then gone.
+##   HEALTH      ONE 4px bar directly under where the name was. No border, no
+##               label, no percentage, no phase chip, no plate. The bar getting
+##               shorter is the readout.
 ##   NOTHING     else. No scrim, no edge flare, no glow, no letterboxing. The
 ##               HUD is never dimmed by a cinematic and the world is never
-##               darkened to make our text legible — the panel does that.
+##               darkened to make our text legible.
 ##
-## LANES (hud.gd's header owns the map; these are the two slots reserved here):
-##   ANNOUNCEMENT BAND   y 222..(222+height), centred, BAND_W wide. Below the
-##                       waypoint's guidance band, which ends at 190
-##                       (objective_waypoint.gd GUIDE_BAND_BOTTOM).
-##   STATUS FRAME        content y -176..-120, plate y -186..-110, centred.
-##                       Clears the toast line (hud.gd TOAST_BOTTOM = -104), the
-##                       ability slots (ABILITY_BAR_TOP = -64) and the key legend
-##                       (-30..-10), and sits right of the objective line
-##                       (x 28..788).
+## The whole boss layer is therefore one column at the top of the frame, which
+## is also the only place it can be: the bottom band is where the objective
+## line, the toast lane, the ability slots and the key legend live.
+##
+## LANES (hud.gd's header owns the map; this is the one slot reserved here):
+##   ANNOUNCEMENT BAND   y 222 down, centred, BAND_W wide. Below the waypoint's
+##                       guidance band, which ends at 190 (objective_waypoint.gd
+##                       GUIDE_BAND_BOTTOM). world_label.gd dodges captions out
+##                       of the top 372 units while a boss is alive, which
+##                       covers every row below.
+##       y 222..256      the name line, and later the defeat stamp (transient)
+##       y 262..266      the health bar (persistent)
+##       y 278..300      phase call-outs, and the defeat stamp's note
+## Every row goes through `_band()`, which is what guarantees no call-out can
+## land on the player, on a HUD lane, or across the bar.
 ##
 ## Nothing here blocks input or pauses the tree — the player fights through all
 ## of it. The layer is PROCESS_MODE_ALWAYS and every tween is
@@ -44,25 +50,31 @@ extends CanvasLayer
 ## at full opacity on screen (HANDOVER §4.4, the black-curtain bug).
 
 const BAR_W := 600.0
-const BAR_H := 8.0
-## Status frame: content box height, and the padding its backing plate adds.
-const FRAME_H := 56.0
-const FRAME_PAD := 14.0
+## LAW 8's bar: four pixels, no border, no label chip. The same hairline the
+## HUD's own HP and Focus bars are drawn at, so the two read as one system.
+const BAR_H := 4.0
 ## Announcement band, in pixels from the top of the screen. 222 and not 112:
 ## `objective_waypoint.gd` pins its chevron at MARGIN_TOP = 112 and hangs its
 ## readout inside GUIDE_BAND_TOP..GUIDE_BAND_BOTTOM (112..190), so everything
 ## down to 190 belongs to guidance.
 const BAND_TOP := 222.0
 const BAND_W := 720.0
-## Name card height.
-const ENTRANCE_H := 96.0
-## How long the card holds before it fades. The whole entrance is 0.25 in +
-## DWELL + 0.32 out and must stay inside EnemyBase's 2.2s `_intro_lock`; at 1.63
-## it lands on 2.20 exactly. If `_intro_lock` moves, move this with it.
-const ENTRANCE_DWELL := 1.63
+## The three rows of the band, as offsets from BAND_TOP.
+const NAME_ROW_H := 34.0
+const BAR_ROW := 40.0
+const CALLOUT_ROW := 56.0
+## How long the whole entrance lasts: 0.25 in + ENTRANCE_DWELL + 0.32 out.
+## Round 6 held it inside EnemyBase's 2.2s `_intro_lock` because the card was an
+## opaque plate covering a third of the screen. One line of text is not a
+## curtain, so the card is now allowed to finish fading ~0.3s after the boss
+## starts acting, which is what "shown 2.5s then gone" costs.
+const ENTRANCE_DWELL := 1.93
 
 ## Comedy bible: the joke rides ALONGSIDE the information. The name is the
-## information (which boss is this), the subtitle is the joke.
+## information (which boss is this) and it is what the card prints; the epithet
+## is the joke and it now lives where the player CHOOSES to read it (LAW 10) —
+## `boss_sub` is still published for dialogue, the quest log and the results
+## screen, it is simply not stamped over the world any more.
 const BOSS_CARDS := {
 	"merge_conflict": ["THE MERGE CONFLICT", "1,204 files changed · nobody remembers why"],
 	"enterprise_architect": ["THE ENTERPRISE ARCHITECT", "has never merged a pull request"],
@@ -88,15 +100,6 @@ const PHASE_BANNERS := [
 	"PHASE 4 — the postmortem has been pre-written",
 ]
 
-## Short form for the persistent chip under the bar. The banner is the moment;
-## the chip is the state you can still read ten seconds later. Same indexing.
-const PHASE_CHIPS := [
-	"",
-	"PHASE 2 · ESCALATED",
-	"PHASE 3 · WAR ROOM",
-	"PHASE 4 · POSTMORTEM",
-]
-
 var accent: Color = Color("#FF4757")
 var boss_name: String = "BOSS"
 var boss_sub: String = "severity: yes · owner: unassigned"
@@ -104,17 +107,11 @@ var boss_sub: String = "severity: yes · owner: unassigned"
 var _root: Control
 var _card: Control
 var _bar_root: Control
-## Everything inside the status frame hangs off this, so damage can shake the
-## whole frame without fighting the anchors that keep it out of the HUD's lanes.
+## The bar hangs off this, so damage can shake it without fighting the anchors
+## that keep the row where it is.
 var _frame: Control
-var _plate: Panel
 var _track: ColorRect
-var _fill: TextureRect
-var _bar_name: Label
-var _bar_sub: Label
-var _pct: Label
-var _phase_chip: Label
-var _pips: Array[ColorRect] = []
+var _fill: ColorRect
 var _fill_tween: Tween
 var _shake_tween: Tween
 ## The entrance's own tween, tracked so anything that needs the announcement
@@ -123,7 +120,6 @@ var _shake_tween: Tween
 var _entrance_tween: Tween
 var _entered := false
 var _frac := 1.0
-var _phase := 1
 
 func _init() -> void:
 	layer = 3
@@ -143,7 +139,7 @@ func _ready() -> void:
 	_bar_root.modulate.a = 0.0
 
 ## Whenever the tree is paused a full-screen modal is up and there is nothing to
-## read here, so the frame steps out of the way rather than showing through. It
+## read here, so the bar steps out of the way rather than showing through. It
 ## keeps animating while paused — nothing freezes half-faded (HANDOVER §4.4) —
 ## it is only hidden.
 func _process(_delta: float) -> void:
@@ -170,184 +166,77 @@ func setup(enemy_type: String, tint: Color) -> void:
 	else:
 		boss_name = enemy_type.replace("_", " ").to_upper()
 		boss_sub = "severity: yes · owner: unassigned"
-	if is_instance_valid(_bar_name):
-		_bar_name.text = boss_name
-	if is_instance_valid(_bar_sub):
-		_bar_sub.text = boss_sub
-	# The frame is built before setup() runs, so it is built in the DEFAULT red.
-	# Re-tint everything the boss colour drives, not just the name label.
+	# The bar is built before setup() runs, so it is built in the DEFAULT red.
 	_apply_accent()
-
-## Stable per-boss incident number — the same gag the event popups file under.
-## Decorative only: nothing depends on reading it.
-func _inc_number() -> String:
-	return "INC-%04d" % (absi(boss_name.hash()) % 9000 + 1000)
 
 # ------------------------------------------------------------- the bar ----
 
+## One 4px bar, centred, in the band's second row. Two ColorRects: the track it
+## drains along and the accent that is left. No plate, no border, no name, no
+## percentage, no epithet, no phase chip — every one of those was a second way
+## of saying what the bar's own length already says.
 func _build_bar() -> void:
 	_bar_root = Control.new()
 	_bar_root.name = "StatusFrame"
 	_bar_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_bar_root.anchor_left = 0.5
 	_bar_root.anchor_right = 0.5
-	_bar_root.anchor_top = 1.0
-	_bar_root.anchor_bottom = 1.0
-	# Parked in the gap between the world and the HUD's bottom band. The plate
-	# reaches 10px above and 10px below this box, so its lowest edge is -110 —
-	# clear of the toast line at -104 and well clear of the ability slots at -64.
 	_bar_root.offset_left = -BAR_W * 0.5
 	_bar_root.offset_right = BAR_W * 0.5
-	_bar_root.offset_top = -176.0
-	_bar_root.offset_bottom = -176.0 + FRAME_H
+	_bar_root.offset_top = BAND_TOP + BAR_ROW
+	_bar_root.offset_bottom = BAND_TOP + BAR_ROW + BAR_H
 	_root.add_child(_bar_root)
 
 	_frame = Control.new()
 	_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_frame.position = Vector2.ZERO
-	_frame.size = Vector2(BAR_W, FRAME_H)
+	_frame.size = Vector2(BAR_W, BAR_H)
 	_bar_root.add_child(_frame)
-
-	# Backing plate, on the modal rule. It used to be fully opaque near-VOID with
-	# a hot accent lip and an 18px halo, on the argument that a world caption was
-	# ghosting through it at 12%. A 96% panel with a hairline border is opaque
-	# enough for that and stops announcing itself as a separate object.
-	_plate = Panel.new()
-	_plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_plate.position = Vector2(-FRAME_PAD, -10.0)
-	_plate.size = Vector2(BAR_W + FRAME_PAD * 2.0, FRAME_H + 20.0)
-	_frame.add_child(_plate)
-
-	# Row 1 — name on the left, live percentage on the right. The percentage is
-	# information, so it gets the same weight as the name.
-	_bar_name = Label.new()
-	_bar_name.text = boss_name
-	_bar_name.add_theme_font_override("font", GameTheme.spaced_font(2))
-	_bar_name.add_theme_font_size_override("font_size", GameTheme.BODY)
-	_bar_name.add_theme_color_override("font_color", accent)
-	_bar_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_bar_name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_bar_name.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_bar_name.position = Vector2(0, 0)
-	_bar_name.size = Vector2(BAR_W - 90.0, 24.0)
-	_frame.add_child(_bar_name)
-
-	_pct = Label.new()
-	_pct.text = "100%"
-	_pct.add_theme_font_size_override("font_size", GameTheme.BODY)
-	_pct.add_theme_color_override("font_color", GameTheme.TEXT)
-	_pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_pct.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_pct.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_pct.position = Vector2(BAR_W - 90.0, 0)
-	_pct.size = Vector2(90.0, 24.0)
-	_frame.add_child(_pct)
 
 	_track = ColorRect.new()
 	_track.color = GameTheme.with_alpha(GameTheme.VOID, 0.72)
 	_track.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_track.position = Vector2(0, 28)
+	_track.position = Vector2.ZERO
 	_track.size = Vector2(BAR_W, BAR_H)
 	_frame.add_child(_track)
 
-	_fill = TextureRect.new()
-	_fill.texture = GameTheme.bar_gradient_texture(accent, GameTheme.hot_of(accent))
-	_fill.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_fill.stretch_mode = TextureRect.STRETCH_SCALE
+	# Flat accent, not a gradient with a hot top edge: LAW 8's bars report one
+	# number and at four pixels tall the only thing that reads is their length.
+	_fill = ColorRect.new()
+	_fill.color = accent
 	_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_fill.position = Vector2.ZERO
 	_fill.size = Vector2(BAR_W, BAR_H)
 	_track.add_child(_fill)
 
-	# Phase gates at 75/50/25%. Kept in draining order (phase 2 first) so
-	# `_flare_pip()` can index them straight off the phase number.
-	_pips.clear()
-	for k: float in [0.75, 0.5, 0.25]:
-		var pip := ColorRect.new()
-		pip.color = GameTheme.with_alpha(GameTheme.VOID, 0.9)
-		pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		pip.position = Vector2(BAR_W * k - 1.0, 0.0)
-		pip.size = Vector2(1, BAR_H)
-		pip.z_index = 2
-		_track.add_child(pip)
-		_pips.append(pip)
-
-	# Row 3 — epithet on the left, phase chip on the right.
-	var sub := Label.new()
-	sub.text = boss_sub
-	sub.add_theme_font_size_override("font_size", GameTheme.SMALL)
-	sub.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	sub.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	sub.position = Vector2(0, 40)
-	sub.size = Vector2(BAR_W - 190.0, 16.0)
-	sub.name = "BossSub"
-	_frame.add_child(sub)
-	_bar_sub = sub
-
-	_phase_chip = Label.new()
-	_phase_chip.text = ""
-	_phase_chip.add_theme_font_size_override("font_size", GameTheme.SMALL)
-	_phase_chip.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
-	_phase_chip.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_phase_chip.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_phase_chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_phase_chip.position = Vector2(BAR_W - 190.0, 40)
-	_phase_chip.size = Vector2(190.0, 16.0)
-	_frame.add_child(_phase_chip)
-
 	_apply_accent()
-
-## The status frame's backing — the one modal panel style, nothing else.
-func _plate_box() -> StyleBoxFlat:
-	return GameTheme.panel_box(accent, 0.0)
 
 ## Re-tint everything the boss colour drives. Safe to call before or after the
 ## nodes exist; `setup()` calls it once the real tint is known.
 func _apply_accent() -> void:
-	if is_instance_valid(_plate):
-		_plate.add_theme_stylebox_override("panel", _plate_box())
 	if is_instance_valid(_fill):
-		_fill.texture = GameTheme.bar_gradient_texture(accent, GameTheme.hot_of(accent))
-	if is_instance_valid(_bar_name):
-		_bar_name.add_theme_color_override("font_color", accent)
+		_fill.color = accent
 
 ## Health, 0..1 of max. The fill moves in 0.22s and anything over 6% of the bar
-## kicks the frame. The lagging red ghost and the white leading-edge chip are
-## gone — the bar getting shorter is the readout.
+## kicks it sideways. The lagging red ghost, the white leading-edge chip and the
+## live percentage are gone — the bar getting shorter is the readout.
 func set_health(current: int, maximum: int) -> void:
 	if not is_instance_valid(_fill):
 		return
 	var f := clampf(float(current) / float(maxi(1, maximum)), 0.0, 1.0)
 	var lost := maxf(0.0, _frac - f)
 	_frac = f
-	_update_pct()
 	if _fill_tween and _fill_tween.is_valid():
 		_fill_tween.kill()
 	_fill_tween = _tw()
 	_fill_tween.tween_property(_fill, "size:x", BAR_W * f, 0.22) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	if lost >= 0.06:
-		_shake(minf(7.0, 3.0 + lost * 30.0))
+		_shake(minf(4.0, 2.0 + lost * 16.0))
 
-## The live percentage, and the colour that says how worried to be.
-func _update_pct() -> void:
-	if not is_instance_valid(_pct):
-		return
-	var pc := int(round(_frac * 100.0))
-	if pc == 0 and _frac > 0.0:
-		pc = 1
-	_pct.text = "%d%%" % pc
-	var col := GameTheme.TEXT
-	if _frac <= 0.25:
-		col = GameTheme.RED
-	elif _frac <= 0.5:
-		col = GameTheme.AMBER
-	_pct.add_theme_color_override("font_color", col)
-
-## Kick the whole status frame sideways. Only the frame moves — the anchors that
-## keep it out of the HUD's lanes are untouched.
+## Kick the bar sideways. Only the inner frame moves — the anchors that keep the
+## row where it is are untouched. Four pixels of travel at most: a hairline that
+## wobbles further than its own height reads as a rendering fault.
 func _shake(px: float) -> void:
 	if not is_instance_valid(_frame):
 		return
@@ -369,22 +258,22 @@ func _shake(px: float) -> void:
 # ---------------------------------------------------- announcement band ----
 
 ## A fresh, empty box in the reserved band. EVERY boss call-out goes through
-## here, which is what guarantees none of them can land on the player or on a
-## HUD lane.
-func _band(height: float) -> Control:
+## here, which is what guarantees none of them can land on the player, on a HUD
+## lane, or on the health bar's own row.
+func _band(height: float, top: float = BAND_TOP) -> Control:
 	var c := Control.new()
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	c.anchor_left = 0.5
 	c.anchor_right = 0.5
 	c.offset_left = -BAND_W * 0.5
 	c.offset_right = BAND_W * 0.5
-	c.offset_top = BAND_TOP
-	c.offset_bottom = BAND_TOP + height
+	c.offset_top = top
+	c.offset_bottom = top + height
 	_root.add_child(c)
 	return c
 
 ## Centred band label. No outline: the theme's one-pixel shadow does the job, and
-## a 4–7px outline on a 44px title is a black slab with letters cut out of it.
+## a 4–7px outline on a 26px title is a black slab with letters cut out of it.
 func _band_label(host: Control, text: String, size: int, col: Color,
 		top: float, height: float, spacing: int = 0) -> Label:
 	var l := Label.new()
@@ -401,70 +290,28 @@ func _band_label(host: Control, text: String, size: int, col: Color,
 	host.add_child(l)
 	return l
 
-## A hairline under the name. Static — the outward wipe was motion for its own
-## sake, and it is the only rule left on the card.
-func _band_rule(host: Control, top: float, col: Color) -> ColorRect:
-	var r := ColorRect.new()
-	r.color = col
-	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	r.anchor_left = 0.5
-	r.anchor_right = 0.5
-	r.offset_left = -140.0
-	r.offset_right = 140.0
-	r.offset_top = top
-	r.offset_bottom = top + 1.0
-	host.add_child(r)
-	return r
-
-## The full-screen accent flare is REMOVED. It brightened all four screen edges
-## on every entrance, every phase and the kill — a post-effect on top of a
-## post-effect stack the bible now caps at "invisible" (LAW 5). Kept as a no-op
-## so the three call sites read the same as before.
-func _flash_edges(strength: float) -> void:
-	if strength <= 0.0:
-		return
-
 # ------------------------------------------------------------ entrance ----
 
-## The name card fades in inside the reserved band, the status frame rises into
-## place, the card fades out. Nothing covers the player and nothing touches a
-## HUD lane.
+## The name fades in on the world, the bar fades in under it, the name fades out
+## again. Nothing covers the player, nothing covers a world caption, and nothing
+## touches a HUD lane.
 ##
-## Length: 0.25 in + ENTRANCE_DWELL + 0.32 out = 2.20s, which is exactly
-## EnemyBase's `_intro_lock`.
+## Length: 0.25 in + ENTRANCE_DWELL + 0.32 out = 2.50s.
 func play_entrance() -> void:
 	if _entered or not is_instance_valid(_root):
 		return
 	_entered = true
-	_card = _band(ENTRANCE_H)
+	_card = _band(NAME_ROW_H)
 
-	# One modal panel, centred in the band, sized to its own text.
-	var panel := PanelContainer.new()
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.anchor_left = 0.5
-	panel.anchor_right = 0.5
-	panel.offset_left = -BAND_W * 0.5
-	panel.offset_right = BAND_W * 0.5
-	panel.offset_top = 0.0
-	panel.offset_bottom = ENTRANCE_H
-	panel.add_theme_stylebox_override("panel", GameTheme.panel_box(accent, 16.0))
-	_card.add_child(panel)
+	# ONE line. HEADING size, the boss accent, the theme's 1px shadow — the same
+	# treatment the region name in the HUD strip gets, because it is the same
+	# kind of statement: this is where you are, this is what you are fighting.
+	_band_label(_card, boss_name, GameTheme.HEADING, accent, 0.0, NAME_ROW_H, 2)
 
-	var col := VBoxContainer.new()
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 6)
-	panel.add_child(col)
-
-	_card_line(col, "%s · SEVERITY: YES" % _inc_number(), GameTheme.SMALL,
-		GameTheme.TEXT_DIM, 4)
-	_card_line(col, boss_name, GameTheme.HEADING, accent, 3)
-	_card_line(col, boss_sub, GameTheme.SMALL, GameTheme.TEXT_DIM, 0)
-
-	# The frame rises into place rather than appearing: 10px of travel reads as
-	# an arrival and is short enough not to be a distraction.
+	# The bar rises into place rather than appearing: 6px of travel reads as an
+	# arrival and is short enough not to be a distraction.
 	if is_instance_valid(_frame):
-		_frame.position = Vector2(0, 10.0)
+		_frame.position = Vector2(0, 6.0)
 	_card.modulate.a = 0.0
 
 	if _entrance_tween and _entrance_tween.is_valid():
@@ -480,18 +327,6 @@ func play_entrance() -> void:
 	tw.tween_property(_card, "modulate:a", 0.0, 0.32)
 	tw.tween_callback(_clear_card)
 
-func _card_line(host: Node, text: String, size: int, col: Color, spacing: int) -> Label:
-	var l := Label.new()
-	l.text = text
-	if spacing > 0:
-		l.add_theme_font_override("font", GameTheme.spaced_font(spacing))
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", col)
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	host.add_child(l)
-	return l
-
 ## The last beat of the entrance. `queue_free()` is deferred to the end of the
 ## frame, so hide it in the same call — a card the tween has finished with must
 ## not be able to paint one more frame at whatever alpha it happens to hold.
@@ -503,10 +338,10 @@ func _clear_card() -> void:
 
 ## Take the announcement band back NOW.
 ##
-## The entrance owns the band for 2.2s and `_frame.position` for the first 0.30s
+## The entrance owns the band for 2.5s and `_frame.position` for the first 0.30s
 ## of that. Anything that needs either before it is done has to cut it rather
-## than draw over a card that is still mid-fade. Leaves the status frame settled
-## and fully faded in, which is exactly where the entrance would have left it.
+## than draw over a card that is still mid-fade. Leaves the bar settled and
+## fully faded in, which is exactly where the entrance would have left it.
 func _cancel_entrance() -> void:
 	if _entrance_tween and _entrance_tween.is_valid():
 		_entrance_tween.kill()
@@ -523,27 +358,26 @@ func _cancel_entrance() -> void:
 
 # -------------------------------------------------------------- phases ----
 
-## One line in the announcement band, the gate that was just crossed lights up,
-## and the chip under the bar updates so the phase is still readable long after
-## the line is gone.
+## One line under the bar, and gone again. The persistent phase chip is removed
+## with the rest of the plate: the phase is a moment, and the bar's own length
+## is the state you can still read ten seconds later.
 func announce_phase(phase_index: int) -> void:
 	if not is_instance_valid(_root):
 		return
-	# `phase_index` is the LIVE phase (2, 3, 4), and both tables are written
-	# phase-first — entry 0 is phase 1. Indexing them by the phase itself is off
-	# by one, which is how the 75% gate printed phase 3's banner and phase 2's
-	# was authored but unreachable. Read both with `phase - 1`.
-	var phase := clampi(phase_index, 1, mini(PHASE_BANNERS.size(), PHASE_CHIPS.size()))
+	# `phase_index` is the LIVE phase (2, 3, 4), and the table is written
+	# phase-first — entry 0 is phase 1. Indexing it by the phase itself is off by
+	# one, which is how the 75% gate printed phase 3's banner and phase 2's was
+	# authored but unreachable. Read it with `phase - 1`.
+	var phase := clampi(phase_index, 1, PHASE_BANNERS.size())
 	var text: String = PHASE_BANNERS[phase - 1]
 	if text.is_empty():
 		return
-	_phase = phase
 	# One hit big enough to cross a gate inside EnemyBase's intro lock would
 	# otherwise stack this line on the entrance card, in the same band.
 	_cancel_entrance()
 
-	var host := _band(30.0)
-	var lbl := _band_label(host, text, GameTheme.BODY, GameTheme.TEXT, 0.0, 30.0, 3)
+	var host := _band(26.0, BAND_TOP + CALLOUT_ROW)
+	var lbl := _band_label(host, text, GameTheme.BODY, GameTheme.TEXT, 0.0, 26.0, 3)
 	lbl.modulate.a = 0.0
 
 	var tw := _tw()
@@ -552,25 +386,8 @@ func announce_phase(phase_index: int) -> void:
 	tw.tween_property(host, "modulate:a", 0.0, 0.35)
 	tw.tween_callback(host.queue_free)
 
-	_flare_pip(phase)
-	_shake(5.0)
-	if is_instance_valid(_phase_chip):
-		_phase_chip.text = PHASE_CHIPS[phase - 1]
+	_shake(3.0)
 	AudioManager.play_sfx("denied")
-
-## The gate the boss just fell through lights up. Takes the LIVE phase number;
-## `_pips` is stored in draining order, so phase 2 (the 75% gate) is pip 0.
-func _flare_pip(phase_index: int) -> void:
-	var i := phase_index - 2
-	if i < 0 or i >= _pips.size():
-		return
-	# One big hit can skip a gate outright — EnemyBase jumps straight to the
-	# phase the current HP implies — so light EVERY gate now behind the boss. A
-	# dark 75% marker on a boss sitting at 20% is a lie about the bar.
-	for j in i + 1:
-		var passed: ColorRect = _pips[j]
-		if is_instance_valid(passed):
-			passed.color = GameTheme.with_alpha(GameTheme.TEXT, 0.8)
 
 # --------------------------------------------------------------- death ----
 
@@ -586,13 +403,14 @@ func detach() -> void:
 	p.remove_child(self)
 	host.add_child(self)
 
-## Bar drains and the incident is formally closed in the announcement band. The
-## joke is that the action-item count is honest.
+## Bar drains and the incident is formally closed, in the band the name used.
+## One line and one dim line under it — the hairline rule between them went with
+## every other divider on this layer.
 func play_death() -> void:
 	if not is_instance_valid(_root):
 		return
 	# The stamp goes in the announcement band; a card still fading in it would
-	# read as two incidents at once. Also settles the frame and its alpha.
+	# read as two incidents at once. Also settles the bar and its alpha.
 	_cancel_entrance()
 	if _fill_tween and _fill_tween.is_valid():
 		_fill_tween.kill()
@@ -601,19 +419,16 @@ func play_death() -> void:
 	if is_instance_valid(_frame):
 		_frame.position = Vector2.ZERO
 	_frac = 0.0
-	_update_pct()
-	if is_instance_valid(_phase_chip):
-		_phase_chip.text = "RESOLVED"
 
-	var host := _band(72.0)
+	# The stamp takes the name's row and the note takes the call-out row, so the
+	# drained bar sits BETWEEN them rather than through the middle of a sentence.
+	var host := _band(CALLOUT_ROW + 22.0)
 	var stamp := _band_label(host, "INCIDENT CLOSED", GameTheme.HEADING,
-		GameTheme.TEXT, 0.0, 34.0, 6)
-	var rule := _band_rule(host, 38.0, GameTheme.with_alpha(accent, 0.7))
+		GameTheme.TEXT, 0.0, NAME_ROW_H, 6)
 	var line := _band_label(host,
 		"root cause: you · action items: 3 · completed: 0 · reopened next quarter: 3",
-		GameTheme.SMALL, GameTheme.TEXT_DIM, 46.0, 22.0)
+		GameTheme.SMALL, GameTheme.TEXT_DIM, CALLOUT_ROW, 22.0)
 	stamp.modulate.a = 0.0
-	rule.modulate.a = 0.0
 	line.modulate.a = 0.0
 
 	var tw := _tw()
@@ -623,7 +438,6 @@ func play_death() -> void:
 		tw.tween_interval(0.5)
 	tw.tween_callback(_death_beat)
 	tw.parallel().tween_property(stamp, "modulate:a", 1.0, 0.22)
-	tw.parallel().tween_property(rule, "modulate:a", 1.0, 0.30)
 	tw.parallel().tween_property(line, "modulate:a", 1.0, 0.34)
 	tw.tween_interval(1.4)
 	tw.tween_property(_root, "modulate:a", 0.0, 0.6)

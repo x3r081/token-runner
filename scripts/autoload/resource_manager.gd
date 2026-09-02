@@ -40,6 +40,22 @@ func _ready() -> void:
 func reset() -> void:
 	resources = RESOURCE_DEFAULTS.duplicate()
 
+## Take resources off a save file without inheriting its GAPS.
+##
+## `modify()` refuses any name the dictionary does not already hold — which is
+## correct, it stops typos inventing currencies — but SaveManager used to assign
+## the loaded dictionary straight through. A save written before a resource
+## existed therefore left that resource permanently frozen: get_value() reads 0,
+## modify() returns false, can_afford() is never satisfied, and nothing anywhere
+## says why. Missing keys come back at their default; keys the save does carry
+## win, clamped to their cap so a hand-edited or older-cap save cannot exceed it.
+func adopt(loaded: Dictionary) -> void:
+	var merged: Dictionary = RESOURCE_DEFAULTS.duplicate()
+	for k in loaded:
+		if merged.has(k):
+			merged[k] = clampf(float(loaded[k]), 0.0, float(RESOURCE_CAPS.get(k, 99999)))
+	resources = merged
+
 func get_value(name: String) -> float:
 	return float(resources.get(name, 0))
 

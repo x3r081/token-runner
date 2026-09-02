@@ -3,8 +3,9 @@ class_name NPC
 ## A resident of the world who is, crucially, PAYING ATTENTION.
 ##
 ## Three layers of "this thing noticed you":
-##   1. Presence  — breathing, a lean toward the player, a notice-pop when you
-##                  first walk into their bubble, a rim highlight in talk range.
+##   1. Presence  — one pixel of breathing, a lean toward the player, and a
+##                  notice-pop when you first walk into their bubble. Nothing
+##                  lights up: LAW 3 keeps NPCs out of the five bright things.
 ##   2. Nameplate — legible above the head (never over the sprite) at ANY
 ##                  distance, with a leader tying it to the character it names.
 ##                  It gains a little presence as you approach; it never fades
@@ -31,8 +32,6 @@ const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 var _anim_t := 0.0
 var _spr_base_y := 0.0
 var _ind_base_y := 0.0
-var _hl_gate := 0.0
-var _ind_base_scale := Vector2.ONE
 var _mark: Label = null
 
 ## Attention / reactivity state.
@@ -55,7 +54,6 @@ var _lift := 0.0
 var _lift_want := 0.0
 var _lift_poll := 0.0
 
-const HIGHLIGHT_RADIUS := 100.0
 ## Nameplates gain a little presence as you approach — but the floor is a
 ## LEGIBLE alpha, not a decorative one. A name you cannot read is not a name.
 const NAME_RADIUS := 340.0
@@ -71,28 +69,26 @@ const NAME_BOTTOM_Y := -86.0
 ## darkest (#FF2D95 reseller pink 0.707, #FF4757 on-call red 0.732, #8B5CF6
 ## junior violet 0.735) toward white until they read against a dark floor.
 const NAME_MIN_LUMA := 0.74
-## objective_waypoint.gd hangs its "<name> · <n>m" readout directly above
-## whatever it is pointing at, which for an NPC objective is the same band this
-## nameplate lives in — the two-plates-on-Claude collision in
-## region_localhost.png. That plate is opaque and it is on a CanvasLayer, so it
-## wins; the only move available from here is to get out from under it.
+## ROUND 9 — THIS LIFT IS ZERO NOW, AND THE REASON IT EXISTED IS GONE.
 ##
-## Derived against the CURRENT waypoint code, screen px, camera zoom 1.35:
+## It was derived against the round-6 waypoint, which hung its "<name> · <n>m"
+## readout in the SAME band as this nameplate (the two-plates-on-Claude
+## collision in region_localhost.png), at camera zoom 1.35. Raising the whole
+## attention stack 38 units got the name out from under that plate.
 ##
-##   target       O
-##   sp           O - 14*1.35            = O - 18.9   (its world nudge)
-##   marker       sp - BEACON_LIFT 52 - 6 = O - 76.9  (top of its +/-6 bob)
-##   plate top    marker - MARKER_CLEAR 44 - plate height (~31 at font 14
-##                plus PLATE_PAD_Y 6 twice)           = O - 151.9
+## objective_waypoint.gd was rewritten since: _npc_clearance() now READS this
+## Label's live rect and floats the beacon a fixed 44px above its top edge, so
+## the two can no longer overlap by construction — and every unit of lift here
+## is multiplied by the camera zoom (1.5 now, world_label.gd DODGE_MAX) and
+## added to the beacon's own height, pushing the chevron ~57 screen px further
+## from the NPC it is pointing at. The collision it was written for cannot
+## happen, and the cure had become the disease.
 ##
-## The nameplate's own bottom edge sits at (NAME_BOTTOM_Y + lift) * 1.35 above O,
-## so clearing O - 151.9 with ~15px to spare needs a lift of 38, not the 24 a
-## first pass arrived at from the OLD waypoint layout (a bare Label offset a flat
-## 40px from the marker centre — that node was rewritten this same round and its
-## readout now sits ~40px higher than it did in the QA frames).
-##
-## The whole attention stack moves as one unit, so its spacing is preserved.
-const NAME_TARGET_LIFT := 38.0
+## The mechanism is deliberately LEFT IN PLACE rather than deleted: it is two
+## lines, it is the only tool available if a future HUD element lands in this
+## band again, and `_lift_want` / `_lift` are read by the bark and marker
+## placement. Setting it to a non-zero value re-arms the whole stack.
+const NAME_TARGET_LIFT := 0.0
 ## How often an NPC re-asks whether it is the current objective. get_current_
 ## objective() builds a Dictionary, so this is deliberately not per-frame.
 const LIFT_POLL := 0.45
@@ -275,11 +271,15 @@ func _set_lift(v: float) -> void:
 	if is_instance_valid(indicator):
 		_ind_base_y = INDICATOR_Y - _lift
 
-## The quest marker: a "!" glyph over a soft halo, so open quests advertise
-## themselves. This is GUIDANCE and it stays fully legible — the glyph keeps its
-## GOLD and its full size. What comes down is the halo behind it, from an
-## overbright (2.4, 2.0, 0.5) additive disc to something just under the bloom
-## threshold, and the 5px glyph outline to a 1px drop shadow (LAW 4).
+## The quest marker: ONE chevron, in the region ACCENT, with a 1px drop shadow.
+##
+## What came off, this round: the halo. The marker was an additive fx_glow_dot
+## disc at 1.3x scale sitting behind the glyph — a light source hovering over an
+## idle NPC, which is neither one of LAW 3's five bright things nor on LAW 1's
+## grid. LAW 8 gives the UI ONE accent for world-linked guidance, so the GOLD
+## "!" goes too (LAW 2 reserves gold for tokens and currency); "this one has
+## something for you" and "this one IS your objective" are the same instruction —
+## walk here and press [E] — and they now look the same.
 func _build_indicator_glow() -> void:
 	if not is_instance_valid(indicator):
 		return
@@ -287,33 +287,30 @@ func _build_indicator_glow() -> void:
 	indicator.position = Vector2(0, INDICATOR_Y - _lift)
 	indicator.z_as_relative = false
 	indicator.z_index = Z_MARKER
-	# The scene ships this node at modulate (1, 0.9, 0.2) — a gold tint that
-	# would multiply straight through onto the child glyph and turn the cyan
-	# "you are here" marker olive. `modulate` is reserved for the bark duck.
+	# The scene ships this node at modulate (1, 0.9, 0.2) and, on some scenes, a
+	# texture; both are cleared so the marker is the glyph and nothing else.
 	indicator.modulate = Color.WHITE
-	var dot := FxLib.glow_dot()
-	if dot and indicator.texture == null:
-		indicator.texture = dot
-		indicator.material = FxLib.additive_material()
-		# self_modulate, NOT modulate: `modulate` multiplies down through
-		# children, and the "!" glyph is a child. Dimming the halo must never
-		# dim the thing the halo exists to point at — guidance gets quieter,
-		# never weaker. `modulate` is left to the bark duck alone.
-		indicator.self_modulate = Color(0.98, 0.84, 0.30, 0.55)
-		indicator.scale = Vector2(1.3, 1.3)
-	_ind_base_scale = indicator.scale
+	indicator.self_modulate = Color.WHITE
+	indicator.texture = null
+	indicator.material = null
+	indicator.scale = Vector2.ONE
 	var mark := Label.new()
 	mark.name = "Mark"
-	mark.text = "!"
+	mark.text = "▾"
 	mark.add_theme_font_size_override("font_size", 18)
-	mark.add_theme_color_override("font_color", _GameTheme.GOLD)
+	mark.add_theme_color_override("font_color", _marker_accent())
 	mark.add_theme_constant_override("outline_size", 0)
 	mark.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.8))
 	mark.add_theme_constant_override("shadow_offset_x", 1)
 	mark.add_theme_constant_override("shadow_offset_y", 1)
-	mark.position = Vector2(-5, -15)
+	mark.position = Vector2(-6, -15)
 	indicator.add_child(mark)
 	_mark = mark
+
+## LAW 8: world-linked guidance is drawn in the region ACCENT, not in a colour
+## per marker state. Falls back to CYAN for an unknown region.
+func _marker_accent() -> Color:
+	return _GameTheme.region_accent(GameManager.current_region)
 
 ## The bark: one PanelContainer for layout + one Label, built once and reused
 ## for the whole run. No per-bark allocation beyond the line of text itself.
@@ -403,8 +400,12 @@ func _animate_sprite(delta: float, dist: float, dx: float) -> void:
 	# round 5 oscillated the scale between 2.156 and 2.266, i.e. the character
 	# was on a different pixel grid from the floor on every single frame.
 	# roundf() lands it on a whole world pixel: 0, then 1, then 0 — exactly one
-	# pixel of travel, half a second each way.
-	sprite.position.y = _spr_base_y + roundf(0.5 + 0.5 * sin(_anim_t * 1.4))
+	# pixel of travel. The rate is 2.0 rad/s (1.57s on each pixel), matching the
+	# player's idle breath; at the old 1.4 a full half-cycle was 2.24s, so an NPC
+	# spawned on an unlucky random phase could hold the SAME pixel for longer
+	# than tests/animation_test's 2.0s observation window and read as a frozen
+	# sticker (the test failed intermittently, roughly one run in ten).
+	sprite.position.y = _spr_base_y + roundf(0.5 + 0.5 * sin(_anim_t * 2.0))
 	# The notice-pop startle decays as before; it just no longer resizes anybody.
 	_notice_pop = maxf(_notice_pop - delta * 2.4, 0.0)
 	# Lean toward the player. A nearly symmetric sprite reads a small shift far
@@ -415,14 +416,12 @@ func _animate_sprite(delta: float, dist: float, dx: float) -> void:
 		want_lean = signf(dx)
 	_lean = move_toward(_lean, want_lean, delta * 2.6)
 	sprite.position.x = roundf(_lean * 2.0)
-	# Interaction highlight: a small STILL step-up when the player is close
-	# enough to talk — the world's way of saying "this one has lines". Round 5
-	# pulsed it to an overbright 1.65, which put every NPC in the room into the
-	# same brightness band as the player (LAW 3) twice a second (LAW 9).
-	_hl_gate = move_toward(_hl_gate, 1.0 if dist < HIGHLIGHT_RADIUS else 0.0, delta * 5.0)
-	if _hl_gate > 0.001:
-		sprite.self_modulate = Color.WHITE.lerp(Color(1.12, 1.14, 1.16), _hl_gate)
-	elif sprite.self_modulate != Color.WHITE:
+	# No interaction highlight. LAW 3 allows five bright things and an NPC is not
+	# one of them; the 1.12-1.16 step-up this used to apply in talk range was
+	# over the bloom threshold (LAW 5), so walking up to somebody quietly lit
+	# them. What says "this one has lines" is the chevron over their head and the
+	# [E] prompt — two signals is already one more than the law asks for.
+	if sprite.self_modulate != Color.WHITE:
 		sprite.self_modulate = Color.WHITE
 
 func _animate_nameplate(delta: float, dist: float) -> void:
@@ -459,9 +458,9 @@ func _animate_indicator(delta: float) -> void:
 	# its scale at 6.4 rad/s — LAW 9 allows the bob; the rest was a marker
 	# competing with the objective waypoint that is already pointing at it.
 	indicator.position.y = _ind_base_y + roundf(sin(_anim_t * 2.2) * 2.0)
-	var duck := 1.0 - _bark_gate * 0.75
-	indicator.scale = _ind_base_scale * duck
-	# The marker and its glyph both step aside while this NPC is speaking.
+	# The marker steps aside while this NPC is speaking — on ALPHA alone. The
+	# scale duck that used to run alongside it resampled the glyph for the length
+	# of every bark, and the fade already takes the marker to nothing (LAW 1).
 	indicator.modulate.a = 1.0 - _bark_gate
 
 func _on_interact(_player: Node) -> void:
@@ -477,9 +476,11 @@ func _on_quest_changed(_a = null, _b = null) -> void:
 	_update_indicator()
 	_refresh_lift()
 
-## Gold "!" = this NPC is holding a quest you have not taken.
-## Cyan "▸" = this NPC is literally the current objective. Either way the marker
-## means "walk here and press [E]", which is the only thing it has ever meant.
+## One chevron, one accent, one meaning: "walk here and press [E]" — which is the
+## only thing this marker has ever meant, whether the NPC is holding a quest you
+## have not taken or IS the tracked objective. Two glyphs in two colours was two
+## visual languages for one instruction (LAW 8), and one of them spent GOLD on
+## something that is not currency (LAW 2).
 func _update_indicator() -> void:
 	if not is_instance_valid(indicator):
 		return
@@ -488,19 +489,7 @@ func _update_indicator() -> void:
 	indicator.visible = has_quest or is_target
 	if not indicator.visible or _mark == null:
 		return
-	# Two states, two colours, both from the master palette and neither of them
-	# overbright: GOLD for "this one is holding a quest", the region-neutral
-	# CYAN for "this one IS the objective".
-	if has_quest:
-		_mark.text = "!"
-		_mark.position = Vector2(-5, -15)
-		_mark.add_theme_color_override("font_color", _GameTheme.GOLD)
-		indicator.self_modulate = Color(0.98, 0.84, 0.30, 0.55)
-	else:
-		_mark.text = "▸"
-		_mark.position = Vector2(-7, -15)
-		_mark.add_theme_color_override("font_color", _GameTheme.CYAN)
-		indicator.self_modulate = Color(0.14, 0.94, 0.86, 0.55)
+	_mark.add_theme_color_override("font_color", _marker_accent())
 
 func _is_objective_target() -> bool:
 	var cur: Dictionary = QuestManager.get_current_objective()

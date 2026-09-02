@@ -12,12 +12,23 @@ extends Control
 ## for). What is left is drawn here, by hand, on one 2px grid:
 ##
 ##   * three flat sky bands and a ground band — no gradient, no filter;
+##   * a starfield at 8% brightness, because the top third of the frame was
+##     literally #000000 and read as a rendering fault rather than as night;
 ##   * a moon that is a disc and one crater tone, drawn in 4px cells;
 ##   * two building layers, the near one carrying AT MOST 60 lit windows in
 ##     exactly two colours: WARM and ACCENT. Not confetti;
 ##   * the 3AM corner, lit by one monitor. One light source, no halo pass.
 ##
 ## The whole frame is three hues. That is the entire trick.
+##
+## THE QUIET RECT. Every one of those decisions is made ONCE and then clipped
+## against `_quiet_rect()` — the panel plus a margin. The backdrop simply does
+## not light a window or place a star there. This is the fix for the QA frame in
+## which fifteen orange and cyan window panes floated on top of the menu: the
+## modal body is BASE at 96% (LAW 8) and the compositor blends in linear space,
+## so 4% of #FFB74A over a near-black panel is not "invisible", it is a solid
+## (58,38,28) dot sitting on the word "Continue". Nudging the alpha would only
+## move the threshold; not drawing behind the panel removes the class of bug.
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 const _Comedy = preload("res://scripts/ui/comedy_lines.gd")
@@ -69,6 +80,20 @@ const MOON_Y := 0.135
 
 const HORIZON := 0.66
 
+## Stars. Two tones, both at or under 8% of white — dim enough that they are
+## texture rather than content (LAW 3 spends brightness on five things and a star
+## is not one of them), bright enough that the sky is not a black rectangle.
+## 8.0% and 6.0% of white, neutral. Not a colour choice so much as a measurement:
+## the 2D buffer is linear and 8-bit, so anything under ~7.9% sRGB quantises to
+## the same single code value as everything below it — two tones authored closer
+## together than this would render as one tone with extra draw calls.
+const MAX_STARS := 64
+const STAR := Color(0.079, 0.079, 0.080)
+const STAR_DIM := Color(0.058, 0.058, 0.060)
+
+## Margin around the panel inside which the backdrop draws nothing bright.
+const QUIET_PAD := 14.0
+
 func _ready() -> void:
 	# Theme on the ROOT, not just the panel: the tip line lives outside the panel
 	# and has to inherit the same aliased default font as everything inside it.
@@ -115,8 +140,41 @@ func _draw() -> void:
 	var low := _snap(h * 0.56)
 	draw_rect(Rect2(0.0, low, w, horizon - low), SKY_LOW.lerp(WARM, 0.045))
 	draw_rect(Rect2(0.0, horizon, w, h - horizon), GROUND)
+	var quiet := _quiet_rect()
+	_draw_stars(w, h, quiet)
 	_draw_moon(Vector2(_snap(w * MOON_X), _snap(h * MOON_Y)), _snap(w * MOON_R))
-	_draw_skyline(w, h, horizon)
+	_draw_skyline(w, h, horizon, quiet)
+
+## The panel's rect plus a margin — the region of the frame the backdrop leaves
+## alone. Taken from the anchors and offsets rather than from `get_rect()`,
+## because `_draw()` can run on the frame BEFORE the container has sorted its
+## children and a zero-sized rect there would let a window through exactly once.
+func _quiet_rect() -> Rect2:
+	var p: Control = $CenterPanel
+	return Rect2(
+		size.x * 0.5 + p.offset_left, size.y * 0.5 + p.offset_top,
+		p.offset_right - p.offset_left, p.offset_bottom - p.offset_top
+	).grow(QUIET_PAD)
+
+## A night sky instead of a black rectangle. Deterministic, budgeted, and clipped
+## out of the panel — the same three rules the windows follow.
+func _draw_stars(w: float, h: float, quiet: Rect2) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 771103
+	# Stars stop well above the rooftops: the near towers reach h*0.38 up from the
+	# horizon at h*0.66, so anything below h*0.30 would be a star inside a
+	# building, which the skyline then paints over — wasted budget and, at the
+	# edges, a star apparently stuck to a wall.
+	var ceiling := h * 0.30
+	# The moon owns its own patch of sky. A star touching the disc reads as a
+	# stuck pixel, not as a star behind the moon.
+	var moon_c := Vector2(w * MOON_X, h * MOON_Y)
+	var moon_r: float = w * MOON_R + 18.0
+	for _i in MAX_STARS:
+		var p := Vector2(_snap(rng.randf() * w), _snap(rng.randf() * ceiling))
+		if quiet.has_point(p) or p.distance_to(moon_c) < moon_r:
+			continue
+		draw_rect(Rect2(p.x, p.y, PX, PX), STAR if rng.randf() < 0.6 else STAR_DIM)
 
 ## A disc and one crater tone, in 4px cells. No blur, no bloom, no halo — the
 ## previous moon was a radial gradient, which is why it read as a smudge.
@@ -142,7 +200,7 @@ func _draw_moon(c: Vector2, r: float) -> void:
 
 ## Two layers. The far one is a silhouette and gets no windows at all — it exists
 ## so the near layer has something to stand in front of.
-func _draw_skyline(w: float, h: float, horizon: float) -> void:
+func _draw_skyline(w: float, h: float, horizon: float, quiet: Rect2) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20260902
 	var x := -40.0
@@ -169,12 +227,12 @@ func _draw_skyline(w: float, h: float, horizon: float) -> void:
 		# ceil(left / remaining): self-levelling, so the last tower is never dark
 		# and the total can never exceed the budget.
 		var share := int(ceil(float(left) / float(rects.size() - i)))
-		left -= _draw_windows(rects[i], rng, share)
+		left -= _draw_windows(rects[i], rng, share, quiet)
 
 ## Lit windows on one building: at most `share` of them, scattered over the whole
 ## facade. Two colours only — WARM for most, ACCENT for the few rooms where
 ## somebody else is also still awake.
-func _draw_windows(r: Rect2, rng: RandomNumberGenerator, share: int) -> int:
+func _draw_windows(r: Rect2, rng: RandomNumberGenerator, share: int, quiet: Rect2) -> int:
 	if share <= 0:
 		return 0
 	var pane := Vector2(PX * 3.0, PX * 5.0)
@@ -199,8 +257,15 @@ func _draw_windows(r: Rect2, rng: RandomNumberGenerator, share: int) -> int:
 		taken[key] = true
 		var p := r.position + step + Vector2(float(cx) * step.x, float(cy) * step.y)
 		var col: Color = WARM if rng.randf() < 0.76 else _GameTheme.CYAN
-		draw_rect(Rect2(_snap(p.x), _snap(p.y), pane.x, pane.y), col)
+		var pane_rect := Rect2(_snap(p.x), _snap(p.y), pane.x, pane.y)
+		# Behind the panel, that room is dark. The budget is still spent, on
+		# purpose: re-rolling it would push the skipped windows out to the panel's
+		# edge and ring the menu in orange, which is a worse frame than a quiet
+		# hole in the facade nobody can see into anyway.
 		lit += 1
+		if quiet.intersects(pane_rect):
+			continue
+		draw_rect(pane_rect, col)
 	return lit
 
 func _snap(v: float) -> float:
@@ -289,6 +354,11 @@ func _dress_panel() -> void:
 	subtitle.add_theme_color_override("font_color", _GameTheme.TEXT)
 	var version: Label = $CenterPanel/VBox/Version
 	version.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
+	# The small tier comes from GameTheme — font AND size — not from the scene
+	# file, so the tagline and the build note cannot drift back to the settings at
+	# which "Ship" printed as "Shlp" and "Before" as "Bcforc".
+	for l: Label in [subtitle, version]:
+		_GameTheme.small_text(l)
 	# One ACCENT per screen: the title, and the button you came here to press.
 	_GameTheme.style_button($CenterPanel/VBox/NewGame, _GameTheme.CYAN, _Modal.BODY)
 	for btn: Button in [$CenterPanel/VBox/ContinueBtn, $CenterPanel/VBox/SettingsBtn,
@@ -302,6 +372,7 @@ func _dress_tip() -> void:
 	var tip: Label = $TipLabel
 	tip.text = _Comedy.pick("menu_tip", _Comedy.MENU_TIPS)
 	tip.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
+	_GameTheme.small_text(tip)
 
 func _on_root_resized() -> void:
 	queue_redraw()

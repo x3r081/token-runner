@@ -31,7 +31,7 @@ layout_mode = 2
 
 [node name="Speaker" type="Label" parent="Panel/Margin/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 16
 text = "Speaker"
 
 [node name="Text" type="RichTextLabel" parent="Panel/Margin/VBox"]

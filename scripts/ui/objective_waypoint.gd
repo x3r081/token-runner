@@ -19,11 +19,18 @@ extends Control
 ## outline, pulsing 0.9 -> 1.0, and one small line of text with a one-pixel
 ## shadow. No halo, no trail, no ring, no plate, no overbright.
 ##
-## Everything STRUCTURAL is untouched, because all of it was load-bearing:
+## ROUND 7 — THE BEACON CLEARS WHAT IT POINTS AT. Round 6 floated it a flat 52
+## screen px above the target's ORIGIN, which is fine for a token and wrong for
+## anything with a body: a portal's mouth reaches further than that in every
+## direction, so region_production.png and region_corporate_enterprise.png show
+## the chevron sitting ON the swirl, across the portal's own "→ GPU Mines" text.
+## `_portal_clearance` and `_npc_clearance` now measure the target's real top
+## edge off the live node and float the beacon above THAT.
+##
+## Everything else STRUCTURAL is untouched, because all of it was load-bearing:
 ##   * the on-screen / off-screen split and the edge-pin geometry
 ##   * the panel exclusion rects, so the marker never parks on a readout
 ##   * the guidance band rule, so a readout never straddles the boss band
-##   * `_portal_clearance`, so the beacon clears a portal's own label
 ##   * every resolve path and every public method
 ##
 ## Cost: one group scan every RESOLVE_INTERVAL. Per frame it is a handful of
@@ -50,8 +57,15 @@ const PX_PER_METRE := 32.0
 ## Inside this radius the target is right in front of you; the marker steps
 ## aside rather than parking itself on the NPC's face.
 const NEAR_RADIUS := 130.0
-## How high above the target the on-screen beacon floats.
+## How high above the target the on-screen beacon floats, for a target that
+## carries no art and no text of its own (a token, a prop). Portals and NPCs
+## both do, and both measure their own clearance — see `_portal_clearance` and
+## `_npc_clearance`.
 const BEACON_LIFT := 52.0
+## World-space nudge applied to the target before it is projected: the beacon
+## aims a little above a thing's origin, which for a character is its feet. Used
+## by the clearance functions too, so the two can never drift apart.
+const SP_NUDGE := 14.0
 ## Visibility test padding — near the full frame, so anything the player can
 ## actually see gets a beacon rather than an edge arrow.
 const VIEW_PAD_X := 44.0
@@ -75,9 +89,22 @@ const PLATE_GAP := 9.0
 ## a boss entrance card, so it is either wholly inside or wholly below.
 const GUIDE_BAND_TOP := 112.0
 const GUIDE_BAND_BOTTOM := 190.0
-## Slack left between a portal's own destination label and the chevron floating
-## above it. See `_portal_clearance`.
-const PORTAL_LABEL_CLEAR := 46.0
+## CLEAR AIR the on-screen beacon keeps above whatever it is pointing at.
+##
+## Round 6 floated it a flat BEACON_LIFT of 52 screen px over the target's
+## ORIGIN, and an origin is not an outline: a portal's mouth reaches 48 WORLD
+## units in every direction, which at the camera's zoom is more than the lift —
+## so region_production.png and region_corporate_enterprise.png show the chevron
+## sitting on the swirl, on top of the portal's own "→ GPU Mines" label.
+## Guidance may not cover the thing it is pointing at, and it may never cover a
+## label; both numbers are measured from the target's real TOP EDGE now.
+const PORTAL_BEACON_CLEAR := 36.0
+const NPC_LABEL_CLEAR := 44.0
+## Fallbacks for the two measurements, used only when the live node cannot be
+## read: region_portal.gd's BODY_RADIUS, and npc.gd's nameplate top
+## (NAME_BOTTOM_Y -86 less a line of 14px type).
+const PORTAL_BODY_RADIUS := 48.0
+const NPC_NAME_TOP := -110.0
 ## Screen margin the readout is hard-clamped inside as a last resort.
 const PLATE_EDGE_PAD := 12.0
 
@@ -107,6 +134,9 @@ var _cross_region := false
 ## and the idle "way out" fallback both are. Portals carry their own world-space
 ## destination label, which the beacon has to float clear of.
 var _target_is_portal := false
+## True when the target is an NPC. They carry a nameplate above their head, and
+## it is the one piece of world text the beacon is most likely to land on.
+var _target_is_npc := false
 ## The region's ACCENT (LAW 2). The HUD pushes it in on every region change; the
 ## mode of the chevron is carried by its WORDS now, not by a second hue.
 var _accent := _GameTheme.CYAN
@@ -270,7 +300,7 @@ func _refresh_exclusions(view: Vector2) -> void:
 	_view_size = view
 	# The objective line, bottom-left (hud.tscn QuestPanel). Measured off the
 	# live node when it exists — it is content-sized.
-	_ex_quest = Rect2(28.0, view.y - 72.0, 760.0, 32.0)
+	_ex_quest = Rect2(28.0, view.y - 96.0, 760.0, 56.0)
 	var qp := get_parent().get_node_or_null("QuestPanel") if get_parent() else null
 	if qp is Control and (qp as Control).visible:
 		var r: Rect2 = (qp as Control).get_global_rect()
@@ -323,7 +353,7 @@ func _place() -> void:
 	var view := get_viewport_rect().size
 	if view != _view_size:
 		_refresh_exclusions(view)
-	var sp: Vector2 = vp.get_canvas_transform() * (_target.global_position + Vector2(0, -14))
+	var sp: Vector2 = vp.get_canvas_transform() * (_target.global_position + Vector2(0, -SP_NUDGE))
 	var rect_pos := Vector2(MARGIN_X, MARGIN_TOP)
 	var rect_size := Vector2(
 		maxf(view.x - MARGIN_X * 2.0, 96.0),
@@ -339,6 +369,11 @@ func _place() -> void:
 	).has_point(sp)
 	# LAW 9: the waypoint pulses 0.9 -> 1.0. Nothing else about it moves.
 	var pulse := 0.5 + 0.5 * sin(_t * 3.0)
+	# The marker's live scale, resolved before anything is placed: the readout's
+	# clearance is measured off the marker's real outer edge rather than a flat
+	# number (see CHEVRON_REACH), so the scale has to be settled first.
+	var s := (1.0 if inside else 1.18) * (0.9 + 0.1 * pulse)
+	_marker.scale = Vector2(s, s)
 	# Text — and therefore the readout's real box — before any geometry: every
 	# offset below is computed from its measured size, which is what makes the
 	# layout hold for "Open Source Wildlands" as well as for "Tokens".
@@ -352,10 +387,13 @@ func _place() -> void:
 	var plate_anchor := Vector2.ZERO
 
 	if inside:
-		# On screen: a beacon bobbing above the thing, aimed straight down at it.
+		# On screen: a beacon bobbing above the thing, aimed straight down at it,
+		# and CLEAR of both the thing's own art and the thing's own label.
 		var lift := BEACON_LIFT
 		if _target_is_portal:
 			lift = maxf(lift, _portal_clearance(vp))
+		elif _target_is_npc:
+			lift = maxf(lift, _npc_clearance(vp))
 		var bob := sin(_t * 2.6) * 4.0
 		var pos := sp + Vector2(0, -lift + bob)
 		# Keep the beacon out of the bands the HUD occupies (it is mounted behind
@@ -381,10 +419,6 @@ func _place() -> void:
 		plate_dir = -d.normalized()
 		plate_anchor = _marker.position
 
-	# Scale first, because the readout's clearance is measured off the marker's
-	# LIVE outer edge rather than a flat number (see CHEVRON_REACH).
-	var s := (1.0 if inside else 1.18) * (0.9 + 0.1 * pulse)
-	_marker.scale = Vector2(s, s)
 	var reach := (RING_REACH if _cross_region else CHEVRON_REACH) * s
 	_place_plate(plate_anchor, plate_dir, view, reach + PLATE_GAP)
 
@@ -457,30 +491,60 @@ func _push_rect_out(c: Vector2, s: Vector2, r: Rect2) -> Vector2:
 		c.x = g.end.x + s.x * 0.5
 	return c
 
-## How far above a PORTAL's screen position the beacon has to float to clear the
-## portal's own destination label — a GUARD, and usually a no-op.
+## Camera zoom, as the factor that turns world units into screen pixels. Every
+## clearance below is quoted in SCREEN pixels but measured off WORLD geometry, so
+## it has to pass through here or the beacon drifts every time the zoom moves
+## (it went 1.35 -> 1.5 this round).
+func _zoom_of(vp: Viewport) -> float:
+	var zoom: float = absf(vp.get_canvas_transform().get_scale().y)
+	return zoom if zoom > 0.01 else 1.0
+
+## The portal's body radius in WORLD units, read off its own artwork so the two
+## files cannot disagree. region_portal.gd draws a 64px square at scale 1.5;
+## PORTAL_BODY_RADIUS is only the fallback for a portal whose disc has not been
+## built (no shader on disk, or a probe running before `_ready`).
+func _portal_radius() -> float:
+	var disc := _target.get_node_or_null("PortalDisc")
+	if disc is Sprite2D:
+		var s2 := disc as Sprite2D
+		if s2.texture != null:
+			return s2.texture.get_size().y * 0.5 * absf(s2.scale.y)
+	return PORTAL_BODY_RADIUS
+
+## How far above a PORTAL's projected position the beacon floats: the marker's
+## centre sits PORTAL_BEACON_CLEAR above the swirl's TOP EDGE, which leaves its
+## downward point about half that clear of the artwork — attached to the
+## doorway, never on it.
 ##
-## SIGN MATTERS, and getting it wrong is not cosmetic. An earlier draft took
-## `absf()` of the label's local y, which reads a label BELOW the portal as if it
-## were above it and floats the beacon ~130px up instead of 52 — the chevron
-## detaches from its own portal. So: a label at or below the portal's origin
-## needs no clearance, full stop, and only a label genuinely above it buys lift.
-##
-## Measured off the live node rather than hardcoded, so if the portal scene ever
-## moves its text back overhead the beacon follows it without another round.
+## `sp` is already SP_NUDGE world units above the origin, so that much of the
+## body is paid for; the rest of the radius plus the clearance is what is left.
+## The portal's own destination label lives BELOW the mouth (region_portal.gd
+## LABEL_TOP), so clearing the art clears the text by construction — the beacon
+## and the label are on opposite sides of the doorway and cannot meet.
 func _portal_clearance(vp: Viewport) -> float:
+	return (_portal_radius() - SP_NUDGE) * _zoom_of(vp) + PORTAL_BEACON_CLEAR
+
+## How far above an NPC the beacon floats: NPC_LABEL_CLEAR above the TOP of
+## their nameplate.
+##
+## Measured off the live Label because npc.gd MOVES it — the whole attention
+## stack (name, quest marker, bark) lifts while that NPC is the tracked
+## objective. Reading the node keeps the two in agreement without either file
+## having to know the other's arithmetic.
+##
+## SIGN MATTERS. An earlier draft took `absf()` of the label's local y, which
+## reads a label BELOW the target as if it were above it. A nameplate at or below
+## the origin needs no clearance at all; only one genuinely overhead buys lift.
+func _npc_clearance(vp: Viewport) -> float:
+	var top := NPC_NAME_TOP
 	var lab := _target.get_node_or_null("Label")
-	if not (lab is Control):
-		return BEACON_LIFT
-	# Local y of the label's TOP edge. Positive = below the portal centre, which
-	# is where it lives now — nothing to clear.
-	var top: float = (lab as Control).get_rect().position.y
+	if lab is Control:
+		var r: Rect2 = (lab as Control).get_rect()
+		if r.size.y > 1.0:
+			top = r.position.y
 	if top > -1.0:
 		return BEACON_LIFT
-	var zoom: float = absf(vp.get_canvas_transform().get_scale().y)
-	if zoom < 0.01:
-		zoom = 1.0
-	return -top * zoom + PORTAL_LABEL_CLEAR
+	return (-top - SP_NUDGE) * _zoom_of(vp) + NPC_LABEL_CLEAR
 
 ## Repaints the chevron and the readout in the current accent. Called on resolve
 ## and on a region change, never per frame.
@@ -506,7 +570,14 @@ func _update_label_text(on_screen: bool) -> void:
 	_last_label_inside = on_screen
 	if _cross_region:
 		if on_screen:
-			_label.text = "%s · %dm · through this portal" % [_target_name, _metres]
+			# VISUAL_BIBLE_V2 defect #5: while the portal is in frame the doorway
+			# is already a two-element cluster — this chevron (direction and
+			# distance) and region_portal's own $Label (the destination name).
+			# "· through this portal" was a third element saying what the arch
+			# under it already says, and in the dependency frame it ran straight
+			# across the "node_modules" prop caption. Off screen there is no
+			# portal to read, so THAT phrasing stays.
+			_label.text = "%s · %dm" % [_target_name, _metres]
 		else:
 			_label.text = "%s · %dm · head for the portal" % [_target_name, _metres]
 	elif _target_name == "":
@@ -578,6 +649,10 @@ func _finish_resolve(previous: String, prev_cross: bool) -> void:
 	# rather than a class check: `target_region` is exactly what `_portals()`
 	# already identifies a portal by, so the two can never disagree.
 	_target_is_portal = is_instance_valid(_target) and "target_region" in _target
+	# Same probe, same reason: `npc_id` is exactly what `_find_npc()` identifies
+	# an NPC by, so the two can never disagree about what one is.
+	_target_is_npc = is_instance_valid(_target) and not _target_is_portal \
+		and "npc_id" in _target
 	if previous != _target_name or prev_cross != _cross_region:
 		_last_label_metres = -1
 	_apply_accent()

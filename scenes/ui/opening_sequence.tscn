@@ -48,6 +48,6 @@ scroll_active = false
 
 [node name="Prompt" type="Label" parent="Panel/Margin/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 16
 text = "Press any key to gain control"
 horizontal_alignment = 1

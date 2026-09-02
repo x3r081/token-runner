@@ -1618,8 +1618,13 @@ func _whiteboard() -> void:
 	img.fill(Color(0, 0, 0, 0))
 	var alu := Color(0.34, 0.36, 0.42)
 	_bevel(img, 2, 2, 172, 102, alu)
-	# board face with a soft top-left sheen and old marker ghosts
-	_vgrad(img, 7, 7, 162, 92, Color(0.910, 0.915, 0.885), Color(0.845, 0.850, 0.825))
+	# Board face. LAW 3 caps anything that is not the player, the objective, a
+	# token, a motivated light or an enemy tell at 60% value, and this board was
+	# authored at 91% — 3,661 of its pixels sat above 90%, which made a piece of
+	# BACKGROUND FURNITURE the brightest surface in any room it stood in, bloom
+	# threshold included. It is the same board, lit by the room instead of
+	# lighting it.
+	_vgrad(img, 7, 7, 162, 92, Color(0.560, 0.565, 0.545), Color(0.505, 0.510, 0.490))
 	for gp in [Vector3i(40, 70, 14), Vector3i(120, 82, 10)]:
 		for yy in range(gp.y - 6, gp.y + 7):
 			for xx in range(gp.x - gp.z, gp.x + gp.z + 1):
@@ -1635,7 +1640,7 @@ func _whiteboard() -> void:
 	for i in nodes.size():
 		var n: Vector2i = nodes[i]
 		var col: Color = cols[i % cols.size()]
-		_rect(img, n.x, n.y, 14, 9, Color(0.96, 0.96, 0.94))
+		_rect(img, n.x, n.y, 14, 9, Color(0.60, 0.60, 0.58))
 		_rect(img, n.x, n.y, 14, 1, col)
 		_rect(img, n.x, n.y + 8, 14, 1, col)
 		_rect(img, n.x, n.y, 1, 9, col)
@@ -1669,15 +1674,15 @@ func _whiteboard() -> void:
 		var sx: int = 14 + (si % 2) * 13
 		var sy: int = 14 + (si / 2) * 13
 		# one paper colour in two values, not four hues
-		var sc: Color = Color(0.74, 0.66, 0.42) if si % 2 == 0 else Color(0.68, 0.60, 0.38)
+		var sc: Color = Color(0.63, 0.58, 0.42) if si % 2 == 0 else Color(0.58, 0.53, 0.39)
 		_rect(img, sx, sy, 11, 11, sc)
 		_rect(img, sx, sy, 11, 1, sc.lightened(0.24))
 		_rect(img, sx, sy + 10, 11, 1, sc.darkened(0.26))
 		_line(img, sx + 2, sy + 3, sx + 8, sy + 3, sc.darkened(0.50))
 		_line(img, sx + 2, sy + 6, sx + 6, sy + 6, sc.darkened(0.50))
 	# magnet holding a printout that contradicts the diagram
-	_rect(img, 132, 62, 26, 30, Color(0.94, 0.94, 0.92))
-	_rect(img, 132, 62, 26, 1, Color(1.0, 1.0, 0.98))
+	_rect(img, 132, 62, 26, 30, Color(0.585, 0.585, 0.575))
+	_rect(img, 132, 62, 26, 1, Color(0.635, 0.635, 0.620))
 	for py in range(66, 88, 3):
 		_line(img, 135, py, 154, py, Color(0.52, 0.53, 0.56))
 	_disc(img, 145, 63, 2.2, Color(0.20, 0.22, 0.28))
@@ -2007,8 +2012,8 @@ func _sticky_strip() -> void:
 	# Six notes, ONE paper colour in three values. Six hues on a 96px prop was
 	# more of the palette than the room the prop sits in is allowed.
 	var cols: Array[Color] = [
-		Color(0.72, 0.62, 0.34), Color(0.66, 0.57, 0.32), Color(0.76, 0.66, 0.38),
-		Color(0.66, 0.57, 0.32), Color(0.72, 0.62, 0.34), Color(0.76, 0.66, 0.38),
+		Color(0.63, 0.58, 0.42), Color(0.58, 0.53, 0.39), Color(0.67, 0.62, 0.46),
+		Color(0.58, 0.53, 0.39), Color(0.63, 0.58, 0.42), Color(0.67, 0.62, 0.46),
 	]
 	for i in cols.size():
 		var nx := 2 + i * 15
@@ -2029,9 +2034,9 @@ func _sticky_strip() -> void:
 				_px(img, nx + 8 + f, ny + 11 - f, c.lightened(0.30))
 				_px(img, nx + 8 + f, ny + 12 - f, c.darkened(0.20))
 	# the one that already fell, at an angle nobody will fix
-	_rect(img, 82, 14, 11, 10, Color(0.66, 0.57, 0.32))
-	_line(img, 84, 17, 90, 17, Color(0.35, 0.28, 0.12))
-	_line(img, 84, 20, 88, 20, Color(0.35, 0.28, 0.12))
+	_rect(img, 82, 14, 11, 10, Color(0.58, 0.53, 0.39))
+	_line(img, 84, 17, 90, 17, Color(0.30, 0.27, 0.19))
+	_line(img, 84, 20, 88, 20, Color(0.30, 0.27, 0.19))
 	_finish(img, RIM_WARM, 0.0)
 	_save(img, "int_sticky_strip.png")
 
@@ -2443,7 +2448,9 @@ func _dress_whiteboard() -> void:
 	_rect(img, 28, 96, 64, 1, alu.lightened(0.16))
 	# frame + board face
 	_bevel(img, 12, 8, 96, 78, alu)
-	_vgrad(img, 17, 13, 86, 68, Color(0.905, 0.910, 0.885), Color(0.840, 0.845, 0.820))
+	# Same LAW 3 correction as furn_whiteboard above: a background board is not
+	# a light source. Face dropped from 90% value to 55%.
+	_vgrad(img, 17, 13, 86, 68, Color(0.555, 0.560, 0.540), Color(0.500, 0.505, 0.485))
 	# eraser ghosts of the last three plans
 	for gp: Vector3i in [Vector3i(40, 60, 12), Vector3i(78, 34, 9)]:
 		for yy in range(gp.y - 5, gp.y + 6):

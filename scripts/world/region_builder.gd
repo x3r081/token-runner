@@ -227,10 +227,11 @@ static func _region_seed(region_id: String) -> int:
 ## the middle of all of them, so the captured frames differed in hue and in
 ## nothing else: same slab, same player-dead-centre, same portal on the same
 ## left third. Each region now owns its plaza's PLACE, SHAPE and SIZE and its
-## own artery baseline, and every pass that draws either of them — tile zoning,
-## curb trim, lane paint, blotches, litter, decals, spurs, the signature
-## scatter — reads the same numbers from here, so the material edge and the
-## painted edge can never disagree with each other.
+## own artery baseline. Round 8 stopped DRAWING either of them (the value ramp,
+## the material zoning, the lane lines, the chevron trails and the paved spurs
+## are all gone); what the table now decides is where the arrival light pools and
+## where the litter, the decals, the detail props and the tokens may fall — i.e.
+## it composes the room rather than painting it.
 ##
 ## Keys:
 ##   c      plaza centre, as an offset from the room centre
@@ -244,9 +245,10 @@ static func _region_seed(region_id: String) -> int:
 ##   wave   amplitude of the artery's meander
 ##
 ## HARD RULE for anyone editing this table: the plaza must still CONTAIN the
-## spawn (640, 480) with at least ~50px to spare. The landing plaza is the
-## floor saying "you are here", and a player who arrives standing on the dark
-## open field has lost the one piece of orientation the ground owes them.
+## spawn (640, 480) with at least ~50px to spare. Since round 8 the plaza is no
+## longer PAINTED — it is where the arrival light pools (_build_region_lights) —
+## so a plaza that does not contain the spawn now drops the player into the dark
+## instead of merely onto the wrong tiles.
 const LAYOUT_DEFAULT := {
 	"c": Vector2.ZERO, "r": Vector2(206.0, 145.0), "form": 0, "rot": 0.0,
 	"annex": Vector2(120.0, 140.0), "band": 0.0, "tilt": 0.0, "wave": 0.0,
@@ -384,290 +386,93 @@ static func _plaza_field(p: Vector2, w: float, h: float, seed_v: int) -> float:
 			f = maxf(maxf(absf(d.x), absf(d.y)), (absf(d.x) + absf(d.y)) * 0.735)
 	return f - (206.0 + _zone_wobble(p, seed_v + 23) * 30.0)
 
-## A point ON the plaza outline along the bearing `a`. Marched outward rather
-## than bisected: the annex form is a UNION of two lobes, so a ray can leave one
-## and re-enter the other, and a bisection would happily settle in the notch
-## between them. Taking the last inside sample gives the true silhouette for
-## every form. Build-time only, ~60 field probes per bearing.
-static func _plaza_edge(a: float, w: float, h: float, seed_v: int) -> Vector2:
-	var c := _plaza_center(w, h)
-	var r := _plaza_radii()
-	var dir := Vector2(cos(a) * r.x, sin(a) * r.y).normalized()
-	var last := 48.0
-	for i in 62:
-		var rr := 48.0 + float(i) * 9.0
-		if _plaza_field(c + dir * rr, w, h, seed_v) < 0.0:
-			last = rr
-	return c + dir * last
-
-## Perimeter falloff depth at a point — wobbled, so the ring the room ends in is
-## a shoreline and not a picture frame.
-static func _edge_depth(p: Vector2, w: float, h: float, seed_v: int) -> float:
-	return minf(minf(p.x, w - p.x), minf(p.y - 46.0, h - p.y)) \
-		- _zone_wobble(p, seed_v + 51) * 34.0
-
-## Floor zoning. A room at one flat value is a void with props in it. The spawn
-## gets a bright landing plaza, the portal-to-portal artery gets a worn traffic
-## lane, and the perimeter falls off — so the eye immediately knows where the
-## room's "somewhere" is, and the ground reads as ground. Brightness reads off
-## the SAME wobbled fields as the material zoning below; when the two disagreed
-## the value step and the material step landed a tile apart and advertised both.
-static func _floor_zone(p: Vector2, w: float, h: float, seed_v: int) -> float:
-	var k := 1.0
-	var bh := _band_half(p.x, w, seed_v)
-	var lane := absf(p.y - _band_y(p.x, w, h, seed_v))
-	if lane < bh and p.x > 130.0 and p.x < w - 130.0:
-		k += 0.22 * (1.0 - lane / bh)
-	var pf := _plaza_field(p, w, h, seed_v)
-	if pf < 0.0:
-		k += 0.18 * minf(1.0, -pf / 200.0)
-	var e := _edge_depth(p, w, h, seed_v)
-	if e < 156.0:
-		# Round-4 rule 3: edges darkest. Was -0.28; the perimeter now falls off
-		# hard enough to read as the room ending rather than the wash fading.
-		k -= 0.34 * (1.0 - maxf(e, 0.0) / 156.0)
-	return k
-
-## Ground-MATERIAL zone for a tile centre (round-4 rule 1). _floor_zone answers
-## "how bright is this cell"; this answers "what is this cell MADE of":
-## 0 open field, 1 walkway band (the portal-to-portal artery), 2 landing plaza,
-## 3 perimeter. Checked in priority order so the plaza wins over the band where
-## they overlap at the spawn.
+## AMBIENT OCCLUSION along the walls, and the ONLY thing that varies a tile's
+## value any more (round-8 critique #1).
 ##
-## `hv` is the tile's own hash and buys the transition: a +/-34px slop on every
-## threshold makes the last row of tiles either side of a seam INTERLOCK — a
-## one-tile dithered blend. Combined with the wobbled outlines above, no zone
-## ends in a clean edge anywhere in the room.
-static func _tile_zone(p: Vector2, w: float, h: float, seed_v: int, hv: int) -> int:
-	var dither := (float(hv % 89) / 89.0 - 0.5) * 68.0
-	if _edge_depth(p, w, h, seed_v) < 106.0 + dither:
-		return 3
-	if _plaza_field(p, w, h, seed_v) + dither < 0.0:
-		return 2
-	if absf(p.y - _band_y(p.x, w, h, seed_v)) < _band_half(p.x, w, seed_v) + dither:
-		return 1
-	return 0
-
-## ROUND 7 — SUBTRACTION. The wear field, the mottle shader, the blotches, the
-## seams, the curb trim and the per-cell hue drift are all GONE. VISUAL_BIBLE_V2
-## LAW 6: a floor is readable ground, which means the tile art, an A/B variant
-## no more than 6% apart in value, and nothing else. Everything that used to be
-## piled on top of it was texture noise pretending to be history, and it is the
-## single loudest thing in the captured frames.
+## What was here: a three-zone brightness ramp that lifted the landing plaza by
+## 18%, the walkway artery by 22% and dropped the perimeter by 34% — on top of a
+## material zoning pass that gave the plaza a different, brighter TEXTURE again.
+## Stacked, that stamped a hard-edged, stepped blob of floor roughly 40% brighter
+## than its surroundings around the spawn of every region, in the same shape
+## every time. It was the loudest thing in the frames and it was the ground
+## shouting, which is the one thing LAW 6 says the ground may not do.
 ##
-## What survives, and only because it is NAVIGATION rather than texture: the
-## three-zone value ramp (plaza brighter, perimeter darker) so the player can see
-## where the room's "somewhere" is, and the walkway artery in its own material.
+## The blob is gone; the light does the job instead (see the arrival pool in
+## _build_region_lights). What is left here is the wall AO LAW 6 explicitly
+## allows — a SMOOTH ramp, with no wobble and no dither, so it reads as the room
+## getting darker toward its walls rather than as a shape drawn on the floor.
+const AO_DEPTH := 150.0
+const AO_MAX := 0.26
+
+static func _floor_ao(p: Vector2, w: float, h: float) -> float:
+	var e := minf(minf(p.x, w - p.x), minf(p.y - 46.0, h - p.y))
+	if e >= AO_DEPTH:
+		return 1.0
+	var t := clampf(e / AO_DEPTH, 0.0, 1.0)
+	return 1.0 - AO_MAX * (1.0 - t * t * (3.0 - 2.0 * t))
+
+## ROUND 8 — the floor is ONE material again.
+##
+## LAW 6 is a sentence: a floor tile is a clean 32px material, the A/B variant
+## differs by <= 6% in value, and the player must be able to read the ground at a
+## glance. Round 7 kept a four-way MATERIAL zoning on top of that — plaza tiles,
+## walkway deck tiles, perimeter tiles, field tiles — each with its own value
+## multiplier, and the plaza's was tile_mul (1.7-1.9) against the field's 1.0.
+## The result, in every single captured frame, was a stepped bright blob stamped
+## around the player in the same shape from region to region.
+##
+## So: one material family per region, the A/B variant picked by CELL HASH ALONE
+## at a 6% value step, a smooth wall AO, and nothing else. Where the room's
+## "somewhere" is, is now said by the arrival light pool in _build_region_lights
+## — which is what light is for, and what a floor is not.
+##
+## Deleted with the zoning: the chevron trails, the two lane lines and the paved
+## spurs that used to be drawn from the plaza to every door (LAW 4 puts floor
+## overlays at zero, and the critique reads a line from the portal to the player
+## as the same "one room re-skinned" signature the zoning was). The waypoint
+## chevron and the portal's own light are the wayfinding.
 static func _build_floor_themed(parent: Node2D, theme: Dictionary, w: int, h: int, region_id: String) -> void:
 	var floor_node := Node2D.new()
 	floor_node.name = "Floor"
 	parent.add_child(floor_node)
 	var tint: Color = theme.get("floor", Color(0.62, 0.62, 0.68))
 	var suffix: String = REGION_TILE_MAP.get(region_id, "")
-	var has_a := suffix != "" and ResourceLoader.exists(GEN + "tile_" + suffix + ".png")
-	var has_b := suffix != "" and ResourceLoader.exists(GEN + "tile_" + suffix + "_b.png")
-	# Round-4 material set (art agents supply these; everything exists()-guarded
-	# with today's tiles as the fallback): floor_<family>_base/alt are the
-	# region's ground proper, path_tile the maintained walkway deck.
+	# The region's ground proper (art agents supply these; everything is
+	# exists()-guarded, with the older tile_<family> pair and then a flat tint as
+	# the fallbacks, so a fresh checkout still gets a floor).
 	var has_base := suffix != "" and ResourceLoader.exists(GEN + "floor_" + suffix + "_base.png")
 	var has_alt := suffix != "" and ResourceLoader.exists(GEN + "floor_" + suffix + "_alt.png")
-	var has_path_tile := ResourceLoader.exists(GEN + "path_tile.png")
+	var has_a := suffix != "" and ResourceLoader.exists(GEN + "tile_" + suffix + ".png")
+	var has_b := suffix != "" and ResourceLoader.exists(GEN + "tile_" + suffix + "_b.png")
 	var tile_mul: float = float(theme.get("tile_mul", 2.2))
-	var seed_v := _region_seed(region_id)
 	for x in REGION_SIZE.x:
 		for y in REGION_SIZE.y:
 			var hv := _cell_hash(x, y)
 			var p := Vector2(x * TILE_SIZE + TILE_SIZE * 0.5, y * TILE_SIZE + TILE_SIZE * 0.5)
-			# Zone value only. No wear field, no per-tile jitter: LAW 6 caps the
-			# A/B step at 6%, and a jitter on top of that is the noise itself.
-			var k := _floor_zone(p, float(w), float(h), seed_v)
+			# Wall AO only. No zone ramp, no wear field, no per-tile jitter.
+			var k := _floor_ao(p, float(w), float(h))
+			# The A/B break: 6% and no more (LAW 6), chosen by the cell hash and
+			# by nothing else — not by where the tile is in the room.
+			var alt := (hv % 100) >= 62
+			var ab := 1.06 if alt else 1.0
+			var v := k * ab
 			var tex_name := "tech_floor"
-			var m := Color(tint.r * k, tint.g * k, tint.b * k)
-			# STRUCTURE, NOT NOISE: the material a tile is made of is decided by
-			# WHERE it is — walkway band, landing plaza, perimeter, open field.
-			var zn := _tile_zone(p, float(w), float(h), seed_v, hv)
-			# The A/B break. 6% and no more (LAW 6) — the old 12-16% steps plus a
-			# hue drift are what made the ground read as three materials shuffled.
-			var ab := 1.0 if (hv % 100) < 62 else 1.06
-			match zn:
-				1:  # walkway band: one clean deck material end to end
-					if has_path_tile:
-						tex_name = "path_tile"
-						m = Color(k * 1.06, k * 1.06, k * 1.08)
-					elif has_b:
-						tex_name = "tile_" + suffix + "_b"
-						var wv := k * tile_mul * 1.06
-						m = Color(wv, wv, wv)
-					else:
-						m = Color(tint.r * k * 1.10, tint.g * k * 1.10, tint.b * k * 1.12)
-				2:  # landing plaza: the region's own showcase material
-					if has_a:
-						var pv := k * tile_mul * 1.04
-						tex_name = "tile_" + suffix
-						m = Color(pv, pv, pv)
-					else:
-						m = Color(tint.r * k * 1.08, tint.g * k * 1.08, tint.b * k * 1.08)
-				3:  # perimeter: the darkest material — edges recede
-					if has_base:
-						tex_name = "floor_" + suffix + "_base"
-						m = Color(k, k, k)
-					m = m.darkened(0.24)
-				_:  # open field, A/B alternated by cell hash
-					if has_base:
-						tex_name = "floor_" + suffix + "_base"
-						if has_alt and (hv % 100) >= 62:
-							tex_name = "floor_" + suffix + "_alt"
-						m = Color(k * ab, k * ab, k * ab)
-					elif has_a and (hv % 100) < 62:
-						tex_name = "tile_" + suffix
-						m = Color(k * tile_mul, k * tile_mul, k * tile_mul)
-					elif has_b:
-						var b := k * tile_mul * ab
-						tex_name = "tile_" + suffix + "_b"
-						m = Color(b, b, b)
-					else:
-						m = Color(tint.r * k * ab, tint.g * k * ab, tint.b * k * ab)
+			var m := Color(tint.r * v, tint.g * v, tint.b * v)
+			if has_base:
+				tex_name = "floor_" + suffix + "_base"
+				if has_alt and alt:
+					tex_name = "floor_" + suffix + "_alt"
+				m = Color(v, v, v)
+			elif has_a or has_b:
+				tex_name = "tile_" + suffix if has_a else "tile_" + suffix + "_b"
+				if alt and has_b:
+					tex_name = "tile_" + suffix + "_b"
+				var tv := v * tile_mul
+				m = Color(tv, tv, tv)
 			_put(floor_node, tex_name, p, -100, 1.0, m)
-	# What is left on top of the tiles, in full: the paved spurs to the doors, one
-	# pair of quiet lines marking the artery, the wayfinding chevrons, and at most
-	# three hand-placed decals. That is the whole floor.
-	_paint_paths(floor_node, region_id, theme, w, h, seed_v)
-	_paint_lane(floor_node, theme, w, h, seed_v)
-	var glow: Color = theme.get("glow", Color.WHITE)
-	_paint_wayfinding(floor_node, region_id, w, h, glow)
+	# What is left on top of the tiles, in full: at most three hand-placed decals.
+	# That is the whole floor.
 	_floor_decals(floor_node, region_id, w, h)
-
-## The artery, marked. This used to paint hazard dashes, a 44-segment plaza kerb
-## with reflectors and bolted posts, a landing cross and four corner ticks — an
-## airport apron drawn on top of a floor that already changes material at exactly
-## those lines. LAW 4 puts floor overlays at zero; what is left is the one thing
-## the overlay was ever FOR: two quiet lines saying "the walkable route is
-## between these". No accent hue, no glow, no dashes — the lane is dark line-work
-## on ground, and the region ACCENT is spent on the objective instead.
-static func _paint_lane(parent: Node2D, _theme: Dictionary, w: int, h: int, seed_v: int) -> void:
-	var steps := 26
-	var x0 := 150.0
-	var x1 := float(w) - 150.0
-	for k: float in [1.0, -1.0]:
-		for i in steps:
-			var xa := x0 + (x1 - x0) * float(i) / float(steps)
-			var xb := x0 + (x1 - x0) * float(i + 1) / float(steps)
-			var ya := _band_y(xa, float(w), float(h), seed_v) + k * _band_half(xa, float(w), seed_v)
-			var yb := _band_y(xb, float(w), float(h), seed_v) + k * _band_half(xb, float(w), seed_v)
-			var seg := Vector2(xb - xa, yb - ya)
-			var mid := Vector2((xa + xb) * 0.5, (ya + yb) * 0.5)
-			_rect(parent, mid, Vector2(seg.length() + 3.0, 2.0), Color(0, 0, 0, 0.30), -93, seg.angle())
-
-## Chevron trails painted from the plaza toward every portal this region owns.
-## The player asked "what now, and WHERE" — this is the floor answering.
-static func _paint_wayfinding(parent: Node2D, region_id: String, w: int, h: int, col: Color) -> void:
-	# From the PLAZA, not the room's geometric centre: the plaza moved per region
-	# and the trails have to leave from where the player actually lands, which is
-	# also what stops all nine regions painting the same two horizontal runs.
-	var center := _plaza_center(float(w), float(h))
-	for pd in _region_portals(region_id):
-		var pp: Vector2 = pd.pos
-		var to := pp - center
-		var dist := to.length()
-		if dist < 150.0:
-			continue
-		var dir := to / dist
-		var ang := dir.angle()
-		# QUIETER, NEVER WEAKER. The chevrons are the floor's half of the guidance
-		# system and they stay; what goes is the brightness ramp that made the last
-		# one 0.34 alpha in the region accent. A flat, low, cool mark reads as a
-		# painted direction arrow rather than as another glowing thing.
-		var steps := int((dist - 190.0) / 108.0)
-		for i in steps:
-			var t := 190.0 + float(i) * 108.0
-			_chevron(parent, center + dir * t, Color(col.r, col.g, col.b, 0.15), ang, -92)
-
-static func _chevron(parent: Node2D, pos: Vector2, col: Color, ang: float, z: int) -> void:
-	var n := Vector2(cos(ang), sin(ang))
-	var side := Vector2(-n.y, n.x)
-	_rect(parent, pos + side * -5.0, Vector2(22.0, 4.0), col, z, ang + 0.46)
-	_rect(parent, pos + side * 5.0, Vector2(22.0, 4.0), col, z, ang - 0.46)
-
-## The drawn road network (round-4 rule 1). The walkway band (zone 1 in
-## _build_floor_themed) already carries the east-west artery in its own
-## material; this adds the perpendicular SPURS — one to every off-lane portal,
-## one to every NPC, one to the focal set-piece — so the objective graph
-## (spawn -> focal -> NPC -> portals) is literally paved onto the ground.
-## Drawn after the mottle pass: navigation line-work must not be dimmed.
-static func _paint_paths(parent: Node2D, region_id: String, theme: Dictionary, w: int, h: int, seed_v: int) -> void:
-	var glow: Color = theme.get("glow", Color(0.7, 0.8, 0.9))
-	var focal: Vector2 = theme.get("focal", Vector2.ZERO)
-	# The artery is no longer a horizontal at h*0.5, so every spur has to leave
-	# the band at the height the band actually has under ITS column.
-	for pd in _region_portals(region_id):
-		var pp: Vector2 = pd.pos
-		var cy := _band_y(pp.x, float(w), float(h), seed_v)
-		if absf(pp.y - cy) > 60.0:
-			var stop_y := pp.y
-			# When the focal set-piece stands ON this column between the band and
-			# the door, stop the road at the set-piece instead of paving under
-			# it — the piece and the portal's own gate pool carry the line the
-			# rest of the way. (The vault used to be the case that needed this,
-			# with its pedestal at y 244 directly under a north door at x 640;
-			# that door has since moved off the pedestal's column.)
-			if absf(pp.x - focal.x) < 80.0 and (focal.y - cy) * (pp.y - cy) > 0.0 \
-					and absf(focal.y - cy) < absf(pp.y - cy):
-				stop_y = focal.y
-			_spur(parent, pp.x, stop_y, cy, glow, 96.0, _band_half(pp.x, float(w), seed_v))
-	for npc_data in _region_npcs(region_id):
-		var np: Vector2 = npc_data.pos
-		_spur(parent, np.x, np.y, _band_y(np.x, float(w), float(h), seed_v), glow, 90.0, _band_half(np.x, float(w), seed_v))
-	if focal != Vector2.ZERO:
-		# Skip the focal spur when an NPC or portal spur already runs down the
-		# same column (the wildlands camp, the corporate stage, the vault's
-		# north door) — two overlaid paths read as a rendering mistake.
-		var dup := false
-		for npc_data in _region_npcs(region_id):
-			var np2: Vector2 = npc_data.pos
-			if absf(np2.x - focal.x) < 80.0:
-				dup = true
-		for pd2 in _region_portals(region_id):
-			var pp2: Vector2 = pd2.pos
-			if absf(pp2.y - _band_y(pp2.x, float(w), float(h), seed_v)) > 60.0 and absf(pp2.x - focal.x) < 80.0:
-				dup = true
-		if not dup:
-			_spur(parent, focal.x, focal.y, _band_y(focal.x, float(w), float(h), seed_v), glow, 96.0, _band_half(focal.x, float(w), seed_v))
-
-## One vertical branch from the artery band edge toward a destination, stopping
-## a respectful margin short of it. Degenerate spurs (target close to the band)
-## are skipped — the band itself already delivers the player there.
-static func _spur(parent: Node2D, x: float, target_y: float, cy: float, col: Color, wpx: float, band: float) -> void:
-	var k := signf(target_y - cy)
-	if k == 0.0:
-		return
-	# Start ON the (now wobbling) band edge rather than at a fixed 92px, or the
-	# spur either floats off the artery or overshoots into it.
-	var a := Vector2(x, cy + k * (band - 4.0))
-	var b := Vector2(x, target_y - k * 96.0)
-	if (b.y - a.y) * k < 40.0:
-		return
-	_path_segment(parent, a, b, col, wpx)
-
-## Axis-aligned paved segment. Round 6 gave every spur a poured underlay, a deck,
-## path_tile sprites, edge sprites, region-tinted edge lines, grate ticks at a
-## 48px rhythm, twelve shed chips and a five-piece ragged terminus: forty-odd
-## primitives per branch, on a floor that has three of them. LAW 4 — floor
-## overlays are zero, and a road only has to say WALK HERE. That is a dark
-## underlay one value below the field and a hairline edge either side of it.
-static func _path_segment(parent: Node2D, a: Vector2, b: Vector2, _col: Color, wpx: float = 90.0) -> void:
-	var d := b - a
-	var seg_len := d.length()
-	if seg_len < 40.0:
-		return
-	var horiz := absf(d.x) > absf(d.y)
-	var mid := (a + b) * 0.5
-	var size := Vector2(seg_len + wpx * 0.6, wpx) if horiz else Vector2(wpx, seg_len + wpx * 0.6)
-	_rect(parent, mid, size, Color(0.016, 0.02, 0.04, 0.34), -93)
-	_rect(parent, mid, size - Vector2(12, 12), Color(0.72, 0.78, 0.9, 0.06), -93)
-	var side := Vector2(0, 1) if horiz else Vector2(1, 0)
-	var esz := Vector2(size.x, 2.0) if horiz else Vector2(2.0, size.y)
-	for k: float in [1.0, -1.0]:
-		_rect(parent, mid + side * (k * wpx * 0.5), esz, Color(0, 0, 0, 0.34), -93)
 
 ## Small hard-edged floor litter: bolts, hairline cracks, spilled coolant chips,
 ## drain grates. Reads as texture underfoot at a glance, as story up close.
@@ -918,9 +723,9 @@ static func _build_structures(parent: Node2D, theme: Dictionary) -> void:
 	var glow: Color = theme.get("glow", Color(0.6, 0.8, 1.0))
 	# LAW 3: props do not glow. Structures used to claim up to three PointLight2Ds
 	# between them, a backing halo each, blinking LEDs on every tower and a lit
-	# pool under everything. They now get ONE faint floor pool apiece — enough to
-	# sit them on the ground — and consoles keep their screen, because a screen is
-	# a motivated light source and a halo is not.
+	# pool under everything. Round 7 cut that to one faint pool apiece; round 8
+	# cuts the pool too. A console keeps its SCREEN, because a screen is a
+	# motivated light source — nothing else here is.
 	for s in theme.get("structs", []):
 		var sc: float = float(s.get("s", 1.0))
 		var sp: Vector2 = s.p
@@ -930,7 +735,10 @@ static func _build_structures(parent: Node2D, theme: Dictionary) -> void:
 			continue
 		if s.t == "struct_console":
 			_screen(z, sp + Vector2(0, -20.0 * sc), glow, Vector2(1.1, 1.0) * sc, spr.z_index + 1)
-		_light_pool(z, sp + Vector2(0, 14.0 * sc), 120.0 * sc, glow, 0.09)
+		# No pool. Round-8 critique #7: a puddle of light under EVERY structure is
+		# a spot-halo on a prop by another name (LAW 4 forbids it in those words),
+		# and eleven of them is the room lit to one flat value again. A structure
+		# is grounded by its drop shadow; only motivated sources light the floor.
 
 ## Ambient clutter + depth so regions don't read as a bare floor with props in the
 ## corners. The heavy lifting now belongs to the hand-composed set-pieces, so this
@@ -1066,21 +874,34 @@ static func _build_region_ambient(parent: Node2D, _theme: Dictionary, w: int, h:
 		dust.texture = dot
 	parent.add_child(dust)
 
-## Motivated light, LAW 3 and LAW 4. TWO ceiling fixtures — a housing on the
-## wall, a tube, and the pool it throws — and that is the whole ambient rig.
+## Motivated light, LAW 3 and LAW 4 — and, since round 8, the thing that says
+## "you are here" now that the floor has stopped saying it.
 ##
-## What went: four fixtures (two of them real lights), a real anchor lamp for
-## every entry in the theme's `lights` table, and four corner fill pools. Between
-## them, structures and set-pieces this room used to carry a dozen PointLight2Ds
-## and thirty additive pools; nothing in the frame was ever darker than anything
-## else, which is the definition of no hierarchy. The anchors keep their pools —
-## a pool is a puddle on the floor, not a light — and the corners are allowed to
-## simply be dark, because edges recede.
-static func _build_region_lights(parent: Node2D, theme: Dictionary, w: int, _h: int) -> void:
+## THE ARRIVAL POOL comes first: one soft PointLight2D at energy 0.6 with a large
+## radius, centred where the player lands, plus the puddle it throws. It replaces
+## the brightened plaza tiles that used to be stamped around the spawn of every
+## region (critique #1) — the ground reads as ground, and the light does the job
+## a light is for.
+##
+## Then ONE ceiling fixture — a housing on the wall, a tube, and its pool — where
+## round 7 had two of them, each with a real light. Two lights on the top wall
+## plus the arrival pool plus the set-piece's focal lamp plus the NPC key is
+## already the whole LAW 4 budget, and the second fixture was pure symmetry.
+static func _build_region_lights(parent: Node2D, theme: Dictionary, w: int, h: int) -> void:
 	var z := Node2D.new()
 	z.name = "Lighting"
 	parent.add_child(z)
 	var glow: Color = theme.get("glow", Color(0.6, 0.8, 1.0))
+	# The arrival pool. Placed on the layout's own plaza centre, which is where
+	# the composition already puts the player down, and which moves per region.
+	# Its hue is the region ACCENT lifted 40% toward white: a neon tube reads as
+	# its own colour, but the light a room is LIT by reads as light, and a
+	# saturated 640px puddle of ember or corp-blue under the player would just be
+	# the painted plaza again in another medium.
+	var arrive := _plaza_center(float(w), float(h))
+	var key := glow.lerp(Color(1.0, 1.0, 1.0), 0.4)
+	_add_light(z, arrive, key, 0.6, 7.4, false)
+	_light_pool(z, arrive, 640.0, key, 0.13)
 	for i in 2:
 		var fx := 330.0 + float(i) * (w - 660.0)
 		_rect(z, Vector2(fx, 66.0), Vector2(58, 12), Color(0.05, 0.055, 0.085, 0.95), -54)
@@ -1093,11 +914,13 @@ static func _build_region_lights(parent: Node2D, theme: Dictionary, w: int, _h: 
 		tube.scale = Vector2(1.1, 1.0)
 		tube.z_index = -53
 		z.add_child(tube)
-		_light_pool(z, Vector2(fx, 150.0), 360.0, glow, 0.13)
-		_add_light(z, Vector2(fx, 96.0), glow, 0.5, 3.4, false)
+		_light_pool(z, Vector2(fx, 150.0), 360.0, glow, 0.11)
+		# Only the first fixture is a real light; the second is its own puddle.
+		if i == 0:
+			_add_light(z, Vector2(fx, 96.0), glow, 0.5, 3.4, false)
 	# The theme's anchor points keep a pool each and no light.
 	for lp in theme.get("lights", []):
-		_light_pool(z, lp, 280.0, glow, 0.10)
+		_light_pool(z, lp, 280.0, glow, 0.09)
 
 ## A quiet puddle under the one person in the room. An NPC you can talk to is
 ## LAW 3's "current objective" more often than not, so the NPC keeps a real key
@@ -1185,6 +1008,13 @@ static func _add_light(parent: Node2D, pos: Vector2, color: Color, energy: float
 ## for focal energy (>= 1.0), which across this file is true of exactly one lamp
 ## per region: the one over the set-piece.
 ##
+## ROUND 8: that threshold is now a SELECTOR and nothing more. "One focal lamp is
+## allowed past 1.0" is revoked — every light in the game is capped at 0.9 by
+## _add_light — so a set-piece lamp asking for 1.25 gets a real light AT 0.9, the
+## same energy as everything else. What still makes it focal is that it is the
+## only real light in its half of the room, which is how focus is supposed to be
+## bought.
+##
 ## That single threshold is what took the light count from roughly fifteen a room
 ## to four. Every other _lamp call in this file — the anchors, the stalls, the
 ## shrine, the shack, the ore carts, the arcane circles, the depot, the install
@@ -1199,6 +1029,12 @@ static func _lamp(parent: Node2D, pos: Vector2, col: Color, energy: float, scale
 		_light_pool(parent, pos + Vector2(0, 26), pool, col, 0.20)
 	return l
 
+## Round-8 critique #7, "props outshine the player": every pool is capped on the
+## way in. Forty call sites asking for 0.26-0.34 apiece, additively, over a dark
+## floor, is how a room ends up with no value below "lit" in it — and the player
+## is the one thing that then has nothing left to be brighter than.
+const POOL_MAX := 0.22
+
 static func _light_pool(parent: Node2D, pos: Vector2, width: float, col: Color, alpha: float = 0.26, z: int = -86) -> void:
 	var s := Sprite2D.new()
 	s.texture = _light_tex()
@@ -1206,7 +1042,7 @@ static func _light_pool(parent: Node2D, pos: Vector2, width: float, col: Color, 
 	s.position = pos
 	var tw := maxf(1.0, float(s.texture.get_width()))
 	s.scale = Vector2(width / tw, width * 0.6 / tw)
-	s.modulate = Color(col.r, col.g, col.b, alpha)
+	s.modulate = Color(col.r, col.g, col.b, minf(alpha, POOL_MAX))
 	s.z_index = z
 	parent.add_child(s)
 
@@ -1368,15 +1204,21 @@ static func _reserve_labels(region_id: String, w: int, h: int) -> void:
 	WorldLabel.begin(Rect2(0.0, 0.0, float(w), float(h)))
 	for pd in _region_portals(region_id):
 		var pp: Vector2 = pd.pos
-		WorldLabel.reserve(Rect2(pp + Vector2(-88, -70), Vector2(176, 44)))
-		WorldLabel.reserve(Rect2(pp + Vector2(-100, -100), Vector2(200, 200)))
+		# ONE box, 260x220, centred on the door (round-8 critique #9). The old
+		# pair — a 176x44 plate box plus a 200x200 body box, both hung ABOVE
+		# centre — left the portal's own destination label (which region_portal.gd
+		# draws BELOW the disc, at +64..+90) and the guidance chevron's column
+		# unprotected, and the frames show captions landing on both.
+		WorldLabel.reserve(Rect2(pp + Vector2(-130, -110), Vector2(260, 220)))
 	for npc_data in _region_npcs(region_id):
 		var np: Vector2 = npc_data.pos
 		# The nameplate box AND the bark bubbles stacked above it. npc.gd
 		# measures its own font and places the plate at y -106..-86, with idle
 		# barks rising from -114 to about -175 and up to ~330px wide; a sign
 		# landing anywhere in that column would be talked over all night.
-		WorldLabel.reserve(Rect2(np + Vector2(-170, -200), Vector2(340, 140)))
+		# 360x150 since round 8: the frames show the name tag clipping captions
+		# at both ends of a 340px box.
+		WorldLabel.reserve(Rect2(np + Vector2(-180, -210), Vector2(360, 150)))
 		# The NPC's actual silhouette (2.2x a 32px sprite, drawn 18px high of
 		# centre). Tight on purpose — a person is a landmark, and captions should
 		# sit BESIDE them, not be exiled to the next quadrant.
@@ -1426,23 +1268,36 @@ static func _build_region_signs(parent: Node2D, region_id: String, theme: Dictio
 		# Hung on the room side of the door, so the arrow reads into the doorway
 		# rather than off the edge of the world.
 		var side := -1.0 if dp.x > w * 0.5 else 1.0
-		var at := Vector2(dp.x + side * 150.0, dp.y - 96.0)
+		# OUTSIDE the portal's reserved 260x220 box (critique #9): 150px to the side
+		# and 96 up put the arrow INSIDE it, so the ladder had to displace the one
+		# caption in the room that must never move. 210 and 150 clear the box on both
+		# axes, with room for the 6px growth _colliders adds.
+		# ...and BELOW a door cut into the top wall (the vault's way home is at
+		# y 96), or the clamp drags the arrow up into the wall band instead.
+		var lift := -150.0 if dp.y > 300.0 else 170.0
+		var at := Vector2(dp.x + side * 210.0, dp.y + lift)
 		_sign(z, Vector2(round(at.x * 0.5) * 2.0, round(at.y * 0.5) * 2.0),
 			"EXIT \u2192" if side < 0.0 else "\u2190 EXIT", accent, 13, true)
 	# One NPC hint. The person is the region's other objective, and the waypoint
 	# already knows where they are — this is the floor-level confirmation.
+	#
+	# BESIDE the person, at the height of their FEET, never above them (critique
+	# #9). The NPC's silhouette is reserved from -62 to +24 of their origin and
+	# their name tag owns the whole column above that, so a hint hung high was
+	# fighting both; level with the feet it reads as pointing along the floor.
 	for npc_data in _region_npcs(region_id):
 		var np: Vector2 = npc_data.pos
-		var hp := np + Vector2(-190.0, 34.0)
+		var hp := np + Vector2(-196.0, 14.0)
 		_sign(z, Vector2(round(hp.x * 0.5) * 2.0, round(hp.y * 0.5) * 2.0),
 			"talk \u2192", accent, 12, true)
 		break
 
 ## Region-specific atmosphere. LAW 5 allows ONE region to keep one atmosphere
-## shader "if it is subtle enough that a viewer would not name it" — the vault's
-## gold code-rain at 0.14 alpha is that one. Production's red LogSpew column and
-## the vault's two violet corner lamps are gone: a second scrolling shader and a
-## fourth hue are exactly what the law is written against.
+## shader "if it is subtle enough that a viewer would not name it" — and after
+## round 8, NO region spends it. The vault's gold code-rain was the last one, and
+## a cold viewer named it immediately: forty-odd tan rectangles at random sizes
+## and positions, scrolling over the floor. What is left in here is one light:
+## the mines' heat pit, which is a motivated source and not a filter.
 static func _build_region_fx(parent: Node2D, region_id: String, _theme: Dictionary, w: int, h: int) -> void:
 	match region_id:
 		"gpu_mines":
@@ -1450,17 +1305,14 @@ static func _build_region_fx(parent: Node2D, region_id: String, _theme: Dictiona
 			# mines' focal light: the heat pit, and the one bright thing in the
 			# room (LAW 3, item 4 — a motivated source).
 			_add_light(parent, Vector2(w * 0.5, h * 0.76), Color("#FF6B2D"), 0.9, 6.0, true)
-		"token_vault":
-			var rain := _shader_mat("code_rain", {"tint": Color(1.0, 0.83, 0.3, 1.0), "alpha_max": 0.10, "columns": 42.0, "speed": 0.8})
-			if rain:
-				var rect := ColorRect.new()
-				rect.name = "DataRain"
-				rect.material = rain
-				rect.position = Vector2(40, 60)
-				rect.size = Vector2(w - 80, h - 120)
-				rect.z_index = -35
-				rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-				parent.add_child(rect)
+		_:
+			# The vault's gold code-rain is gone too. Under the corrected exposure
+			# it is not the subtle wash LAW 5 permits one region to keep — it is
+			# forty-odd tan rectangles at random sizes and positions scrolling over
+			# the whole floor, which is precisely what critique #6 describes. The
+			# vault keeps the single ambient dust layer every region has and
+			# nothing else.
+			pass
 
 # --- hand-composed set-pieces ---------------------------------------------
 
@@ -1552,10 +1404,10 @@ static func _monolith(parent: Node2D, pos: Vector2, rot: float, col: Color, sc: 
 static func _rack(parent: Node2D, pos: Vector2, col: Color, hot: Color, sc: float, phase: float) -> void:
 	var spr := _prop(parent, "struct_tower", pos, sc, col)
 	var zi := spr.z_index if spr else _depth(pos.y, 60.0)
-	for i in 5:
-		_led(parent, pos + Vector2(-10.0 + float(i % 2) * 20.0, -54.0 + float(i) * 18.0), hot if i % 2 == 0 else col, phase + float(i) * 0.19, zi + 1)
-	_glow_rect(parent, pos + Vector2(0, 52.0 * sc), Vector2(40.0 * sc, 5), Color(hot.r, hot.g, hot.b, 0.55), zi + 1)
-	_light_pool(parent, pos + Vector2(0, 62.0 * sc), 150.0 * sc, hot, 0.2)
+	# ONE status chip (LAW 7: one emissive pixel per light source on a sprite),
+	# not five in two hues plus a vent bar plus the puddle it threw. Six racks in
+	# a room made that thirty-six emissive marks and six halos.
+	_led(parent, pos + Vector2(-10.0, -36.0), hot, phase, zi + 1)
 
 ## Cubicle: two glass partitions, a desk, and a monitor nobody is behind.
 static func _cubicle(parent: Node2D, pos: Vector2, col: Color, screen_col: Color) -> void:
@@ -1565,19 +1417,23 @@ static func _cubicle(parent: Node2D, pos: Vector2, col: Color, screen_col: Color
 	_drop_shadow(parent, pos + Vector2(8, 32), 96.0, zi - 1, 0.34)
 	_rect(parent, pos + Vector2(8, 18), Vector2(84, 26), Color(0.2, 0.22, 0.3), zi)
 	_rect(parent, pos + Vector2(8, 7), Vector2(84, 3), Color(0.34, 0.37, 0.48), zi + 1)
+	# The screen is the light. The 140px puddle it used to throw on the desk was
+	# a monitor spill halo, seven of them per corporate frame (critique #7).
 	_screen(parent, pos + Vector2(8, 4), screen_col, Vector2(0.8, 0.7), zi + 2)
-	_light_pool(parent, pos + Vector2(8, 30), 140.0, screen_col, 0.16)
 
 ## Pilgrim shrine: a kneeling stone in a ring of guttering candles. People come
 ## here to ask a question that was answered in 2011 and closed in 2012.
 static func _shrine(parent: Node2D, pos: Vector2, col: Color) -> void:
 	_floor_patch(parent, pos, 270.0, col, 0.13, -94)
 	_prop(parent, "struct_slab", pos + Vector2(0, -10), 0.42, Color(0.66, 0.6, 0.5))
-	for i in 9:
-		var a := TAU * float(i) / 9.0
+	# SIX candles, and their wax is 60% value like every other prop (LAW 3). Nine
+	# near-white sticks each with a 0.9-alpha additive flame is a ring of bright
+	# marks that out-reads the person standing next to it (critique #7).
+	for i in 6:
+		var a := TAU * float(i) / 6.0
 		var cp := pos + Vector2(cos(a) * 106.0, sin(a) * 62.0)
-		_rect(parent, cp, Vector2(6, 13), Color(0.84, 0.8, 0.68), _depth(cp.y, 7.0))
-		_glow_rect(parent, cp + Vector2(0, -10), Vector2(4, 6), Color(1.0, 0.72, 0.3, 0.9), _depth(cp.y, 9.0))
+		_rect(parent, cp, Vector2(6, 13), Color(0.52, 0.49, 0.42), _depth(cp.y, 7.0))
+		_glow_rect(parent, cp + Vector2(0, -10), Vector2(3, 4), Color(1.0, 0.72, 0.3, 0.55), _depth(cp.y, 9.0))
 	_light_pool(parent, pos + Vector2(0, 16), 250.0, Color(1.0, 0.72, 0.34), 0.26)
 	_lamp(parent, pos + Vector2(0, -22), Color(1.0, 0.7, 0.32), 0.5, 1.6, true, 0.0)
 
@@ -1617,49 +1473,22 @@ static func _cart(parent: Node2D, pos: Vector2, hot: Color, tilt: float) -> void
 
 ## Incident whiteboard: a board, a tray, and the same four boxes and arrows every
 ## incident produces before anybody has looked at a log.
-static func _whiteboard(parent: Node2D, pos: Vector2, accent: Color, rot: float) -> void:
+static func _whiteboard(parent: Node2D, pos: Vector2, _accent: Color, rot: float) -> void:
 	var zi := _depth(pos.y, 46.0)
 	_drop_shadow(parent, pos + Vector2(0, 46), 156.0, zi - 2, 0.4)
-	_rect(parent, pos, Vector2(152, 94), Color(0.13, 0.14, 0.19), zi - 1, rot)
-	_rect(parent, pos, Vector2(146, 88), Color(0.74, 0.77, 0.84), zi, rot)
+	# LAW 3: everything that is not one of the five bright things is <= 60% value.
+	# The board was painted at 0.74-0.84 — a near-white rectangle 146px across —
+	# and the production frame has two of them flanking the war room, brighter
+	# than the player standing in front of them (critique #7).
+	_rect(parent, pos, Vector2(152, 94), Color(0.10, 0.11, 0.15), zi - 1, rot)
+	_rect(parent, pos, Vector2(146, 88), Color(0.44, 0.46, 0.51), zi, rot)
 	for i in 3:
-		_rect(parent, pos + Vector2(-44.0 + float(i) * 44.0, -18.0), Vector2(30, 18), Color(0.2, 0.24, 0.36, 0.85), zi + 1, rot)
+		_rect(parent, pos + Vector2(-44.0 + float(i) * 44.0, -18.0), Vector2(30, 18), Color(0.16, 0.19, 0.28, 0.85), zi + 1, rot)
 		if i < 2:
-			_rect(parent, pos + Vector2(-22.0 + float(i) * 44.0, -18.0), Vector2(16, 2), Color(0.75, 0.2, 0.24, 0.9), zi + 1, rot)
+			_rect(parent, pos + Vector2(-22.0 + float(i) * 44.0, -18.0), Vector2(16, 2), Color(0.45, 0.16, 0.19, 0.9), zi + 1, rot)
 	for i in 4:
-		_rect(parent, pos + Vector2(-30.0 + float(i % 2) * 46.0, 12.0 + float(i / 2) * 13.0), Vector2(56, 3), Color(0.28, 0.3, 0.4, 0.7), zi + 1, rot)
-	_rect(parent, pos + Vector2(0, 47), Vector2(150, 7), Color(0.2, 0.22, 0.3), zi + 1, rot)
-	_glow_rect(parent, pos + Vector2(-52, 47), Vector2(16, 3), Color(accent.r, accent.g, accent.b, 0.7), zi + 2, rot)
-	_light_pool(parent, pos + Vector2(0, 60), 200.0, Color(0.58, 0.65, 0.78), 0.10)
-
-## Security laser: a thin overbright beam between two emitters. Nothing behind it
-## is protected; it is entirely for the atmosphere of consequence.
-static func _laser(parent: Node2D, a: Vector2, b: Vector2, col: Color) -> void:
-	var d := b - a
-	var ln := d.length()
-	if ln < 8.0:
-		return
-	var ang := d.angle()
-	var mid := (a + b) * 0.5
-	# Haze first. A 2px overbright rect on its own is a drawn line — which is
-	# exactly how the vault's lattice read in the round-5 frame ("two perfectly
-	# straight cross-screen lines"). A beam is a thread inside a glow, and it
-	# has motes hanging in it.
-	_glow_rect(parent, mid, Vector2(ln, 13.0), Color(col.r * 0.5, col.g * 0.5, col.b * 0.5, 0.09), -89, ang)
-	_glow_rect(parent, mid, Vector2(ln, 2.0), Color(col.r * 1.6, col.g * 1.6, col.b * 1.6, 0.5), -88, ang)
-	var motes := maxi(3, int(ln / 96.0))
-	for i in motes:
-		var t := (float(i) + 0.5) / float(motes)
-		_glow_rect(parent, a + d * t, Vector2(5, 5), Color(col.r * 1.4, col.g * 1.4, col.b * 1.4, 0.20), -88, ang + 0.7)
-	# Emitter heads: a housing with a lit top edge, a lens, a contact shadow and
-	# the puddle it throws — the beam visibly comes OUT of something at both ends.
-	for e: Vector2 in [a, b]:
-		var zi := _depth(e.y, 11.0)
-		_drop_shadow(parent, e + Vector2(0, 11), 36.0, zi - 1, 0.38)
-		_rect(parent, e, Vector2(16, 22), Color(0.06, 0.055, 0.09, 0.96), zi)
-		_rect(parent, e + Vector2(0, -9), Vector2(16, 3), Color(0.24, 0.25, 0.33), zi + 1)
-		_glow_rect(parent, e, Vector2(7, 7), Color(col.r, col.g, col.b, 0.9), zi + 1)
-		_light_pool(parent, e + Vector2(0, 13), 90.0, col, 0.16)
+		_rect(parent, pos + Vector2(-30.0 + float(i % 2) * 46.0, 12.0 + float(i / 2) * 13.0), Vector2(56, 3), Color(0.20, 0.22, 0.30, 0.7), zi + 1, rot)
+	_rect(parent, pos + Vector2(0, 47), Vector2(150, 7), Color(0.15, 0.16, 0.22), zi + 1, rot)
 
 ## Glass office partition. The maze is the product.
 static func _partition(parent: Node2D, pos: Vector2, size: Vector2, col: Color) -> void:
@@ -1771,8 +1600,10 @@ static func _sp_stackoverflow(z: Node2D, glow: Color, accent: Color) -> void:
 	_monolith(z, Vector2(936, 372), 0.35, Color(0.62, 0.55, 0.44), 0.7, 14)
 	# The Accepted Answer, still lit, still wrong. THE focal: brightest thing in
 	# the ruins, haloed so the slab reads before its caption does.
+	# The slab is lit BY its lamp, it does not emit: the 30x30 additive square
+	# that used to sit on its face was a glow pass on a prop (LAW 7 allows one
+	# emissive pixel, LAW 3 allows props none at all).
 	_prop(z, "struct_slab", Vector2(640, 214), 1.0, Color(0.86, 0.76, 0.55))
-	_glow_rect(z, Vector2(640, 190), Vector2(30, 30), Color(glow.r, glow.g, glow.b, 0.5), _depth(214, 62))
 	_lamp(z, Vector2(640, 178), glow, 1.15, 2.8, true, 340.0)
 	_floor_patch(z, Vector2(640, 292), 300.0, glow, 0.14, -94)
 	# Cairn of duplicates, stacked by a hermit with a lot of time.
@@ -1857,7 +1688,9 @@ static func _sp_cloud(z: Node2D, glow: Color, accent: Color) -> void:
 
 static func _sp_opensource(z: Node2D, glow: Color, accent: Color) -> void:
 	## The region's ONE set-piece caption (LAW 4: <= 4 world labels).
-	_sign(z, Vector2(916, 862), "MAINTAINER", glow, 12)
+	# West of the camp: the generic NPC hint lands at (862,866) beside the
+	# maintainer, and a caption at 916 shared pixels with it.
+	_sign(z, Vector2(744, 866), "MAINTAINER", glow, 12)
 	# The maintainer's camp: one tent, one fire, one person, 4,000 dependents.
 	# THE focal — the warmest, brightest pool in the wildlands is the human.
 	_light_pool(z, Vector2(1058, 826), 340.0, Color(1.0, 0.7, 0.34), 0.34)
@@ -2041,18 +1874,21 @@ static func _sp_production(z: Node2D, glow: Color, accent: Color) -> void:
 	# somebody will disprove in nine minutes.
 	_whiteboard(z, Vector2(444, 240), accent, -0.04)
 	_whiteboard(z, Vector2(842, 238), glow, 0.05)
-	# Rotating beacons along the top wall. Everything is fine.
-	for i in 4:
-		var bx := 200.0 + float(i) * 280.0
-		_rect(z, Vector2(bx, 90.0), Vector2(20, 14), Color(0.1, 0.05, 0.06, 0.95), -45)
-		_glow_rect(z, Vector2(bx, 84.0), Vector2(14, 6), Color(glow.r, glow.g, glow.b, 0.9), -44)
-		_light_pool(z, Vector2(bx, 168.0), 260.0, glow, 0.16)
+	# Alarm panels along the top wall. TWO, not four, and dark: LAW 3 caps
+	# everything that is not one of the five bright things at 60% value, and the
+	# frame shows four near-white red bars along the top wall out-reading the
+	# player (critique #7). The housing carries the hue now; the lens is one
+	# small chip, and the 260px puddle each of them threw is gone.
+	for i in 2:
+		var bx := 340.0 + float(i) * 600.0
+		_rect(z, Vector2(bx, 90.0), Vector2(20, 14), Color(0.09, 0.045, 0.055, 0.95), -45)
+		_rect(z, Vector2(bx, 84.0), Vector2(16, 5), Color(glow.r * 0.55, glow.g * 0.55, glow.b * 0.55, 0.9), -44)
+		_glow_rect(z, Vector2(bx, 84.0), Vector2(6, 3), Color(glow.r, glow.g, glow.b, 0.5), -43)
 	# The status page. Fully green. Load-bearing lie. Mid-ground.
 	_prop(z, "struct_slab", Vector2(272, 276), 0.9, Color(0.6, 0.44, 0.46))
 	_screen(z, Vector2(272, 248), accent, Vector2(1.9, 1.2), _depth(276, 56))
 	_lamp(z, Vector2(272, 234), accent, 0.5, 1.9, false, 240.0)
-	for i in 5:
-		_led(z, Vector2(220.0 + float(i) * 26.0, 296.0), accent, 0.2 + float(i) * 0.21, _depth(296, 8))
+	_led(z, Vector2(272.0, 296.0), accent, 0.2, _depth(296, 8))
 	# THE BUTTON. Red. Domed. Guarded by a sign nobody reads.
 	_prop(z, "struct_slab", Vector2(268, 800), 0.55, Color(0.58, 0.4, 0.42))
 	_glow_rect(z, Vector2(268, 758), Vector2(28, 16), Color(1.0, 0.25, 0.25, 0.9), _depth(800, 62))
@@ -2073,44 +1909,36 @@ static func _sp_vault(z: Node2D, glow: Color, accent: Color) -> void:
 	for i in 4:
 		var sp := Vector2(276.0 + float(i % 2) * 728.0, 250.0 + float(i / 2) * 104.0)
 		_prop(z, "struct_slab", sp, 0.8, Color(0.86, 0.74, 0.44))
-		for b in 4:
-			_glow_rect(z, sp + Vector2(-26.0 + float(b) * 17.0, -22.0), Vector2(13, 7), Color(glow.r, glow.g, glow.b, 0.75), _depth(sp.y, 50.0))
-		_light_pool(z, sp + Vector2(0, 46), 190.0, glow, 0.2)
+		# One chip per row, not four glowing bars and a puddle. Sixteen emissive
+		# gold bars on four shelves is the shelving out-shining the reserves it is
+		# holding (LAW 7: one emissive pixel per light source).
+		_glow_rect(z, sp + Vector2(0.0, -22.0), Vector2(9, 4), Color(glow.r, glow.g, glow.b, 0.5), _depth(sp.y, 50.0))
 	# The reserve pedestal: an orb of tokens under an arcane ring. THE focal.
+	# The twenty violet dashes that used to ring the pedestal are gone, and so are
+	# the twenty-eight more around the two circles below: forty-eight rotated
+	# streaks scattered over the vault floor, which is exactly what critique #6
+	# read them as ("40+ violet diagonal streak particles"). The orb under its own
+	# lamp is the focal; a halo of marks around it is not lighting.
 	_prop(z, "struct_orb", Vector2(640, 244), 0.85, Color(1.0, 0.85, 0.34))
-	for i in 20:
-		var a := TAU * float(i) / 20.0
-		_glow_rect(z, Vector2(640, 300) + Vector2(cos(a) * 128.0, sin(a) * 78.0), Vector2(11, 4), Color(VIOLET.r, VIOLET.g, VIOLET.b, 0.5), -90, a)
 	_lamp(z, Vector2(640, 226), glow, 1.25, 3.0, true, 380.0)
 	# Two arcane circles: the price oracle, and whatever the other one does.
 	for k: float in [1.0, -1.0]:
 		var cp := Vector2(640.0 - k * 366.0, 790.0)
-		_floor_patch(z, cp, 300.0, VIOLET, 0.2, -94)
-		for i in 14:
-			var a2 := TAU * float(i) / 14.0
-			_glow_rect(z, cp + Vector2(cos(a2) * 104.0, sin(a2) * 62.0), Vector2(9, 4), Color(VIOLET.r * 1.3, VIOLET.g * 1.3, VIOLET.b * 1.3, 0.55), -90, a2)
+		_floor_patch(z, cp, 300.0, VIOLET, 0.14, -94)
 		_lamp(z, cp, VIOLET, 0.55, 2.2, k > 0.0, 0.0)
-	# The vault floor: a lattice of security lasers between the reserves and the
-	# door, plus two guarding the pedestal. Nothing is protected. It is a mood.
-	# Two SHORT bays rather than three beams spanning the whole room: an 868px
-	# perfectly straight line across the frame reads as a stray primitive no
-	# matter what is emitting it, and the bays give the lattice a rhythm.
-	# TWO beams, not seven. Six crossed lasers plus a violet centre line is a
-	# lattice of overbright lines across the floor in a THIRD hue — HOSTILE red is
-	# reserved for enemy tells (LAW 2), and the vault's hues are gold and violet.
-	for k: float in [0.0, 1.0]:
-		var bx := 236.0 + k * 416.0
-		_laser(z, Vector2(bx, 662), Vector2(bx + 372.0, 662), VIOLET)
+	# The security lattice is GONE. Two 372px overbright violet bays laid end to
+	# end still drew one near-continuous horizontal beam across the whole frame at
+	# y 662 — critique #6, "a violet horizontal beam" — and a perfectly straight
+	# overbright line across a floor reads as a stray primitive no matter how well
+	# motivated it is. The emitter heads stay as unlit props: hardware that is
+	# switched off is still hardware, and the vault is a mood either way.
 	# The balance console. It says "yes".
 	_prop(z, "struct_console", Vector2(640, 800), 0.95, Color(0.9, 0.78, 0.46))
 	_screen(z, Vector2(640, 778), accent, Vector2(1.4, 1.0), _depth(800, 56))
 
-	# The posts the lattice actually comes out of, and a cart of reserves left
-	# where the last audit abandoned it.
-	# ON the outer bay ends (x 236 and 1024), not 46px shy of them: an emitter
-	# prop that no beam comes out of, standing beside a beam that comes out of
-	# thin air, is the same "stray primitive" reading the shortened bays were
-	# meant to close.
+	# The two emitter heads the lattice used to come out of, kept as dark props
+	# either side of the counting floor, and a cart of reserves left where the
+	# last audit abandoned it.
 	_prop(z, "dress_laser_emitter", Vector2(236, 662), 1.0, Color(1.0, 0.78, 0.6))
 	_prop(z, "dress_laser_emitter", Vector2(1024, 662), 1.0, Color(1.0, 0.78, 0.6))
 	_prop(z, "dress_ore_cart", Vector2(884, 894), 0.9, Color(1.0, 0.86, 0.5), -0.06)
@@ -2442,9 +2270,10 @@ static func _cover(parent: Node2D, pos: Vector2, glow: Color, accent: Color, idx
 	_rect(parent, pos + Vector2(0, -21), Vector2(78, 5), Color(0.24, 0.26, 0.34), zi + 1)
 	for i in 3:
 		_rect(parent, pos + Vector2(-24.0 + float(i) * 24.0, 4.0), Vector2(4, 34), Color(0, 0, 0, 0.32), zi + 1)
-	_glow_rect(parent, pos + Vector2(-26, -20), Vector2(12, 4), Color(col.r, col.g, col.b, 0.7), zi + 2)
-	_glow_rect(parent, pos + Vector2(26, -20), Vector2(12, 4), Color(col.r, col.g, col.b, 0.45), zi + 2)
-	_light_pool(parent, pos + Vector2(0, 26), 150.0, col, 0.13)
+	# One lit cap and no puddle: five to seven barriers a region, each with two
+	# glowing caps and its own pool, is set dressing lit to the same value as the
+	# things the player is meant to look at (critique #7).
+	_glow_rect(parent, pos + Vector2(-26, -20), Vector2(12, 4), Color(col.r, col.g, col.b, 0.5), zi + 2)
 	_add_cover_body(parent, pos, Vector2(76, 34))
 
 static func _add_cover_body(parent: Node2D, pos: Vector2, sz: Vector2) -> void:
@@ -2727,9 +2556,12 @@ static func _region_npcs(region_id: String) -> Array:
 ## positions below are hand-checked per region against that region's own cover
 ## blocks, enemy posts, NPC and set-pieces; all of them sit in open, reachable
 ## floor well inside the walls. The pairs are deliberately NOT at matching
-## heights any more: an off-lane door earns a paved spur from _paint_paths and
-## its own chevron trail from _paint_wayfinding, which is exactly the layout
-## variety the frames were missing.
+## heights any more: the two doors of a region sit at different latitudes, on
+## different sides, so the room has a diagonal through it rather than the same
+## left-to-right corridor nine times. (The paved spurs and chevron trails that
+## used to be drawn from the plaza to each door are gone — round-8 critique #5
+## reads a line drawn from the portal to the player as one more copy of the same
+## room. The waypoint chevron is the wayfinding.)
 static func _region_portals(region_id: String) -> Array:
 	var cx := REGION_SIZE.x * TILE_SIZE * 0.5
 	var cy := REGION_SIZE.y * TILE_SIZE * 0.5

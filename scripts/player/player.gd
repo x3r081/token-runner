@@ -215,10 +215,18 @@ func _set_dust(on: bool) -> void:
 ## Floating "[E]" prompt so players always know when (and what) they can interact with.
 func _setup_prompt() -> void:
 	_prompt_label = Label.new()
-	_prompt_label.add_theme_font_size_override("font_size", 15)
-	_prompt_label.add_theme_color_override("font_color", Color(0.35, 0.95, 0.85))
-	_prompt_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	_prompt_label.add_theme_constant_override("outline_size", 5)
+	# LAW 4 gives a world label exactly one style: plain aliased text and a 1px
+	# black drop shadow — no 5px glyph outline. LAW 8 spends the ACCENT on
+	# wayfinding (the objective and its waypoint) and leaves everything else in
+	# neutral TEXT, and an [E] prompt is attached to something you are already
+	# standing next to: it is an instruction, not a direction.
+	_prompt_label.add_theme_font_size_override("font_size", 14)
+	_prompt_label.add_theme_color_override("font_color", Color("#D8DEEA"))
+	_prompt_label.add_theme_constant_override("outline_size", 0)
+	_prompt_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.8))
+	_prompt_label.add_theme_constant_override("shadow_offset_x", 1)
+	_prompt_label.add_theme_constant_override("shadow_offset_y", 1)
+	_prompt_label.add_theme_constant_override("shadow_outline_size", 0)
 	_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	# Absolute, not relative. The player y-sorts (z_index = int(y)), so a
 	# relative z would slide the prompt around the readout band as you walk

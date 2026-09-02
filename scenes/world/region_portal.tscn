@@ -25,6 +25,6 @@ offset_left = -80.0
 offset_top = -60.0
 offset_right = 80.0
 offset_bottom = -35.0
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 16
 text = "Portal"
 horizontal_alignment = 1

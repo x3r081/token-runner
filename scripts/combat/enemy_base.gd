@@ -119,6 +119,20 @@ const BOSS_SIGNATURE := 3
 const ELITE_FREE_REGIONS := ["localhost", "dependency_district"]
 const ELITE_CHANCE := 0.16
 
+## VISUAL_BIBLE_V2 LAW 2: enemies do not each get their own colour. Every tell in
+## this file — the alert ring, the wind-up tint, the charge lane, the boss
+## telegraph, the elite mark — is this ONE red, so "that is about to hurt" reads
+## identically in every room instead of being a different hue per archetype.
+const HOSTILE := Color("#FF4757")
+## The tell tint, as a MULTIPLY and never above 1.0. The sprite goes red; it does
+## not light up. LAW 3 allows exactly five bright things and an enemy body is not
+## one of them (its eyes/core, drawn into the sprite, are).
+const TELL_TINT := Color(1.0, 0.42, 0.47)
+## One art pixel, in the enemy's own units: the sprite draws its 32px art at 2.0,
+## so a two-unit step is exactly one texel. Every idle/scuttle offset below is a
+## multiple of this, which is the whole of LAW 1 in one number.
+const PX := 2.0
+
 var hp: int
 var target: Node2D = null
 var _flash_tween: Tween
@@ -210,11 +224,9 @@ var _summons_left := 0
 ## dies mid-flight simply cancels its own incoming shot — no callback can ever
 ## fire from a freed enemy, which is the classic way this kind of thing crashes.
 var _shots: Array = []
-## Presence rig: enemies used to read as small dark smudges at game zoom.
-var _halo: Sprite2D
-var _backing: Sprite2D
+## The only thing an enemy wears at rest besides its own sprite: a floor ring
+## that appears while it is hunting you (see _build_presence).
 var _alert_ring: Line2D
-var _body_light: PointLight2D
 ## Boss move set.
 var _boss_move := BOSS_SLAM
 var _boss_recover := 0.0
@@ -298,7 +310,7 @@ const ELITE_TAGS := ["load-bearing", "since 2009", "do not remove", "unowned",
 	"marked @deprecated", "still in prod"]
 
 func _accent() -> Color:
-	return DEATH_ACCENTS.get(enemy_type, Color("#FF4757"))
+	return DEATH_ACCENTS.get(enemy_type, HOSTILE)
 
 func _ready() -> void:
 	add_to_group("enemy")
@@ -352,6 +364,16 @@ func _ready() -> void:
 			tex_path = boss_tex
 	if ResourceLoader.exists(tex_path):
 		sprite.texture = load(tex_path)
+		# LAW 1: one pixel grid. Enemy art is authored at 32px and drawn at 2.0.
+		# A boss doubles its NODE scale (tests/boss_test asserts that), so the
+		# day the art agent ships a boss at 64px this halves the sprite scale to
+		# keep the composed scale at exactly 2.0 — bigger silhouette, same pixel.
+		var tex_w: int = sprite.texture.get_width()
+		if tex_w >= 64:
+			sprite.scale = Vector2(2.0, 2.0) * (32.0 / float(tex_w))
+		else:
+			sprite.scale = Vector2(2.0, 2.0)
+		_spr_base_scale = sprite.scale
 	attack_timer.timeout.connect(_attack)
 	attack_timer.start(randf_range(1.0, 2.0))
 	_build_hp_bar()
@@ -395,7 +417,7 @@ func _build_hp_bar() -> void:
 	_hp_fill = ColorRect.new()
 	_hp_fill.size = Vector2(HP_BAR_W, 3)
 	_hp_fill.position = Vector2(-HP_BAR_W * 0.5, 1)
-	_hp_fill.color = Color(0.45, 0.9, 0.45)
+	_hp_fill.color = Color("#D8DEEA")
 	_hp_bar.add_child(_hp_fill)
 
 func _update_hp_bar() -> void:
@@ -405,23 +427,30 @@ func _update_hp_bar() -> void:
 	# Bosses get the full-width bar at the bottom of the screen instead.
 	_hp_bar.visible = hp < max_hp and hp > 0 and not is_boss
 	_hp_fill.size.x = HP_BAR_W * frac
-	_hp_fill.color = Color(0.45, 0.9, 0.45).lerp(Color(0.95, 0.3, 0.3), 1.0 - frac)
+	# LAW 2: TEXT draining to HOSTILE. The old lime-to-salmon ramp put two more
+	# hues on screen for every enemy that had ever been hit.
+	_hp_fill.color = Color("#D8DEEA").lerp(HOSTILE, 1.0 - frac)
 	if _boss_hud and is_instance_valid(_boss_hud):
 		_boss_hud.set_health(hp, max_hp)
 
 # ------------------------------------------------------------- presence ----
 
-## The round-4 QA frames showed the same defect in every region: enemies read as
-## small dark smudges pasted on a busy floor. Nothing here changes a hitbox or a
-## behaviour — it makes the thing you are fighting VISIBLE:
-##   * a contact shadow, so it stands ON the floor instead of hovering over it;
-##   * an accent silhouette halo behind the sprite (overbright additive, so HDR
-##     bloom picks it up) that separates it from any background;
-##   * its own small light, because in this game everything alive glows;
-##   * a floor ring that lights up only while it is actually hunting you, so
-##     threat state is legible in a one-second glance at a static frame.
+## LAW 3 and LAW 7: an enemy at rest is its pixel sprite, and nothing else.
+##
+## Round 6 wrapped every body in four layers of light — an additive overbright
+## copy of its own silhouette at 1.18x, a dark backing plate at 1.30x, a
+## PointLight2D, and (for elites) a spinning bracket. That rig is what the QA
+## frames caught: the Token Vault boss rendered as a smooth cyan gradient blob
+## with a pink core and bloom rays, none of which is the sprite. All four are
+## gone, and with them two off-grid scales (1.18, 1.30) and a looping tween that
+## ran while the enemy was standing still.
+##
+## What is left is the two things the laws actually ask for:
+##   * a contact shadow, so the body stands ON the floor rather than over it;
+##   * a floor ring, drawn ONLY while this one is hunting you — a flat HOSTILE
+##     outline at 55% alpha in the same red as every wind-up wedge and charge
+##     lane. A telegraph is a shape, not a light source.
 func _build_presence() -> void:
-	var col := FxLib.vivid(_accent())
 	var shadow := Polygon2D.new()
 	shadow.polygon = CombatFx.ring_points(16)
 	shadow.scale = Vector2(15.0, 7.0)
@@ -429,27 +458,6 @@ func _build_presence() -> void:
 	shadow.color = Color(0.02, 0.02, 0.05, 0.42)
 	shadow.z_index = -2
 	add_child(shadow)
-	# Both silhouette layers are parented to the SPRITE, so they inherit every
-	# pose the animator applies (coil, lunge, stagger, hop) for free and can
-	# never drift out of register. TWO layers, not one: an additive accent halo
-	# only separates an enemy from a DARK background, and the regions that hid
-	# them worst (GPU Mines' red wash, the Wildlands' green) are the bright ones.
-	# The dark backing is the layer that works everywhere — it is the "3 value
-	# steps + contact shadow" the VISUAL_BIBLE silhouette law asks for.
-	if sprite.texture:
-		_backing = Sprite2D.new()
-		_backing.texture = sprite.texture
-		_backing.modulate = Color(0.015, 0.015, 0.035, 0.62)
-		_backing.scale = Vector2(1.30, 1.30)
-		_backing.z_index = -2
-		sprite.add_child(_backing)
-		_halo = Sprite2D.new()
-		_halo.texture = sprite.texture
-		_halo.material = FxLib.additive_material()
-		_halo.modulate = Color(col.r * 1.5, col.g * 1.5, col.b * 1.5, 0.55 if _elite else 0.42)
-		_halo.scale = Vector2(1.18, 1.18)
-		_halo.z_index = -1
-		sprite.add_child(_halo)
 	_alert_ring = Line2D.new()
 	# Baked as a flattened ellipse instead of a scaled circle: a non-uniform
 	# scale on a Line2D stretches the STROKE with it, so the old ring drew twice
@@ -459,37 +467,22 @@ func _build_presence() -> void:
 		var a: float = TAU * float(i) / 22.0
 		ring_pts.append(Vector2(cos(a) * 23.0, sin(a) * 11.0))
 	_alert_ring.points = ring_pts
-	_alert_ring.material = FxLib.additive_material()
-	# Hostile red, NOT the enemy's own accent. "This one is hunting you" has to
-	# read identically in every room, and the accent version was invisible in
-	# exactly the rooms that share the enemy's hue (a lime Dependency Demon on a
-	# lime floor). Red is already the game's telegraph colour — wind-up wedges,
-	# charge lanes and boss markers all use #FF4757, so this joins that language.
-	_alert_ring.default_color = Color(2.4, 0.62, 0.74, 0.62)
-	_alert_ring.width = 2.4
+	# No additive blend and nothing over 1.0: at bloom threshold 1.0 (LAW 5) the
+	# old (2.4, 0.62, 0.74) stroke was a light source drawn on the floor.
+	_alert_ring.default_color = Color(HOSTILE.r, HOSTILE.g, HOSTILE.b, 0.55)
+	_alert_ring.width = PX  # exactly one art pixel of stroke
 	_alert_ring.position = Vector2(0, 13)
 	_alert_ring.z_index = -2
 	_alert_ring.visible = false
 	add_child(_alert_ring)
-	# VISUAL_BIBLE lighting rule: PointLight2D energy 0.5–1.4. 0.42 sat under the
-	# floor of the contract and was the dimmest part of the presence rig.
-	_body_light = FxLib.point_light(self, col, 0.8 if _elite else 0.55, 1.15, Vector2(0, -8))
 	if _elite:
-		_build_elite_marker(col)
+		_build_elite_marker()
 
-## `flip_h` is a DRAW FLAG, not a transform: children of a flipped Sprite2D are
-## not flipped with it. The silhouette layers are children of the sprite, so they
-## have to be told, or an asymmetric enemy walking left wears its own halo facing
-## right. Called from both places that write `sprite.flip_h`.
-func _sync_silhouette() -> void:
-	if is_instance_valid(_halo):
-		_halo.flip_h = sprite.flip_h
-	if is_instance_valid(_backing):
-		_backing.flip_h = sprite.flip_h
-
-## An elite wears its promotion: a slowly spinning bracket over its head and a
-## hotter light, so you know before the first shot why this one is taking longer.
-func _build_elite_marker(col: Color) -> void:
+## An elite wears its promotion: one small STILL chevron over its head, in the
+## same red as every other tell. It used to be an overbright additive diamond on
+## a looping 3.4s spin — a rotation on a marker (LAW 1) that pulsed light at rest
+## (LAW 9) on an enemy that was doing nothing.
+func _build_elite_marker() -> void:
 	var root := Node2D.new()
 	root.position = Vector2(0, -30)
 	# Absolute: the marker must not change depth as the enemy walks up the room.
@@ -497,29 +490,28 @@ func _build_elite_marker(col: Color) -> void:
 	root.z_index = CombatFx.Z_TEXT - 12
 	add_child(root)
 	var mark := Line2D.new()
-	mark.points = PackedVector2Array([
-		Vector2(0, -7), Vector2(6, 0), Vector2(0, 7), Vector2(-6, 0), Vector2(0, -7)])
-	mark.width = 2.0
-	mark.joint_mode = Line2D.LINE_JOINT_ROUND
-	mark.material = FxLib.additive_material()
-	mark.default_color = Color(col.r * 2.4, col.g * 2.4, col.b * 2.4, 0.95)
+	mark.points = PackedVector2Array([Vector2(-6, 3), Vector2(0, -4), Vector2(6, 3)])
+	mark.width = PX
+	mark.default_color = Color(HOSTILE.r, HOSTILE.g, HOSTILE.b, 0.6)
 	root.add_child(mark)
-	var spin := mark.create_tween().set_loops()
-	spin.tween_property(mark, "rotation", TAU, 3.4).from(0.0)
 
-## The guard plate: a lit arc bolted to the front of a guardian. It slews toward
-## the player, but slowly — walking around it is always an option, and so is
-## breaking it. Purely a drawing; the mitigation lives in take_damage().
+## The guard plate: an arc bolted to the front of a guardian. It slews toward the
+## player, but slowly — walking around it is always an option, and so is breaking
+## it. Purely a drawing; the mitigation lives in take_damage().
+##
+## A guardian standing in a doorway wears this permanently, which makes it REST
+## dressing, not combat dressing: it used to be an additive overbright edge over
+## an additive fill, i.e. a light source on an idle enemy (LAW 3). Now it is one
+## flat 2px HOSTILE stroke at 55% and a fill so faint it only separates the arc
+## from the floor.
 func _build_guard() -> void:
-	var col := FxLib.vivid(_accent())
 	_guard = Node2D.new()
 	_guard.z_index = 1
 	add_child(_guard)
 	var fill := Polygon2D.new()
 	fill.polygon = CombatFx.wedge_points(0.0, GUARD_ARC, 14)
 	fill.scale = Vector2(30.0, 30.0)
-	fill.color = Color(col.r, col.g, col.b, 0.15)
-	fill.material = FxLib.additive_material()
+	fill.color = Color(HOSTILE.r, HOSTILE.g, HOSTILE.b, 0.10)
 	_guard.add_child(fill)
 	var edge := Line2D.new()
 	var pts := PackedVector2Array()
@@ -527,12 +519,8 @@ func _build_guard() -> void:
 		var a: float = -GUARD_ARC * 0.5 + GUARD_ARC * float(i) / 12.0
 		pts.append(Vector2(cos(a), sin(a)) * 30.0)
 	edge.points = pts
-	edge.width = 3.0
-	edge.joint_mode = Line2D.LINE_JOINT_ROUND
-	edge.begin_cap_mode = Line2D.LINE_CAP_ROUND
-	edge.end_cap_mode = Line2D.LINE_CAP_ROUND
-	edge.material = FxLib.additive_material()
-	edge.default_color = Color(col.r * 2.2, col.g * 2.2, col.b * 2.2, 0.9)
+	edge.width = PX * 2.0
+	edge.default_color = Color(HOSTILE.r, HOSTILE.g, HOSTILE.b, 0.55)
 	_guard.add_child(edge)
 	_guard_hits = 0
 	_guard_down = 0.0
@@ -605,10 +593,16 @@ func stun(duration: float) -> void:
 	# stunned and not just standing there being blue.
 	_dazed_mark(duration)
 
-## Procedural liveliness: idle enemies breathe; moving enemies scuttle-hop and
-## waddle; winding-up enemies plant, coil and lean away from the swing. Runs
-## every frame (independent of the physics early-returns) so even dormant or
-## telegraphing enemies never look like frozen stickers.
+## Procedural liveliness: idle enemies breathe one pixel, moving enemies hop two,
+## winding-up enemies plant and coil. Runs every frame (independent of the
+## physics early-returns) so even dormant or telegraphing enemies never look like
+## frozen stickers.
+##
+## Everything here moves in whole art pixels and NOTHING here rotates. The old
+## version rode a rotation on every state (a 0.14 rad waddle, a 0.18 rad dizzy
+## wobble, a 0.16 rad coil), and rotating a pixel sprite resamples every pixel in
+## it — the single most reliable way to make pixel art look like it was rendered
+## by something that had never seen pixel art (LAW 1).
 func _process(delta: float) -> void:
 	if not is_instance_valid(sprite) or _dying:
 		return  # while dying, the death-pop tween owns the sprite's scale/modulate
@@ -617,43 +611,51 @@ func _process(delta: float) -> void:
 		_pose_charge()
 		return
 	if is_boss and _boss_recover > 0.0:
-		# The punish window has to LOOK like one: slumped, wide open, wobbling.
-		sprite.position = Vector2(_spr_base_x, _spr_base_y + 4.0)
-		sprite.rotation = sin(_anim_t * 9.0) * 0.09
+		# The punish window has to LOOK like one: slumped and wide open. The
+		# wobble is gone — rotating a pixel sprite resamples every pixel in it.
+		sprite.position = Vector2(_spr_base_x, _spr_base_y + PX * 2.0)
+		sprite.rotation = 0.0
 		sprite.scale = Vector2(_spr_base_scale.x * 1.10, _spr_base_scale.y * 0.88)
 		return
 	if _windup > 0.0:
-		# Coil: pull back away from the strike, squash wide, heat up.
+		# Coil: pull back away from the strike and squash wide. The squash is a
+		# transient telegraph, which LAW 1 allows; the 4-degree lean it used to
+		# ride on was not, and the tint is now the one red tell rather than an
+		# overbright wash of the enemy's own accent (LAW 2 / LAW 3).
 		var t: float = 1.0 - clampf(_windup / WINDUP_TIME, 0.0, 1.0)
-		sprite.position = Vector2(_spr_base_x - _wind_dir.x * 7.0 * t, _spr_base_y - 2.0 * t)
-		sprite.rotation = -_wind_dir.x * 0.16 * t
+		sprite.position = Vector2(
+			_spr_base_x - roundf(_wind_dir.x * 3.0 * t) * PX, _spr_base_y - roundf(t) * PX)
+		sprite.rotation = 0.0
 		sprite.scale = Vector2(
 			_spr_base_scale.x * (1.0 + 0.18 * t),
 			_spr_base_scale.y * (1.0 - 0.14 * t))
-		var hot := _accent()
-		sprite.modulate = Color.WHITE.lerp(Color(hot.r * 2.0 + 0.6, hot.g * 1.2, hot.b * 1.2), t * 0.85)
+		sprite.modulate = Color.WHITE.lerp(TELL_TINT, t)
 		return
 	if _pose_t > 0.0:
 		_tick_pose(delta)
 		return
 	if _stun_time > 0.0:
-		# Stunned: a dizzy wobble.
+		# Stunned: it just stops. The orbiting question marks say "dazed"; a
+		# 22 rad/s sprite wobble said "the renderer is broken".
 		sprite.position = Vector2(_spr_base_x, _spr_base_y)
-		sprite.rotation = sin(_anim_t * 22.0) * 0.18
+		sprite.rotation = 0.0
 		sprite.scale = _spr_base_scale
 		return
 	if velocity.length() > 12.0:
-		# Scuttle: a springy hop with squash-and-stretch and a waddle.
-		var hop := absf(sin(_anim_t * 11.0))
-		sprite.position = Vector2(_spr_base_x, _spr_base_y - hop * 7.0)
-		sprite.rotation = sin(_anim_t * 11.0) * 0.14
-		sprite.scale = Vector2(_spr_base_scale.x * (1.0 - hop * 0.12), _spr_base_scale.y * (1.0 + hop * 0.16))
+		# Scuttle: a two-pixel hop, landed on whole art pixels. No rotation and
+		# no squash — a sprite whose scale changes every frame is on a different
+		# pixel grid from the floor it is walking on, every frame (LAW 1).
+		sprite.position = Vector2(
+			_spr_base_x, _spr_base_y - roundf(absf(sin(_anim_t * 11.0)) * 2.0) * PX)
+		sprite.rotation = 0.0
+		sprite.scale = _spr_base_scale
 	else:
-		# Idle: breathe (bob + gentle squash).
-		var b := sin(_anim_t * 2.8)
-		sprite.position = Vector2(_spr_base_x, _spr_base_y + b * 2.4)
-		sprite.rotation = lerp_angle(sprite.rotation, 0.0, delta * 8.0)
-		sprite.scale = Vector2(_spr_base_scale.x * (1.0 + b * 0.05), _spr_base_scale.y * (1.0 - b * 0.05))
+		# Idle: ONE pixel of breath (LAW 9), quantised to the grid — 0, then 1
+		# art pixel, then 0. Nothing else moves on a resting enemy.
+		sprite.position = Vector2(
+			_spr_base_x, _spr_base_y + roundf(0.5 + 0.5 * sin(_anim_t * 2.8)) * PX)
+		sprite.rotation = 0.0
+		sprite.scale = _spr_base_scale
 
 ## The three frames of a committed dash, drawn instead of animated: coil back
 ## along the lane, stretch flat through the run, slump open on the recovery.
@@ -662,20 +664,22 @@ func _pose_charge() -> void:
 	match _charge_state:
 		1:
 			var t: float = 1.0 - clampf(_charge_t / CHARGE_TELE, 0.0, 1.0)
-			sprite.position = Vector2(_spr_base_x - _charge_dir.x * 8.0 * t, _spr_base_y - 3.0 * t)
-			sprite.rotation = -_charge_dir.x * 0.20 * t
+			sprite.position = Vector2(
+				_spr_base_x - roundf(_charge_dir.x * 4.0 * t) * PX,
+				_spr_base_y - roundf(1.5 * t) * PX)
+			sprite.rotation = 0.0
 			sprite.scale = Vector2(
 				_spr_base_scale.x * (1.0 + 0.22 * t),
 				_spr_base_scale.y * (1.0 - 0.16 * t))
-			var hot := FxLib.vivid(_accent())
-			sprite.modulate = Color.WHITE.lerp(Color(hot.r * 2.4 + 0.4, hot.g * 1.4, hot.b * 1.4), t)
+			sprite.modulate = Color.WHITE.lerp(TELL_TINT, t)
 		2:
-			sprite.position = Vector2(_spr_base_x + _charge_dir.x * 5.0, _spr_base_y - 4.0)
-			sprite.rotation = _charge_dir.x * 0.24
+			sprite.position = Vector2(
+				_spr_base_x + roundf(_charge_dir.x * 2.0) * PX, _spr_base_y - PX * 2.0)
+			sprite.rotation = 0.0
 			sprite.scale = Vector2(_spr_base_scale.x * 1.24, _spr_base_scale.y * 0.84)
 		_:
-			sprite.position = Vector2(_spr_base_x, _spr_base_y + 3.0)
-			sprite.rotation = sin(_anim_t * 16.0) * 0.10
+			sprite.position = Vector2(_spr_base_x, _spr_base_y + PX)
+			sprite.rotation = 0.0
 			sprite.scale = Vector2(_spr_base_scale.x * 1.08, _spr_base_scale.y * 0.90)
 
 ## Start a scripted pose. Overrides the idle/scuttle animation for `dur`.
@@ -692,9 +696,12 @@ func _tick_pose(delta: float) -> void:
 	_pose_t = maxf(0.0, _pose_t - delta)
 	var u: float = 1.0 - _pose_t / maxf(_pose_dur, 0.001)  # 0 -> 1
 	var s: float = sin(u * PI)                             # out and back
+	# Every pose lands on whole art pixels and none of them rotates: the poses are
+	# short, but a pixel sprite that resamples itself is off the grid for as long
+	# as it lasts, and a hit reaction is exactly when the player is looking.
 	match _pose_kind:
 		POSE_HOP:
-			sprite.position = Vector2(_spr_base_x, _spr_base_y - s * _pose_mag)
+			sprite.position = Vector2(_spr_base_x, _spr_base_y - roundf(s * _pose_mag / PX) * PX)
 			sprite.rotation = 0.0
 			sprite.scale = Vector2(
 				_spr_base_scale.x * (1.0 - s * 0.10),
@@ -703,15 +710,15 @@ func _tick_pose(delta: float) -> void:
 			# Kicked away from the hit, springing back — decay, not a bounce.
 			var back: float = (1.0 - u) * (1.0 - u)
 			sprite.position = Vector2(
-				_spr_base_x + _pose_dir.x * _pose_mag * back,
-				_spr_base_y + _pose_dir.y * _pose_mag * 0.5 * back)
-			sprite.rotation = _pose_dir.x * 0.16 * back
+				_spr_base_x + roundf(_pose_dir.x * _pose_mag * back / PX) * PX,
+				_spr_base_y + roundf(_pose_dir.y * _pose_mag * 0.5 * back / PX) * PX)
+			sprite.rotation = 0.0
 			sprite.scale = _spr_base_scale
 		_:
 			sprite.position = Vector2(
-				_spr_base_x + _pose_dir.x * _pose_mag * s,
-				_spr_base_y + _pose_dir.y * _pose_mag * 0.5 * s)
-			sprite.rotation = _pose_dir.x * 0.12 * s
+				_spr_base_x + roundf(_pose_dir.x * _pose_mag * s / PX) * PX,
+				_spr_base_y + roundf(_pose_dir.y * _pose_mag * 0.5 * s / PX) * PX)
+			sprite.rotation = 0.0
 			sprite.scale = Vector2(
 				_spr_base_scale.x * (1.0 + 0.14 * s),
 				_spr_base_scale.y * (1.0 - 0.12 * s))
@@ -764,7 +771,7 @@ func _physics_process(delta: float) -> void:
 		_stun_time -= delta
 		velocity = Vector2.ZERO
 		_cancel_windup()
-		sprite.modulate = Color(0.55, 0.65, 1.0)
+		sprite.modulate = Color(0.62, 0.66, 0.74)  # dazed: desaturated, not a hue
 		if _stun_time <= 0.0:
 			sprite.modulate = Color.WHITE
 		return
@@ -826,7 +833,6 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	if absf(velocity.x) > 1.0:
 		sprite.flip_h = velocity.x < 0
-		_sync_silhouette()
 
 ## Where this enemy wants to be, by role. Nobody walks the straight line to the
 ## player any more: brawlers fan out along their own approach arc, skirmishers
@@ -865,7 +871,7 @@ func _on_aggro() -> void:
 	AudioManager.play_music("combat_music")
 	var host := get_parent()
 	if host:
-		CombatFx.glyph(host, global_position + Vector2(0, -46), "!", Color("#FF4757"), 22, 0.6, 18.0)
+		CombatFx.glyph(host, global_position + Vector2(0, -46), "!", HOSTILE, 22, 0.6, 18.0)
 		if _elite:
 			# Say why this one is different BEFORE the player wastes a clip on it.
 			CombatFx.glyph(host, global_position + Vector2(0, -68),
@@ -896,7 +902,7 @@ func _begin_windup() -> bool:
 	var host := get_parent()
 	if host:
 		_wind_marker = CombatFx.strike_arc(host, global_position, _wind_dir,
-			Color("#FF4757"), _reach() + 14.0, WINDUP_TIME)
+			HOSTILE, _reach() + 14.0, WINDUP_TIME)
 	return true
 
 func _tick_windup(delta: float) -> void:
@@ -948,7 +954,7 @@ func _strike() -> void:
 	var host := get_parent()
 	if host:
 		var impact: Vector2 = global_position + _wind_dir * 26.0
-		CombatFx.ripple(host, impact, _wind_dir, Color("#FF4757"), 46.0, 0.2)
+		CombatFx.ripple(host, impact, _wind_dir, HOSTILE, 46.0, 0.2)
 		if connected:
 			FxLib.burst(host, impact, Color(2.4, 0.8, 0.9), 7, 180.0, FxLib.spark(), Vector2.ZERO, CombatFx.Z_FX)
 		else:
@@ -1078,10 +1084,10 @@ func _start_charge() -> void:
 	var host := get_parent()
 	if host:
 		var to: Vector2 = global_position + _charge_dir * (CHARGE_SPEED * CHARGE_TIME + 40.0)
-		CombatFx.beam(host, global_position, to, Color("#FF4757"), 7.0, CHARGE_TELE)
-		CombatFx.scorch(host, global_position, to, Color("#FF4757"), CHARGE_TELE)
+		CombatFx.beam(host, global_position, to, HOSTILE, 7.0, CHARGE_TELE)
+		CombatFx.scorch(host, global_position, to, HOSTILE, CHARGE_TELE)
 		CombatFx.glyph(host, global_position + Vector2(0, -54),
-			str(TELLS.get(enemy_type, "committing")), Color("#FF4757"), 15, CHARGE_TELE + 0.2, 16.0)
+			str(TELLS.get(enemy_type, "committing")), HOSTILE, 15, CHARGE_TELE + 0.2, 16.0)
 	AudioManager.play_sfx("ability")
 
 func _tick_charge(delta: float) -> void:
@@ -1102,7 +1108,6 @@ func _tick_charge(delta: float) -> void:
 			move_and_slide()
 			if absf(velocity.x) > 1.0 and is_instance_valid(sprite):
 				sprite.flip_h = velocity.x < 0
-				_sync_silhouette()
 			if Engine.get_physics_frames() % 3 == 0:
 				var host := get_parent()
 				if host:
@@ -1131,7 +1136,7 @@ func _charge_contact() -> void:
 		target.apply_external_knockback(_charge_dir * 360.0)
 	var host := get_parent()
 	if host:
-		CombatFx.ripple(host, target.global_position, _charge_dir, Color("#FF4757"), 60.0, 0.22)
+		CombatFx.ripple(host, target.global_position, _charge_dir, HOSTILE, 60.0, 0.22)
 	FxLib.add_trauma(get_tree(), 0.2)
 
 ## Over-run. Running into a wall costs it more, because that is funnier and
@@ -1146,7 +1151,7 @@ func _end_charge(hit_wall: bool) -> void:
 	var host := get_parent()
 	if host:
 		if hit_wall:
-			CombatFx.shockwave(host, global_position, Color("#FF4757"), 120.0, 0.35)
+			CombatFx.shockwave(host, global_position, HOSTILE, 120.0, 0.35)
 			FxLib.add_trauma(get_tree(), 0.22)
 		CombatFx.glyph(host, global_position + Vector2(0, -50),
 			"reverted" if hit_wall else "over-committed", Color("#FFD34D"), 14, 0.9, 24.0)
@@ -1332,9 +1337,10 @@ func _build_boss_presence() -> void:
 	add_child(_boss_hud)
 	_boss_hud.setup(enemy_type, _accent())
 	_boss_hud.set_health(hp, max_hp)
-	# A boss is a light source. It should be visible before it is legible.
-	var col := FxLib.vivid(_accent())
-	FxLib.point_light(self, col, 1.15, 3.0, Vector2(0, -10))
+	# There is no boss aura. A 3.0-scale PointLight2D parked on the body is what
+	# the QA frame read as "a smooth-gradient cyan blob"; a boss is legible
+	# because it is BIG and because the room's own lights fall on it (LAW 4:
+	# lights pool on the floor, they do not spot-halo the thing standing there).
 
 ## Name card, letterbox, camera push, ambience shift. Plays once, and never
 ## takes control away — the player can walk, shoot and leave during all of it.
@@ -1400,7 +1406,7 @@ func _check_boss_phase() -> void:
 			DEATH_SHARDS.get(enemy_type, ["escalated"]), 4)
 	if is_instance_valid(sprite):
 		var tw := create_tween()
-		tw.tween_property(sprite, "modulate", Color(3.0, 3.0, 3.0), 0.06)
+		tw.tween_property(sprite, "modulate", Color(1.6, 1.6, 1.6), 0.06)
 		tw.tween_property(sprite, "modulate", Color.WHITE, 0.5)
 	FxLib.add_trauma(get_tree(), 0.4)
 	AudioManager.play_sfx("ability")
@@ -1435,7 +1441,7 @@ func _tick_boss(delta: float) -> void:
 		return
 	if _boss_tele > 0.0:
 		_boss_tele -= delta
-		sprite.modulate = Color(1.5, 0.6, 0.6) if fmod(_boss_tele, 0.2) < 0.1 else Color.WHITE
+		sprite.modulate = TELL_TINT if fmod(_boss_tele, 0.2) < 0.1 else Color.WHITE
 		if _boss_tele <= 0.0:
 			sprite.modulate = Color.WHITE
 			_boss_execute()
@@ -1476,7 +1482,7 @@ func _telegraph_boss_move() -> void:
 			CombatFx.ring(host, global_position, col, 220.0, 30.0, _boss_tele, 3.0, 8.0, 28)
 		_:
 			# The slam reaches 260px; so does the marker.
-			_boss_marker = CombatFx.marker(host, global_position, Color("#FF4757"), 260.0, _boss_tele)
+			_boss_marker = CombatFx.marker(host, global_position, HOSTILE, 260.0, _boss_tele)
 
 func _boss_execute() -> void:
 	match _boss_move:
@@ -1586,7 +1592,7 @@ func _slam_impact() -> void:
 	var parent := get_parent()
 	if not parent:
 		return
-	CombatFx.shockwave(parent, global_position, Color("#FF4757"), 260.0, 0.4)
+	CombatFx.shockwave(parent, global_position, HOSTILE, 260.0, 0.4)
 	FxLib.add_trauma(get_tree(), 0.35)
 	var dust := CPUParticles2D.new()
 	dust.emitting = true
@@ -1647,7 +1653,7 @@ func _tick_rate_limiter(delta: float) -> void:
 	if _telegraph > 0.0:
 		# Flash while winding up the 429 pulse.
 		_telegraph -= delta
-		sprite.modulate = Color(1.0, 0.85, 0.2) if fmod(_telegraph, 0.2) < 0.1 else Color.WHITE
+		sprite.modulate = TELL_TINT if fmod(_telegraph, 0.2) < 0.1 else Color.WHITE
 		if _telegraph <= 0.0:
 			sprite.modulate = Color.WHITE
 			_rate_pulse()
@@ -1916,7 +1922,7 @@ func _hit_spark(from_dir: Vector2 = Vector2.ZERO, is_crit: bool = false) -> void
 func _flash_damage() -> void:
 	if _flash_tween:
 		_flash_tween.kill()
-	sprite.modulate = Color(2, 2, 2)
+	sprite.modulate = Color(1.6, 1.6, 1.6)
 	_flash_tween = create_tween()
 	_flash_tween.tween_property(sprite, "modulate", Color.WHITE, 0.15)
 
@@ -1957,19 +1963,13 @@ func _die() -> void:
 		_hp_bar.visible = false
 	_cancel_windup(false)
 	_cancel_charge()
-	# Anything this one still had in the air is cancelled with it, and the
-	# presence rig comes off so the dissolve is the only thing left to look at.
+	# Anything this one still had in the air is cancelled with it, and the alert
+	# ring comes off so the dissolve is the only thing left to look at.
 	_cancel_shots()
-	if is_instance_valid(_halo):
-		_halo.visible = false
-	if is_instance_valid(_backing):
-		_backing.visible = false
 	if is_instance_valid(_alert_ring):
 		_alert_ring.visible = false
 	if is_instance_valid(_guard):
 		_guard.visible = false
-	if is_instance_valid(_body_light):
-		_body_light.queue_free()
 	# A merge conflict resolves into two smaller, incompatible conflicts.
 	if enemy_type == "merge_conflict" and generation < 1 and not is_boss:
 		_split()

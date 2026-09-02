@@ -1002,13 +1002,20 @@ func _outline_silhouette(img: Image, color: Color) -> void:
 ## back near 0.30 luminance. The materials below keep their old mean value, so
 ## no region re-lights.
 func _generate_tileset() -> void:
+	# `base` is the hue of the region's PLAZA tile, and it is also, deliberately,
+	# close to the hue of the field material that region gets from
+	# _generate_floor_structures. A plaza in one colour standing on a field in
+	# another is two floors in one room: the round-6 dependency frame shows a
+	# green plaza dropped into a cold blue-grey deck, with a hard rectangular
+	# join. dependency and opensource were pulled onto their family's hue for
+	# that reason; each keeps its own MATERIAL, which is what tells them apart.
 	var regions := {
 		"localhost": {"base": Color(0.42, 0.33, 0.25), "accent": Color(1.0, 0.72, 0.29), "mat": "planks", "dim": 0.39},
-		"dependency": {"base": Color(0.30, 0.40, 0.26), "accent": Color(0.66, 1.0, 0.24), "mat": "sludge", "dim": 0.38},
+		"dependency": {"base": Color(0.30, 0.34, 0.31), "accent": Color(0.66, 1.0, 0.24), "mat": "sludge", "dim": 0.38},
 		"stackoverflow": {"base": Color(0.50, 0.47, 0.40), "accent": Color(0.91, 0.77, 0.42), "mat": "ruin", "dim": 0.31},
 		"api_bazaar": {"base": Color(0.40, 0.30, 0.40), "accent": Color(1.0, 0.18, 0.58), "mat": "rug", "dim": 0.38},
 		"cloud": {"base": Color(0.52, 0.57, 0.64), "accent": Color(0.42, 0.78, 1.0), "mat": "grating", "dim": 0.28},
-		"opensource": {"base": Color(0.32, 0.38, 0.26), "accent": Color(0.35, 0.88, 0.49), "mat": "forest", "dim": 0.45},
+		"opensource": {"base": Color(0.34, 0.31, 0.24), "accent": Color(0.35, 0.88, 0.49), "mat": "forest", "dim": 0.45},
 		"corporate": {"base": Color(0.40, 0.42, 0.48), "accent": Color(0.30, 0.49, 1.0), "mat": "carpet", "dim": 0.39},
 		"gpu": {"base": Color(0.44, 0.33, 0.29), "accent": Color(1.0, 0.42, 0.18), "mat": "scorched", "dim": 0.37},
 		"production": {"base": Color(0.42, 0.36, 0.36), "accent": Color(1.0, 0.28, 0.34), "mat": "concrete", "dim": 0.33},
@@ -1069,21 +1076,31 @@ func _floor_material(img: Image, mat: String, base: Color, accent: Color, alt: b
 			if alt:
 				_floor_blot(img, 44, 39, 3, base.darkened(0.16))   # one knot
 		"sludge":
-			# DEPENDENCY DISTRICT — settled ooze in 32px basins: a trough where
-			# the pools meet, a crest in the middle of each.
+			# DEPENDENCY DISTRICT — settled sludge.
+			#
+			# This used to be a radial basin per 32px cell: dark rim, light core.
+			# Stamped across a plaza it tiled into a grid of polka dots, which is
+			# the loudest thing in the round-6 QA frame of this region — and
+			# "forest" below was the same function with a green base, so two
+			# regions shipped the identical dotted floor.
+			#
+			# What dried ooze actually looks like is FLAT. All that survives is
+			# the strata each drain left behind: one 16px settling line drawn
+			# HORIZONTALLY ONLY, at a third of the contrast a plate seam carries.
+			# With no vertical break there is no cell, and with no cell there is
+			# no dot grid.
+			var settle := base.darkened(0.11)
+			var crest := base.lightened(0.05)
 			for y in 64:
+				var c := base
+				if (y & 15) == 0:
+					c = settle
+				elif (y & 15) == 1:
+					c = crest
 				for x in 64:
-					var dx := float((x & 31) - 16)
-					var dy := float((y & 31) - 16)
-					var d := sqrt(dx * dx + dy * dy)
-					var c := base
-					if d > 15.5:
-						c = seam
-					elif d < 4.5:
-						c = hi
 					_px(img, x, y, c)
 			if alt:
-				_floor_square(img, 40, 8, 7, hi, seam)             # a half-sunk package
+				_floor_square(img, 41, 25, 5, crest, settle)       # a half-sunk package
 		"ruin":
 			# STACKOVERFLOW RUINS — 32px stone flags, mortar joint, lit lip.
 			for y in 64:
@@ -1100,29 +1117,35 @@ func _floor_material(img: Image, mat: String, base: Color, accent: Color, alt: b
 				for i in 7:
 					_px(img, 40 + i, 20 + i / 2, seam)             # one hairline crack
 		"rug":
-			# API BAZAAR — a kilim in 32px repeats. The ONE accent on the floor
-			# is the inner ring, at a third strength; the rest is value.
-			var ring := base.lerp(accent, 0.30)
+			# API BAZAAR — market floor. The kilim used to stamp a full diamond
+			# motif into EVERY 32px cell: two concentric rhombus rings, one of
+			# them in the region accent. Repeated across the plaza that is a
+			# PATTERN, not a ground, and it competed with every stall standing on
+			# it. The field is now 16px trade tile — seam, lit lip, nothing —
+			# and the motif survives as ONE small inlay on the B tile.
 			for y in 64:
 				for x in 64:
-					var mx := x & 31
-					var my := y & 31
-					var dman: int = absi(mx - 16) + absi(my - 16)
+					var mx := x & 15
+					var my := y & 15
 					var c := base
 					if mx == 0 or my == 0:
 						c = seam
 					elif mx == 1 or my == 1:
 						c = hi
-					elif dman == 12 or dman == 13:
-						c = seam
-					elif dman == 7:
-						c = ring
 					_px(img, x, y, c)
+			if alt:
+				var ring := base.lerp(accent, 0.22)
+				for dx3 in range(-3, 4):
+					for dy3 in range(-3, 4):
+						if absi(dx3) + absi(dy3) == 3:
+							_px(img, 40 + dx3, 40 + dy3, ring)
 		"grating":
-			# CLOUD DISTRICT — perforated deck: an 8px rib run, groove then lit
-			# crest, with a cross-tie every 16px. Reads as ground, not as pattern.
+			# CLOUD DISTRICT — perforated deck. The rib run was 8px, which at the
+			# 2x this renders at is a 16-screen-pixel stripe field over the entire
+			# floor: corduroy, not ground. Widened to a 16px rib with a cross-tie
+			# every 32, so the deck reads as a surface you could stand on.
 			for y in 64:
-				var r := y & 7
+				var r := y & 15
 				var c := base
 				if r == 0:
 					c = seam
@@ -1130,24 +1153,29 @@ func _floor_material(img: Image, mat: String, base: Color, accent: Color, alt: b
 					c = hi
 				for x in 64:
 					var cc := c
-					if r > 1 and (x & 15) == 0:
+					if r > 1 and (x & 31) == 0:
 						cc = seam
 					_px(img, x, y, cc)
 		"forest":
-			# OPEN SOURCE WILDLANDS — loam with moss settled in the hollows.
+			# OPEN SOURCE WILDLANDS — dark loam, and the whole point of it is that
+			# it is NOT the dependency floor. Soil has no seams: no grid, no
+			# module, no bevel. The material is a flat field plus five specks of
+			# leaf litter, one or two pixels each at under a tenth of a value
+			# step, spaced irregularly so the 64px repeat never resolves into a
+			# constellation.
+			var leaf := base.lightened(0.09)
+			var stick := base.darkened(0.10)
 			for y in 64:
 				for x in 64:
-					var dx2 := float((x & 31) - 16)
-					var dy2 := float((y & 31) - 16)
-					var c := base
-					if dx2 * dx2 + dy2 * dy2 > 215.0:
-						c = seam
-					elif dx2 * dx2 + dy2 * dy2 < 34.0:
-						c = hi
-					_px(img, x, y, c)
+					_px(img, x, y, base)
+			for sp: Vector2i in [Vector2i(9, 12), Vector2i(37, 6), Vector2i(22, 41),
+					Vector2i(53, 30), Vector2i(44, 55)]:
+				_fill_rect(img, sp.x, sp.y, 2, 1, leaf)
+			_px(img, 31, 20, stick)
+			_px(img, 12, 50, stick)
 			if alt:
-				for i in 3:
-					_fill_rect(img, 8 + i * 18, 44, 3, 1, hi)      # three leaves
+				_fill_rect(img, 17, 22, 3, 1, stick)               # one fallen twig
+				_px(img, 19, 23, stick)
 		"carpet":
 			# CORPORATE ENTERPRISE — contract carpet tile, quarter-turned. The
 			# whole material is a seam and a 3% turn in value. It is meant to be
@@ -1175,10 +1203,17 @@ func _floor_material(img: Image, mat: String, base: Color, accent: Color, alt: b
 						c = hi
 					_px(img, x, y, c)
 			if alt:
-				_floor_blot(img, 20, 44, 7, base.darkened(0.20))
+				# r=7 put a 15px scorch in a 64px tile — a repeating dark spot
+				# once it was stamped across an aisle. One small burn is enough.
+				_floor_blot(img, 21, 45, 3, base.darkened(0.18))
 		"gold":
-			# TOKEN VAULT — laid gold plate. The only floor allowed to carry the
-			# region accent, and only as a single inlaid line on the B tile.
+			# TOKEN VAULT — laid gold plate, and nothing else on it. The B tile
+			# used to inlay an accent line across its FULL width, so every second
+			# tile carried a stripe and the vault floor read as banded rather than
+			# as plate. LAW 6 allows one small inset detail; here that is a rivet
+			# head, which is also the only thing a plate floor would actually
+			# have. The three tones are the whole material: plate, 1px seam, 1px
+			# lit lip. No jitter — every plate in this room was cast the same day.
 			for y in 64:
 				for x in 64:
 					var mx3 := x & 31
@@ -1190,8 +1225,8 @@ func _floor_material(img: Image, mat: String, base: Color, accent: Color, alt: b
 						c = hi
 					_px(img, x, y, c)
 			if alt:
-				for x2 in 64:
-					_px(img, x2, 48, base.lerp(accent, 0.28))
+				_fill_rect(img, 44, 44, 2, 2, hi)                  # one rivet head
+				_px(img, 45, 45, seam)                             # its shadowed side
 		_:
 			# PRODUCTION — poured slab with sawn control joints on a 32px grid.
 			for y in 64:
@@ -1205,7 +1240,7 @@ func _floor_material(img: Image, mat: String, base: Color, accent: Color, alt: b
 						c = hi
 					_px(img, x, y, c)
 			if alt:
-				_fill_rect(img, 36, 36, 14, 14, base.darkened(0.10))   # a patch repair
+				_fill_rect(img, 38, 38, 8, 8, base.darkened(0.09))     # a patch repair
 
 ## One soft round mark, wrapped so it never straddles the tile seam. The whole
 ## vocabulary of "inset detail" is this and a rectangle.
@@ -1322,12 +1357,26 @@ func _finish_enemy(img: Image, kind: String, boss: bool) -> void:
 ## become one material, and the creatures separate on shape — which is what a
 ## reader actually uses. Bosses get a small lift so they sit a stop brighter
 ## than their minions without needing to be backlit.
+##
+## Round 7 changed two things here, both of them removals.
+##
+## The alpha gate was 0.5, so anything drawn TRANSLUCENT walked straight past the
+## repaint: the Enterprise Architect's governance brackets and the Cloud Bill's
+## raining decimals kept full saturation, which is most of the "enemies carry
+## their own rainbow" finding. The gate is now "anything you can see".
+##
+## And a pixel that is ALREADY one of the four stops is left exactly alone, so a
+## body may be authored directly in the final palette and survive this pass
+## byte-for-byte. That is what lets the boss bodies below place their own value
+## structure instead of having it re-quantised into one flat bright mass.
 func _enemy_repaint(img: Image, boss: bool) -> void:
 	var lift: float = 0.07 if boss else 0.0
 	for x in img.get_width():
 		for y in img.get_height():
 			var p := img.get_pixel(x, y)
-			if p.a <= 0.5:
+			if p.a <= 0.02:
+				continue
+			if _is_ramp_tone(p):
 				continue
 			var l: float = p.r * 0.299 + p.g * 0.587 + p.b * 0.114 + lift
 			var idx := 0
@@ -1340,10 +1389,23 @@ func _enemy_repaint(img: Image, boss: bool) -> void:
 			var c: Color = ENEMY_RAMP[idx]
 			_px(img, x, y, Color(c.r, c.g, c.b, p.a))
 
+## Is this pixel already one of the four stops? 8-bit quantisation means an exact
+## comparison would miss by a thousandth, so the test is a tolerance.
+func _is_ramp_tone(p: Color) -> bool:
+	for c: Color in ENEMY_RAMP:
+		if absf(p.r - c.r) < 0.006 and absf(p.g - c.g) < 0.006 and absf(p.b - c.b) < 0.006:
+			return true
+	return false
+
 ## The one red thing. Two pixels wide so it survives the outline pass, with a
 ## single hot core — no halo, no ring, no aureole. On a grey creature on a dark
 ## floor this is the only saturated colour for several hundred pixels, which is
 ## exactly why the eye finds it first.
+##
+## LAW 7 allows ONE white-hot pixel per light source, and a pair of eyes is one
+## light: the specular now lands on the first tell point only. Three of these
+## creatures have two or three tell points, and stamping a hot core into each of
+## them is how a face turns into a string of lamps.
 func _enemy_tell(img: Image, kind: String, boss: bool) -> void:
 	var table: Dictionary = ENEMY_TELLS
 	if boss and BOSS_TELLS.has(kind):
@@ -1358,7 +1420,8 @@ func _enemy_tell(img: Image, kind: String, boss: bool) -> void:
 		for dy in 2:
 			for dx in 2:
 				_over_px(img, tx + dx - 1, ty + dy - 1, HOSTILE)
-		_over_px(img, tx - 1, ty - 1, HOSTILE.lerp(WHITE_HOT, 0.55))
+		if i == 0:
+			_over_px(img, tx - 1, ty - 1, HOSTILE.lerp(WHITE_HOT, 0.55))
 		i += 2
 
 ## One dispatch, so the boss pass can re-draw the same body without duplicating
@@ -1436,16 +1499,20 @@ func _draw_boss(img: Image, kind: String, c: Color) -> void:
 			# _finish_enemy lifts it a value stop so it still reads as the big one.
 			_draw_enemy(img, kind, c)
 
-## Four stops on ONE hue, dark to light. Deliberately only four: a fifth stop
-## buys nothing at 32px and costs the flat regions that make the shape read.
-func _boss_ramp(c: Color) -> Array[Color]:
-	var h := _vivid_color(c, 1.10)
-	var out: Array[Color] = [
-		h.darkened(0.66),
-		h.darkened(0.42),
-		h.darkened(0.10),
-		h.lightened(0.38),
-	]
+## Four stops, dark to light — and since round 7 they are THE ENEMY STOPS, not a
+## private ramp mixed from the creature's own hue.
+##
+## The old version boosted the input's chroma and spread it over four values, and
+## then `_enemy_repaint` immediately re-quantised the result by luminance. Two
+## quantisations in a row is how the Infinite Context ended up with 316 of its
+## 500 body pixels on a single stop: a flat bright disc, which under the runtime
+## halo is the "smooth-gradient cyan blob" the critic named. Handing the body the
+## final palette up front means the repaint has nothing left to flatten and the
+## value structure drawn below is the value structure that ships.
+func _boss_ramp(_c: Color) -> Array[Color]:
+	var out: Array[Color] = []
+	for c: Color in ENEMY_RAMP:
+		out.append(c)
 	return out
 
 ## How lit a pixel is, for a form centred at (cx, cy) with radii (rx, ry). Light
@@ -1479,40 +1546,52 @@ func _sculpt(img: Image, cx: float, cy: float, rx: float, ry: float, ramp: Array
 				continue
 			_px(img, x, y, ramp[_ramp_index(_boss_lit(x, y, cx, cy, rx, ry))])
 
-## THE INFINITE CONTEXT (boss): one enormous unblinking lens in an ovoid shell,
-## with three memory nodes grown out of its crown. The lens IS the sprite — it
-## owns the middle third of the frame, which is why the eye lands on it before
-## the player has consciously identified anything else. The "it remembers
-## everything" gag lives in a context spill along the lower rim: bounded to five
-## short runs, in the body's own two tones, so it decorates the mass instead of
-## dissolving it.
+## THE INFINITE CONTEXT (boss): one unblinking lens in an ovoid shell, with three
+## memory nodes grown out of its crown.
+##
+## Round 7 rebuilt this one body, because it was the sprite the critic pointed
+## at. What it used to do: fill the shell, sculpt it, then paint an eight-pixel
+## near-WHITE ellipse over the middle, a second whiter ellipse over that, a
+## chroma-boosted disc over that, four white specular pixels, and three lamps on
+## the crown. After the repaint quantised all of it, 316 of the sprite's ~500
+## body pixels sat on the single brightest stop — one flat luminous disc with no
+## interior structure at all, which is precisely what "smooth-gradient blob"
+## describes once the runtime halo adds its bloom.
+##
+## The rebuild is three flat regions and one ring:
+##   * the shell in the mid stop, with a lit crown and a far rim — no gradient,
+##     three hard-edged areas;
+##   * ONE bright feature, the iris annulus, and it is the only place on the
+##     sprite the top stop appears;
+##   * a dark pupil, so the red tell reads as an eye rather than as a dot.
+## The "it remembers everything" gag survives as three short context runs along
+## the lower rim, drawn in the shell's own darkest tone.
 func _draw_boss_infinite_context(img: Image, c: Color) -> void:
-	var ink := Color(0.030, 0.028, 0.055)
 	var ramp := _boss_ramp(c)
-	_fill_ellipse(img, 16, 17, 13, 12, ramp[1])
-	_fill_ellipse(img, 16, 10, 11, 7, ramp[1])
+	_flat_ellipse(img, 16, 17, 12.0, 11.0, ramp[1])
+	# Memory nodes, drawn after the shell so they read as growths ON it.
 	for nx: int in [8, 16, 24]:
-		_fill_circle(img, nx, 4, 2, ramp[1])
-		_fill_rect(img, nx - 1, 4, 3, 4, ramp[1])
-	_sculpt(img, 16.0, 17.0, 13.0, 12.0, ramp)
-	_fill_ellipse(img, 16, 16, 9, 7, ink)
-	_fill_ellipse(img, 16, 16, 8, 6, Color(0.86, 0.88, 0.96))
-	_fill_ellipse(img, 15, 15, 6, 4, Color(0.97, 0.98, 1.0))
-	_fill_circle(img, 16, 16, 5, ramp[2])
-	_fill_circle(img, 16, 16, 4, _vivid_color(c, 1.3))
-	_fill_circle(img, 16, 16, 2, ink)
-	_px(img, 16, 16, Color(0.02, 0.02, 0.04))
-	_px(img, 14, 14, WHITE_HOT)
-	_px(img, 15, 14, Color(0.90, 0.94, 1.0))
-	_px(img, 14, 15, Color(0.90, 0.94, 1.0))
-	_px(img, 18, 18, Color(0.74, 0.80, 0.98))
-	_over_line(img, 10, 25, 17, 25, ink)
-	_over_line(img, 19, 25, 24, 25, ramp[3])
-	_over_line(img, 9, 27, 13, 27, ink)
-	_over_line(img, 15, 27, 24, 27, ramp[3])
-	_over_line(img, 12, 29, 18, 29, ink)
-	for nx2: int in [8, 16, 24]:
-		_glow_lamp(img, nx2, 4, ramp[3], 1)
+		_fill_rect(img, nx - 2, 2, 4, 7, ramp[1])
+	# Lit crown / far rim. Two thresholds on one term: flat regions, not a ramp.
+	for x in 32:
+		for y in 32:
+			if img.get_pixel(x, y).a <= 0.5:
+				continue
+			var lit := -((float(x) - 16.0) / 13.0 + (float(y) - 17.0) / 12.0)
+			if lit > 0.45:
+				_px(img, x, y, ramp[2])
+			elif lit < -1.05:
+				_px(img, x, y, ramp[0])
+	# The lens. Socket, one bright iris annulus, pupil, and a well for the red
+	# tell to sit in. Nothing else on this sprite is allowed the top stop.
+	_flat_ellipse(img, 16, 16, 9.0, 9.0, ramp[0])
+	_flat_ellipse(img, 16, 16, 8.0, 8.0, ramp[3])
+	_flat_ellipse(img, 16, 16, 6.0, 6.0, ramp[1])
+	_flat_ellipse(img, 16, 16, 3.0, 3.0, ramp[0])
+	# Context spilling out of the bottom of it, bounded to three short runs.
+	_over_line(img, 10, 26, 16, 26, ramp[0])
+	_over_line(img, 19, 27, 24, 27, ramp[0])
+	_over_line(img, 12, 29, 18, 29, ramp[0])
 
 ## THE MERGE CONFLICT (boss): one sphere, two factions, two branch nubs on
 ## stalks. Warm on the left, cool on the right — two hues, four stops each, and
@@ -2054,49 +2133,45 @@ func _draw_legacy_monolith(img: Image, _c: Color) -> void:
 	_fill_rect(img, 1, 29, 30, 3, brick.darkened(0.30))
 	_fill_rect(img, 1, 29, 30, 1, brick.lightened(0.10))
 
-## THE INFINITE CONTEXT: one orbital ring around an eye that has read everything
-## you ever typed, including the deleted parts. The eye is a LENS, not a marble,
-## and it owns the middle of the frame — an eye drawn small is a dot, and a dot
-## is not a threat.
+## THE INFINITE CONTEXT: an eye that has read everything you ever typed,
+## including the deleted parts. The eye is a LENS, not a marble, and it owns the
+## middle of the frame — an eye drawn small is a dot, and a dot is not a threat.
 ##
-## Round 6: this used to be two pairs of concentric ring outlines over a
-## two-lobed field, which at game zoom aliased into pure static — the same
-## defect that made its boss unreadable. It is now one solid sculpted mass
-## inside a single two-value ring, so the base creature and the boss are visibly
-## the same species: an orbiting shell around one enormous lens.
+## The minion carries the same disease its boss did and it is cured the same
+## way: a bright outer ring, a near-white lens, a chroma-boosted core and four
+## rim lamps all quantised into one luminous disc, so all four are gone. Three
+## flat regions and one bright annulus, one size down from the boss and with no
+## crown, so the two read as one creature at two scales instead of as two blobs.
 func _draw_infinite_context(img: Image, c: Color) -> void:
-	var ink := Color(0.030, 0.028, 0.055)
 	var ramp := _boss_ramp(c)
-	_draw_circle_outline(img, 16, 16, 14, ramp[0])
-	_draw_circle_outline(img, 16, 16, 13, ramp[2])
-	for a in range(0, 360, 90):
-		var rad := deg_to_rad(float(a) + 45.0)
-		_fill_circle(img, 16 + int(cos(rad) * 13.0), 16 + int(sin(rad) * 13.0), 2, ramp[1])
-	_fill_ellipse(img, 16, 16, 10, 10, ramp[1])
-	_sculpt(img, 16.0, 16.0, 10.0, 10.0, ramp)
-	_fill_ellipse(img, 16, 16, 7, 5, ink)
-	_fill_ellipse(img, 16, 16, 6, 4, Color(0.88, 0.90, 0.97))
-	_fill_ellipse(img, 15, 15, 4, 3, Color(0.97, 0.98, 1.0))
-	_fill_circle(img, 16, 16, 3, _vivid_color(c, 1.3))
-	_fill_circle(img, 16, 16, 1, ink)
-	_px(img, 14, 14, WHITE_HOT)
-	for a2 in range(0, 360, 90):
-		var rad2 := deg_to_rad(float(a2) + 45.0)
-		_glow_lamp(img, 16 + int(cos(rad2) * 13.0), 16 + int(sin(rad2) * 13.0), ramp[3], 1)
+	_flat_ellipse(img, 16, 16, 11.0, 10.0, ramp[1])
+	for x in 32:
+		for y in 32:
+			if img.get_pixel(x, y).a <= 0.5:
+				continue
+			var lit := -((float(x) - 16.0) / 12.0 + (float(y) - 16.0) / 11.0)
+			if lit > 0.48:
+				_px(img, x, y, ramp[2])
+			elif lit < -1.08:
+				_px(img, x, y, ramp[0])
+	_flat_ellipse(img, 16, 16, 8.0, 8.0, ramp[0])
+	_flat_ellipse(img, 16, 16, 7.0, 7.0, ramp[3])
+	_flat_ellipse(img, 16, 16, 5.0, 5.0, ramp[1])
+	_flat_ellipse(img, 16, 16, 2.0, 2.0, ramp[0])
+	_over_line(img, 11, 25, 16, 25, ramp[0])
+	_over_line(img, 18, 27, 22, 27, ramp[0])
 
 ## THE ENTERPRISE ARCHITECT: a tailored suit, a power tie, an access badge, and
 ## an aura of governance that fades with distance (unlike the meetings).
-func _draw_enterprise_architect(img: Image, c: Color) -> void:
-	var gov := Color(c.r, c.g, minf(c.b + 0.2, 1.0), 0.42)
-	var bxs: Array[int] = [1, 30]
-	var bys: Array[int] = [1, 30]
-	for bi in 2:
-		for bj in 2:
-			var dx: int = 1 if bi == 0 else -1
-			var dy: int = 1 if bj == 0 else -1
-			for i in 5:
-				_px(img, bxs[bi] + dx * i, bys[bj], gov)
-				_px(img, bxs[bi], bys[bj] + dy * i, gov)
+##
+## The aura is gone. It was four blue corner brackets floating in the empty
+## pixels around the sprite at 42% alpha — outside the silhouette, so
+## `_outline_silhouette` traced each of them, and under the old 0.5 alpha gate
+## `_enemy_repaint` never touched them, which made this creature the only one in
+## the cast still shipping a saturated colour that was not its red tell. LAW 7 is
+## explicit that an enemy reads by SILHOUETTE; a HUD frame drawn around it is the
+## opposite of a silhouette.
+func _draw_enterprise_architect(img: Image, _c: Color) -> void:
 	var suit := Color(0.15, 0.17, 0.29)
 	var suit_hi := Color(0.36, 0.42, 0.60)
 	var suit_sh := Color(0.06, 0.07, 0.14)
@@ -2279,6 +2354,19 @@ func _draw_glow_blob(img: Image, c: Color) -> void:
 		_px(img, ex, 14, Color.BLACK)
 		_px(img, ex - 1, 12, WHITE_HOT)
 
+## A disc drawn the way a pixel artist draws one. An exact circle test puts ONE
+## pixel on its topmost row, and `_outline_silhouette` then traces that pixel
+## into a spike — four of them, at the compass points, which is how a lens turns
+## into a gunsight. Carrying the usual half pixel in the radius gives the flat
+## top and flat sides a hand-drawn circle has, at every radius, for free.
+func _flat_ellipse(img: Image, cx: int, cy: int, rx: float, ry: float, c: Color) -> void:
+	for x in img.get_width():
+		for y in img.get_height():
+			var dx := float(x - cx) / (rx + 0.5)
+			var dy := float(y - cy) / (ry + 0.5)
+			if dx * dx + dy * dy <= 1.0:
+				_px(img, x, y, c)
+
 func _fill_ellipse(img: Image, cx: int, cy: int, rx: int, ry: int, c: Color, inset: int = 0) -> void:
 	for x in img.get_width():
 		for y in img.get_height():
@@ -2308,72 +2396,78 @@ func _draw_line_img(img: Image, x0: int, y0: int, x1: int, y1: int, c: Color) ->
 			err += dx
 			y += sy
 
-## TOKENS (LAW 2, LAW 4). Six denominations, ONE colour: GOLD is reserved for
-## currency and currency is the only thing that may use it. They used to be six
-## saturated hues with two halo rings each, scattered twenty-five to a region —
-## which is why the QA frames read as a screen full of glowing cyan and green
-## blobs with a player somewhere inside it. A token is now a small clean gem:
-## twelve pixels of art in a sixteen pixel frame, three tones, one white-hot
-## specular, a 1px outline, and NO halo. The denominations still differ, but
-## they differ by CUT, which costs no colour at all.
+## TOKENS (LAW 2, LAW 4). Six denominations, ONE colour, and since round 7 ONE
+## SHAPE.
+##
+## The previous pass got the colour right — GOLD, no halos — and then spent the
+## saving on six different silhouettes: a hex, a chip, a prism, and a "brilliant"
+## cut whose flat table over tapering shoulders reads, at 16px on a dark floor,
+## as a DOWN ARROW. The QA frames show it exactly that way, sitting next to
+## diamonds, three per screen; a player scanning for pickups was being asked to
+## learn six shapes for one verb.
+##
+## A denomination is a quantity, so it is expressed as a quantity: same rhombus,
+## three sizes (10 / 12 / 14px), and one faint brightness step inside each size.
+## Nothing else changes between them — not the hue, not the outline, not the
+## number of tones, not the specular.
+const TOKEN_GRADE := {
+	"common": Vector2(5.0, 0.00),
+	"cached": Vector2(5.0, 0.06),
+	"compute": Vector2(6.0, 0.00),
+	"premium": Vector2(6.0, 0.06),
+	"frontier": Vector2(7.0, 0.00),
+	"golden": Vector2(7.0, 0.06),
+}
+
 func _generate_tokens() -> void:
-	var cuts := {
-		"common": "round",
-		"cached": "hex",
-		"premium": "brilliant",
-		"golden": "radiant",
-		"frontier": "prism",
-		"compute": "chip",
-	}
-	for tname in cuts:
+	for tname in TOKEN_GRADE:
 		var img := Image.create(16, 16, false, Image.FORMAT_RGBA8)
 		img.fill(Color(0, 0, 0, 0))
-		_draw_gem(img, GOLD, str(cuts[tname]))
+		_draw_gem(img, GOLD, str(tname))
 		_save_image(img, "token_%s.png" % tname)
 
-## Inside-the-stone test. One function owns every token silhouette. Every cut is
-## bounded to a 12x12 box inside the 16px frame so the outline still fits and the
-## gem reads as jewellery rather than as a light fixture.
+## Half-width in pixels (x) and brightness step (y) for a denomination. The
+## widths are deliberately whole numbers: |dx| and |dy| are both half-integers
+## on a 16px canvas, so only 5 / 6 / 7 produce distinct silhouettes — 5.5 draws
+## the same diamond as 5, which is how a "size ladder" becomes six identical
+## sprites without anyone noticing.
+func _gem_grade(cut: String) -> Vector2:
+	if TOKEN_GRADE.has(cut):
+		var g: Vector2 = TOKEN_GRADE[cut]
+		return g
+	return Vector2(7.0, 0.06)
+
+## Inside-the-stone test. One rhombus, sized by denomination, bounded so the
+## outline pass still has a clear row on every side of the frame.
 func _gem_mask(x: int, y: int, cut: String) -> bool:
-	var dx := absf(float(x) - 7.5)
-	var dy := absf(float(y) - 7.5)
-	match cut:
-		"round":
-			return dx * dx + dy * dy <= 27.0
-		"hex":
-			return dx <= 4.6 and dx + maxf(0.0, dy - 1.8) <= 5.4
-		"brilliant":
-			# a flat table, a broad crown, a pavilion tapering to a point
-			if y <= 4:
-				return dx <= 2.8
-			if y <= 7:
-				return dx <= 5.2
-			return dx <= 5.2 - float(y - 7) * 0.95
-		"prism":
-			return dx / 3.8 + dy / 5.6 <= 1.0
-		"chip":
-			return dx <= 4.6 and dy <= 4.6 and dx + dy <= 7.2
-	return dx / 5.2 + dy / 5.6 <= 1.0  # radiant
+	var r := _gem_grade(cut).x
+	return absf(float(x) - 7.5) + absf(float(y) - 7.5) <= r
 
 ## A cut stone in three tones lit from the top-left, one white-hot specular, and
 ## a 1px outline. That is the entire recipe. What is gone, deliberately: the
 ## five-stop facet ramp, the girdle and crown seams, the refracted caustic, the
 ## four-pixel specular cluster, and both halo rings.
 func _draw_gem(img: Image, c: Color, cut: String = "radiant") -> void:
-	var light := c.lightened(0.30)
-	var shadow := c.darkened(0.38)
+	var grade := _gem_grade(cut)
+	# The brightness step is a lift toward a paler gold, never toward another
+	# hue: a rare token is a brighter gold, not a different colour (LAW 2).
+	var body: Color = c.lerp(Color(1.0, 0.93, 0.74), grade.y)
+	var light := body.lightened(0.30)
+	var shadow := body.darkened(0.38)
 	for x in 16:
 		for y in 16:
 			if not _gem_mask(x, y, cut):
 				continue
 			var lit := -((float(x) - 7.5) + (float(y) - 7.5)) * 0.5
-			var col := c
+			var col := body
 			if lit > 1.4:
 				col = light
 			elif lit < -1.4:
 				col = shadow
 			_px(img, x, y, col)
-	_over_px(img, 6, 5, WHITE_HOT)   # the one pixel that makes it precious
+	# The one pixel that makes it precious, kept on the lit facet at every size.
+	var sp: int = 7 - int(grade.x * 0.35)
+	_over_px(img, sp, sp, WHITE_HOT)
 	_outline_silhouette(img, OUTLINE_COLOR)
 
 ## ONE panel style (LAW 8): BASE at 96%, a 1px LINE border, radius 0. No

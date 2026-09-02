@@ -5,10 +5,20 @@ extends Area2D
 
 @onready var label: Label = $Label
 
-## Destination hues — VISUAL_BIBLE_V2 LAW 2's ACCENT column, verbatim — so every
-## portal advertises where it goes before you read the label. (localhost is
-## #24F0DC here now, matching world.gd: amber is that region's WARM, not its
-## accent.)
+## VISUAL_BIBLE_V2 LAW 2's ACCENT column, verbatim, keyed by REGION ID.
+##
+## ROUND 7 — THE PORTAL TAKES THE ROOM'S COLOUR, NOT THE DESTINATION'S.
+##
+## Round 6 hued every portal by where it GOES: a cyan swirl, cyan halo and cyan
+## label standing in acid-green Dependency District; a red one in gold Token
+## Vault; a magenta one in blue Cloud District. LAW 2 allows a scene exactly
+## three hues (BASE / ACCENT / WARM) and this spent a fourth in every single
+## room — the one saturated object the eye lands on first, painted in a colour
+## that belongs to somewhere else.
+##
+## So the hue is looked up from `GameManager.current_region` at build time. The
+## destination is still advertised, in the only place it costs nothing: the
+## line of text under the mouth.
 const REGION_HUES := {
 	"localhost": Color("#24F0DC"),
 	"dependency_district": Color("#A8FF3E"),
@@ -28,23 +38,18 @@ const SWIRL_SHADER := "res://assets/shaders/portal_swirl.gdshader"
 ## across, a doorway a person could walk through — with a soft swirl, one light
 ## at energy 0.5, and no halo. It should be FINDABLE, not dominant.
 ##
-## Round 5's gate was, in all ten QA frames, the brightest and the largest
-## object on screen: a 116-unit disc with a white-hot horizon, a 122-unit
-## breathing additive halo over it, a 275-unit screen-reading refraction lens
-## around that, 20 infalling motes and 14 orbiting ring sparks. Removed this
-## round, all of it except the disc and a thinned mote stream:
+## Everything that made the round-5 gate the brightest object in ten QA frames
+## is gone (the refraction lens, the breathing additive halo, the ring sparks,
+## the white-hot horizon). Round 7 removes the last of it:
 ##
-##   PortalLens + its BackBufferCopy   a per-portal screen capture whose only
-##       job was to bend the floor. "No refraction" is a LAW 4 instruction and
-##       this was also the single most expensive node in the region.
-##       portal_rim.gdshader is gone from the repo — nothing else loaded it.
-##   PortalHalo   a wide additive skirt that breathed on a 3.8s loop. A glow
-##       with no source, moving at rest (LAW 9), and the thing that painted the
-##       near-white pool the QA frames actually show.
-##   PortalSparks   sparkle. LAW 9 again.
+##   PortalMotes   twelve additive dots orbiting the mouth on a 74px emission
+##       sphere. LAW 4 gives a REGION two particle emitters — one ambient dust
+##       layer and one at the set-piece — and the portal was quietly spending a
+##       third. LAW 9 rules out sparkle at rest on its own.
+##
+## What is left is four things: a swirl, a light, a label, and a trigger.
 ##
 ## Draw order inside the portal (z_index, all relative to the Portals node at 0):
-##  y+29 PortalMotes     infalling debris, one step BEHIND the mouth
 ##  y+30 PortalDisc      the swirl itself, y-SORTED (see _body_z)
 ## 1140 Label            destination text, on top of its own artwork AND of the
 ##                       scenery: props y-sort themselves up to z ~1050, which
@@ -65,28 +70,41 @@ const SWIRL_SHADER := "res://assets/shaders/portal_swirl.gdshader"
 const Z_BODY_LIFT := 30
 const Z_LABEL := 1140
 
+## The swirl's radius in world units — a 64px texture at scale 1.5, halved.
+## READ FROM THE LIVE NODE by objective_waypoint._portal_radius(), which floats
+## its beacon clear of the mouth; this constant is only that file's fallback and
+## the number `_build_disc` is built to.
+const BODY_RADIUS := 48.0
+
 ## Where the destination text sits, in local px, measured from the portal
-## centre. BELOW the swirl on purpose. The beacon that guidance pins over a
-## portal (objective_waypoint.gd) occupies the whole column ABOVE the target —
-## chevron at roughly -95..-10 screen px and its "through this portal" readout
-## above that — so a plate above the centre was drawn through, which is exactly
-## what the QA frames show ("→ Clou[chevron]District"). That file now steps
-## around this label from its side too (_portal_clearance); moving the plate out
-## of the column is the same fix from the other end, and the two agree.
-## Below the disc the text is in permanently clear air. It is also off the DISC
-## itself: the body now reaches 48px from centre, so 64..90 starts 16px past the
-## rim (the old -60..-35 box lay across the top of its own artwork —
-## region_token_vault.png shows "→ Production" printed over the swirl). And it is still inside the 200x200 box (localhost: 208x208) that both
-## world builders reserve around a portal, so no auto-placed sign can land on it.
-##
-## COUPLED, do not move blind: objective_waypoint._portal_clearance() reads THIS
-## Label's rect — absf(get_rect().position.y) * zoom + PORTAL_LABEL_CLEAR — to
-## decide how far above the portal the guidance chevron floats. Any value here
-## keeps the beacon clear because the beacon lifts by |LABEL_TOP| either way, but
-## a LABEL_TOP smaller than 1.0 would trip that function's own guard and drop the
-## chevron back onto the vortex at the flat BEACON_LIFT of 52.
+## centre. BELOW the swirl on purpose, and never over it: the body reaches
+## BODY_RADIUS from centre, so 64..90 starts 16px past the rim. (The old
+## -60..-35 box lay across the top of its own artwork — region_token_vault.png
+## shows "→ Production" printed over the swirl.) It is also outside the column
+## ABOVE the portal, which belongs to the guidance beacon
+## (objective_waypoint.gd), and still inside the 200x200 box (localhost:
+## 208x208) that both world builders reserve around a portal, so no auto-placed
+## sign can land on it either.
 const LABEL_TOP := 64.0
 const LABEL_HEIGHT := 26.0
+
+## Half the widest the destination line is allowed to be, in world units.
+##
+## ROUND 9 — THE LABEL NO LONGER RUNS OFF THE WORLD (critique #9, "→ Depen").
+## The scene's Label is a 160-unit box with `horizontal_alignment = CENTER` and
+## no wrapping, and an unwrapped Label does not clip: "→ Open Source Wildlands"
+## at SMALL simply draws past both edges of its own box, reaching roughly ±105
+## units. A portal within ~110 units of a wall then printed its own name into
+## the wall — or, with the camera clamped at that wall, off the frame entirely.
+## AUTOWRAP_WORD_SMART inside this half-width turns the long destinations into
+## two short lines instead, and `_clamp_label()` then shifts the whole box so it
+## cannot cross the room bounds either. LABEL_TOP and LABEL_HEIGHT are NOT
+## touched by any of this: objective_waypoint._portal_clearance() measures its
+## beacon off this Label's top edge.
+const LABEL_HALF_W := 80.0
+## Two wrapped lines plus the shadow row. A one-line destination still occupies
+## only its own line — Label draws top-aligned inside the box.
+const LABEL_MAX_H := 52.0
 
 var _disc_mat: ShaderMaterial
 var _light: PointLight2D
@@ -103,19 +121,28 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	_build_vortex()
 
-## The portal, whole. Hue is normalised to full chroma first (FxLib.vivid):
-## the bible's muted accents — stackoverflow gold #E8C46B, cloud sky #6BC7FF —
-## otherwise land as brown/grey sludge once the dark ambient CanvasModulate has
-## had its way.
+## The hue this portal is drawn in: the ACCENT of the room it STANDS IN (LAW 2),
+## read once at build time. `GameManager.current_region` is already the region
+## being populated by the time a portal enters the tree — region_builder sets
+## `position` and calls `add_child` well after `change_region`.
+func _room_accent() -> Color:
+	var c: Color = REGION_HUES.get(GameManager.current_region, Color("#24F0DC"))
+	return c
+
+## The portal, whole. Hue is normalised to full chroma for the LIGHT only
+## (FxLib.vivid): the bible's muted accents — stackoverflow gold #E8C46B, cloud
+## sky #6BC7FF — otherwise land as brown/grey sludge once the dark ambient
+## CanvasModulate has had its way. The swirl does its own normalisation inside
+## the shader.
 ##
-## What a portal is, after round 6: a 96-unit swirl in the destination accent, a
-## thin inward mote stream, one PointLight2D at energy 0.5, and a line of text
-## under it. Four nodes. See the LAW 4 note above for the six that are gone.
+## What a portal is, after round 7: a 96-unit swirl in the ROOM's accent, one
+## PointLight2D at energy 0.5 pooling on the floor, and a line of dim text under
+## it. Three nodes.
 func _build_vortex() -> void:
-	var hue: Color = REGION_HUES.get(target_region, Color("#8B5CF6"))
-	var vivid := FxLib.vivid(hue)
-	# Stable per-destination variation, so no two portals in one room breathe in
-	# unison like a rendering artifact.
+	var accent := _room_accent()
+	var vivid := FxLib.vivid(accent)
+	# Stable per-DESTINATION variation, so the two portals in one room no longer
+	# differ by hue but still do not breathe in unison like a rendering artifact.
 	_seed = float(absi(target_region.hash()) % 997) * 0.0063
 	# LAW 9: motion is small. The swirl turns at roughly half round 5's rate —
 	# slow enough that a still frame and a moving one look the same.
@@ -125,38 +152,75 @@ func _build_vortex() -> void:
 	if ResourceLoader.exists(SWIRL_SHADER):
 		if rect:
 			rect.visible = false
-		_build_disc(hue)
+		_build_disc(accent)
 	elif rect:
-		# No shader: at least keep the destination hue readable, and sort it the
-		# same way the disc would be so the fallback is not buried under props
-		# either.
+		# No shader: at least keep the room's hue readable, and sort it the same
+		# way the disc would be so the fallback is not buried under props either.
 		rect.color = Color(vivid.r, vivid.g, vivid.b, 0.72)
 		rect.z_index = _body_z()
-	_build_motes(vivid)
 	# Room lighting only, and LAW 4 names the number: energy 0.5. A 2D
 	# PointLight2D ADDS itself to every lit sprite in reach, so this is what
-	# actually says "doorway" from across a dark room — the gate's floor glows,
-	# the artwork does not have to shout. texture_scale 1.6 keeps the pool
-	# roughly two body-widths across instead of the old ~415px wash.
+	# actually says "doorway" from across a dark room — the gate's floor POOLS
+	# (LAW 4), the artwork does not have to shout. texture_scale 1.6 keeps that
+	# pool roughly two body-widths across instead of the old ~415px wash.
 	_light = FxLib.point_light(self, vivid, 0.5, 1.6)
-	# The label reads in the destination's colour and sits above the portal's own
-	# artwork — but BELOW the portal centre, out of the guidance beacon's column
-	# (see LABEL_TOP). LAW 4's label style: plain text, one 1px drop shadow, no
-	# plate and no 6px outline halo, which at 14px type was a smudge.
+	_dress_label()
+
+## The destination, named once, quietly. LAW 4's label style exactly: plain
+## aliased text (LAW 1 — the scene's default font is smooth and 14px), SMALL,
+## TEXT_DIM, one 1px drop shadow, no plate, no outline halo, and BELOW the art.
+##
+## TEXT_DIM and not the accent on purpose: the SWIRL is the wayfinding signal
+## and it is already the room's one neon. A second accent-coloured object 16px
+## under it would just be the same shout twice.
+func _dress_label() -> void:
 	label.z_index = Z_LABEL
 	label.offset_top = LABEL_TOP
-	label.offset_bottom = LABEL_TOP + LABEL_HEIGHT
-	label.add_theme_color_override("font_color", vivid)
+	label.offset_bottom = LABEL_TOP + LABEL_MAX_H
+	label.offset_left = -LABEL_HALF_W
+	label.offset_right = LABEL_HALF_W
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_font_override("font", GameTheme.ui_font())
+	label.add_theme_font_size_override("font_size", GameTheme.SMALL)
+	label.add_theme_color_override("font_color", GameTheme.TEXT_DIM)
 	label.add_theme_constant_override("outline_size", 0)
 	label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.8))
 	label.add_theme_constant_override("shadow_offset_x", 1)
 	label.add_theme_constant_override("shadow_offset_y", 1)
+	label.add_theme_constant_override("shadow_outline_size", 0)
+	_clamp_label()
+
+## Slide the destination box sideways until it is entirely inside the room.
+##
+## The box is centred on the portal, so a doorway cut close to a side wall would
+## otherwise print half its name into the masonry. WorldLabel.bounds() is the
+## room rect the builder declared for THIS region (WorldLabel.begin() runs at
+## the top of every build, well before any portal is added), and EDGE_KEEP is
+## the same 24-unit margin every auto-placed caption already respects — so the
+## portal's own text now obeys the rule the rest of the world's text does.
+func _clamp_label() -> void:
+	var room := WorldLabel.bounds()
+	if room.size.x <= LABEL_HALF_W * 2.0:
+		return
+	var keep := WorldLabel.EDGE_KEEP
+	var centre := global_position.x
+	var lo := room.position.x + keep + LABEL_HALF_W
+	var hi := room.position.x + room.size.x - keep - LABEL_HALF_W
+	var want := clampf(centre, lo, maxf(lo, hi))
+	var dx := want - centre
+	label.offset_left = -LABEL_HALF_W + dx
+	label.offset_right = LABEL_HALF_W + dx
 
 ## The swirl. LAW 4's 48px of art at 2x: a 64px white square at scale 1.5 is
-## 96 world units across, i.e. a 48-unit radius. region_builder reserves 58 for
-## a portal body when it places world labels, so this fits inside what the
+## 96 world units across, i.e. a BODY_RADIUS of 48. region_builder reserves 58
+## for a portal body when it places world labels, so this fits inside what the
 ## builders already expect and no sign has to move.
-func _build_disc(hue: Color) -> void:
+##
+## The texture is SQUARE and the scale is UNIFORM, which is not decoration: the
+## shader builds its disc out of `length(UV - 0.5)`, so a non-square quad would
+## print an ellipse and a non-uniform scale would shear the cell grid off LAW
+## 1's pixel lattice.
+func _build_disc(accent: Color) -> void:
 	var disc := Sprite2D.new()
 	disc.name = "PortalDisc"
 	disc.texture = FxLib.white_square()
@@ -167,7 +231,7 @@ func _build_disc(hue: Color) -> void:
 	_disc_mat.shader = load(SWIRL_SHADER)
 	# Seed every uniform before anything animates one (hard rule: an unset
 	# shader param reads back as null).
-	_disc_mat.set_shader_parameter("hue_color", hue)
+	_disc_mat.set_shader_parameter("hue_color", accent)
 	_disc_mat.set_shader_parameter("speed", _base_speed)
 	# Two arms, not three: fewer, wider, slower bands read as a swirl at a
 	# glance instead of as a texture you have to stop and resolve.
@@ -192,48 +256,10 @@ func _build_disc(hue: Color) -> void:
 func _body_z() -> int:
 	return int(global_position.y) + Z_BODY_LIFT
 
-## ONE emitter: the inward mote stream. LAW 4 gives a region two emitters total
-## and this is the portal's share; the ring sparks that used to orbit the
-## accretion lip are gone, because sparkle at rest is exactly what LAW 9 rules
-## out. Twelve particles at 40% alpha and NOT overbright — the stream says
-## "something is being pulled in here", it does not contribute to the bloom.
-func _build_motes(vivid: Color) -> void:
-	var dot := FxLib.glow_dot()
-	var motes := CPUParticles2D.new()
-	motes.name = "PortalMotes"
-	# One z below the disc: infalling debris passes BEHIND the mouth, and the
-	# whole portal still sorts against the scenery as one object rather than the
-	# emitter being left down at z 0 for every prop to draw over.
-	motes.z_index = _body_z() - 1
-	motes.emitting = true
-	motes.amount = 12
-	motes.lifetime = 2.2
-	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE_SURFACE
-	# Tracks the smaller body: the stream starts just under a body-width out
-	# rather than at the old 108, so it never reads as a second, wider halo.
-	motes.emission_sphere_radius = 74.0
-	motes.spread = 180.0
-	motes.initial_velocity_min = 0.0
-	motes.initial_velocity_max = 4.0
-	motes.radial_accel_min = -42.0
-	motes.radial_accel_max = -28.0
-	motes.tangential_accel_min = 18.0
-	motes.tangential_accel_max = 32.0
-	motes.color = Color(vivid.r, vivid.g, vivid.b, 0.40)
-	if dot:
-		motes.texture = dot
-		motes.material = FxLib.additive_material()
-		motes.scale_amount_min = 0.18
-		motes.scale_amount_max = 0.36
-	else:
-		motes.scale_amount_min = 0.8
-		motes.scale_amount_max = 1.6
-	add_child(motes)
-
 ## The portal notices you: within ~340px it turns a little faster, lifts a
-## little, and its floor pool swells by 40%. Extra rotation is ACCUMULATED into `phase` rather than
-## applied by scaling `speed`, because scaling the shader's TIME term mid-run
-## snaps the animation by however long the game has been open.
+## little, and its floor pool swells. Extra rotation is ACCUMULATED into `phase`
+## rather than applied by scaling `speed`, because scaling the shader's TIME
+## term mid-run snaps the animation by however long the game has been open.
 ##
 ## Two uniform writes and one energy write per portal per frame; nothing is
 ## allocated here.
@@ -256,8 +282,9 @@ func _process(delta: float) -> void:
 	_phase += delta * (0.06 + near * 0.55)
 	# The near-approach response is what says "this is a thing you walk into",
 	# and it is deliberately the only thing here that changes: the swirl lifts
-	# by about a fifth as you close. There is no hot core to burn any more, so
-	# `core_heat` now scales the whole body rather than a horizon lip.
+	# by a couple of percent as you close. There is no hot core to burn any
+	# more, so `core_heat` scales the whole body rather than a horizon lip, and
+	# the shader caps what it can do at a 1.02 multiplier.
 	var heat_target: float = 0.62 + near * 0.50
 	_heat = lerpf(_heat, heat_target, clampf(delta * 4.0, 0.0, 1.0))
 	_disc_mat.set_shader_parameter("phase", _phase)

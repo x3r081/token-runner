@@ -35,13 +35,13 @@ horizontal_alignment = 1
 
 [node name="Subtitle" type="Label" parent="CenterPanel/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 16
 text = "Ship Before Reset"
 horizontal_alignment = 1
 
 [node name="Version" type="Label" parent="CenterPanel/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 16
 text = "v1.1-dev"
 horizontal_alignment = 1
 
@@ -80,7 +80,7 @@ offset_left = -450.0
 offset_top = -64.0
 offset_right = 450.0
 offset_bottom = -28.0
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 16
 text = "Loading tip..."
 horizontal_alignment = 1
 autowrap_mode = 2

@@ -32,7 +32,7 @@ text = "Quest Log"
 
 [node name="Subtitle" type="Label" parent="Margin/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 16
 text = "What's running, and what you physically do next."
 
 [node name="Scroll" type="ScrollContainer" parent="Margin/VBox"]
@@ -46,7 +46,7 @@ size_flags_horizontal = 3
 
 [node name="Footer" type="Label" parent="Margin/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 16
 text = "Lost? [H] gives directions."
 autowrap_mode = 3
 

@@ -7,6 +7,12 @@ extends PanelContainer
 ## "you are here", plus an emoji per row at a completely different pixel size
 ## from everything around it. LAW 8: the current region is the one ACCENT, the
 ## rest is TEXT_DIM, locked rows sit at 40%.
+##
+## Round 7 removed the ambient bark that sat between the title and the list —
+## "Fast travel is instant and free. Everything at the other end is neither."
+## Nobody opens a map to be told what a map is. The screen now goes straight from
+## the heading to the destinations, and the only coloured thing on it is the
+## region the player is standing in.
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 const _Comedy = preload("res://scripts/ui/comedy_lines.gd")
@@ -56,8 +62,7 @@ func _ready() -> void:
 	title.add_theme_color_override("font_color", _GameTheme.CYAN)
 	$Margin/VBox/CloseBtn.text = "Close"
 	$Margin/VBox/CloseBtn.tooltip_text = "Closes the map. [M] does it too."
-	_GameTheme.style_button($Margin/VBox/CloseBtn, _GameTheme.TEXT_DIM, _Modal.SMALL)
-	_build_subtitle()
+	_GameTheme.style_button($Margin/VBox/CloseBtn, _GameTheme.TEXT_DIM, _GameTheme.SMALL)
 	_populate()
 	_GameTheme.open_panel(self)
 	# The region list grows as regions unlock, so the panel is sized to its
@@ -105,17 +110,6 @@ func _trim_flavour_notes() -> bool:
 			trimmed = true
 	return trimmed
 
-func _build_subtitle() -> void:
-	var sub := Label.new()
-	sub.name = "MapSubtitle"
-	sub.text = "Fast travel is instant and free. Everything at the other end is neither."
-	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	sub.add_theme_font_size_override("font_size", _Modal.SMALL)
-	sub.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
-	var vbox: VBoxContainer = $Margin/VBox
-	vbox.add_child(sub)
-	vbox.move_child(sub, 1)
-
 func _populate() -> void:
 	var vbox: VBoxContainer = $Margin/VBox/RegionList
 	for c in vbox.get_children():
@@ -138,13 +132,13 @@ func _populate() -> void:
 			btn.text = "%s%s" % [display, flag]
 			btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			btn.tooltip_text = _Comedy.region_subtitle(rid)
-			_GameTheme.style_button(btn, _GameTheme.TEXT_DIM, _Modal.SMALL)
+			_GameTheme.style_button(btn, _GameTheme.TEXT_DIM, _GameTheme.SMALL)
 			var r: String = rid
 			btn.pressed.connect(func(): _travel(r))
 			vbox.add_child(btn)
 		else:
 			var label := Label.new()
-			label.add_theme_font_size_override("font_size", _Modal.SMALL)
+			_GameTheme.small_text(label)
 			if current:
 				# The one accent on this screen: where you are standing.
 				label.text = "%s   · you are here%s" % [display, flag]
@@ -171,7 +165,7 @@ func _add_note(vbox: VBoxContainer, text: String, col: Color, flavour := false) 
 	var note := Label.new()
 	note.text = "      %s" % text
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.add_theme_font_size_override("font_size", _Modal.SMALL)
+	_GameTheme.small_text(note)
 	note.add_theme_color_override("font_color", col)
 	if not flavour:
 		note.modulate.a = LOCKED_ALPHA

@@ -16,10 +16,22 @@ class_name GameTheme
 ##   shadow_size 0, no glow, no sheen, no gradient.
 ##   One ACCENT per screen (title + primary action). Body in TEXT.
 ##
-## THE TEXT RULE (LAW 1): aliased. `ui_font()` is the project font with
-## antialiasing, hinting and subpixel positioning switched off, installed as the
-## theme's default font so every screen inherits it. Three sizes exist —
-## SMALL 14 / BODY 18 / HEADING 26 — and nothing else.
+## THE TEXT RULE (LAW 1), as amended by looking at the frames:
+##
+##   * HINTED, always. Round 6 switched the hinter off along with antialiasing,
+##     on the theory that "aliased" meant "no font machinery at all". Hinting is
+##     not smoothing — it is what pulls stems and crossbars onto whole pixel rows
+##     — and without it the UI printed "compiled" as "complled". See `ui_font()`.
+##   * Nothing below 16. SMALL was 14 and 14 does not survive this face.
+##   * BODY (18) and HEADING (26) are ALIASED, via `ui_font()`, which is the
+##     theme's default font. That is where the project's pixel-text character
+##     lives and those sizes have the rows to carry it.
+##   * SMALL (16) ANTIALIASES, via `small_font()` / `small_text()`. One-bit
+##     rasterisation at the size the small tier actually reaches through the
+##     canvas stretch drops a glyph feature at random. See `small_font()` for the
+##     argument; the short version is that legible beats pure.
+##
+## Three sizes exist — SMALL 16 / BODY 18 / HEADING 26 — and nothing else.
 
 # ---------------------------------------------------------------- palette ----
 # LAW 2. Three hues per scene; everything else desaturates toward grey.
@@ -62,7 +74,15 @@ static func region_accent(region_id: String) -> Color:
 # ------------------------------------------------------------- type scale ----
 ## LAW 1: three sizes, no others. FONT_* aliases exist because "SMALL" alone
 ## reads ambiguously at a distant call site.
-const SMALL := 14
+##
+## SMALL was 14 and 14 does not survive this font. At 14px with hinting on, the
+## dot of an `i` sits one pixel off the stem and the renderer has to choose
+## between them; it chose the stem, and every `i` in the build became an `l`
+## ("compiled on hope" printed as "complled"). 16 is the smallest size at which
+## the dot, the counter of an `e` and the crossbar of a `t` each get their own
+## pixel row. It is two pixels of vertical rhythm against a whole tier of text
+## the player can actually read.
+const SMALL := 16
 const BODY := 18
 const HEADING := 26
 const FONT_SMALL := SMALL
@@ -166,14 +186,31 @@ static func vignette_texture(edge: Color) -> GradientTexture2D:
 	return _tex_cache[key]
 
 # -------------------------------------------------------------------- fonts ----
-## The project font with every smoothing feature switched off (LAW 1).
+## The project font, aliased AND hinted (LAW 1, corrected by the frames).
 ##
-## Smooth vector text laid over 2x pixel art is the single loudest "generated"
-## signal in the QA frames: five pixel sizes in one image, and the text was one
-## of them. `FontFile` carries the three switches that matter, so the default
-## font is duplicated and switched off at the source; a `SystemFont` or an
-## already-derived font has no such switches and is wrapped in a FontVariation
-## so the rest of the theme still has one font object to hang sizes off.
+## Smooth vector text laid over 2x pixel art is the loudest "generated" signal a
+## frame can carry, so antialiasing stays off and subpixel positioning stays off:
+## every glyph lands on an integer pixel and every pixel it lights is fully on.
+##
+## HINTING is the part round 6 got wrong. It switched the hinter off along with
+## everything else, on the theory that "aliased" meant "no font machinery at
+## all" — but hinting is not smoothing. It is the instruction set that pulls a
+## stem, a crossbar and a dot onto whole pixel rows BEFORE the glyph is
+## rasterised. With it off, an outline lands wherever the metrics put it and the
+## 1-bit rasteriser rounds; at 14-16px that rounding merges the dot of an `i`
+## into its stem, closes the eye of an `e`, and eats the crossbar of a `t`. The
+## QA menu frame printed "compiled on hope" as "complled on hope" and "this
+## portal" as "thls portal". That is not pixel purity, that is a broken font.
+##
+## Classic aliased UI text — the look this project is actually after — was always
+## hinted; that is precisely how it stayed legible at 8 and 10 pixels with one
+## bit per pixel. So: antialiasing NONE + subpixel DISABLED + HINTING_NORMAL.
+## Crisp, on-grid, and readable, which the previous combination was not.
+##
+## `FontFile` carries all three switches, so the default font is duplicated and
+## configured at the source; a `SystemFont` or an already-derived font has no
+## such switches and is wrapped in a FontVariation so the rest of the theme still
+## has one font object to hang sizes off.
 static func ui_font() -> Font:
 	if _font_cache.has("ui"):
 		return _font_cache["ui"]
@@ -182,10 +219,15 @@ static func ui_font() -> Font:
 	if base is FontFile:
 		var f: FontFile = (base as FontFile).duplicate()
 		f.antialiasing = TextServer.FONT_ANTIALIASING_NONE
-		f.hinting = TextServer.HINTING_NONE
+		f.hinting = TextServer.HINTING_NORMAL
 		f.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
 		f.multichannel_signed_distance_field = false
-		f.force_autohinter = false
+		# The bundled face is a subset with its TrueType hinting instructions
+		# stripped, so HINTING_NORMAL alone had nothing to execute and changed
+		# nothing. The autohinter derives the stems and crossbars from the outline
+		# instead. With it off, "Before" rasterised as "Bcforc" at 16px: the
+		# crossbar of every `e` fell between two pixel rows and was dropped.
+		f.force_autohinter = true
 		out = f
 	else:
 		var fv := FontVariation.new()
@@ -193,6 +235,53 @@ static func ui_font() -> Font:
 		out = fv
 	_font_cache["ui"] = out
 	return out
+
+## The SMALL tier's font: identical to `ui_font()` except that it antialiases.
+##
+## This is a concession, made after looking at the frame rather than at the law.
+## LAW 1 says text is aliased, and at BODY (18) and HEADING (26) it is — those
+## sizes have the pixel rows to spare and they carry the project's typographic
+## character. SMALL does not. The UI renders through a `canvas_items` stretch, so
+## a 16px glyph is rasterised at 16 x the content scale — about 13.7px in a
+## windowed 1920x928 frame — and one-bit rasterisation at that size is a coin
+## flip per horizontal feature: the frame that triggered this shows "index" as
+## "indcx", "makes" as "makcs" and "self" as "sclf", every one of them an `e`
+## whose crossbar landed between rows.
+##
+## Grey antialiasing is not the smooth vector text LAW 1 banned. That text had no
+## hinting and sub-pixel positioning on, so glyphs floated off the grid entirely.
+## This one is hinted and grid-fitted exactly like its aliased sibling; the only
+## difference is that a feature too thin for a whole pixel is allowed to render
+## as a partial one instead of vanishing. Legible small text beats pixel purity.
+static func small_font() -> Font:
+	if _font_cache.has("small"):
+		return _font_cache["small"]
+	var base: Font = ThemeDB.fallback_font
+	var out: Font = null
+	if base is FontFile:
+		var f: FontFile = (base as FontFile).duplicate()
+		f.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
+		f.hinting = TextServer.HINTING_NORMAL
+		f.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
+		f.multichannel_signed_distance_field = false
+		f.force_autohinter = true
+		out = f
+	else:
+		out = ui_font()
+	_font_cache["small"] = out
+	return out
+
+## Set a control to the SMALL tier — the font AND the size, together.
+##
+## Both, always: a size override alone leaves the control on the theme's aliased
+## default font, which is the combination that produced "sclf". Any screen with a
+## small line calls this instead of `add_theme_font_size_override("font_size",
+## GameTheme.SMALL)`.
+static func small_text(c: Control) -> void:
+	if c == null:
+		return
+	c.add_theme_font_override("font", small_font())
+	c.add_theme_font_size_override("font_size", SMALL)
 
 ## Letter-spaced variation of the aliased UI font, for headings.
 static func spaced_font(spacing: int = 3) -> FontVariation:
@@ -370,7 +459,10 @@ static func style_button(btn: Button, accent: Color = CYAN, font_size: int = BOD
 	btn.add_theme_stylebox_override("pressed", boxes.pressed)
 	btn.add_theme_stylebox_override("focus", boxes.focus)
 	btn.add_theme_stylebox_override("disabled", boxes.disabled)
-	btn.add_theme_font_override("font", ui_font())
+	# A button asking for the small tier gets the small tier's FONT too, without
+	# its screen having to know that the small tier has one. `<= SMALL` rather
+	# than `== SMALL` so the call sites still passing the old 14 are covered.
+	btn.add_theme_font_override("font", small_font() if font_size <= SMALL else ui_font())
 	btn.add_theme_color_override("font_color", TEXT)
 	btn.add_theme_color_override("font_hover_color", hot_of(accent))
 	btn.add_theme_color_override("font_pressed_color", WHITE_HOT)

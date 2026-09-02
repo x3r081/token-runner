@@ -69,11 +69,15 @@ func _ready() -> void:
 	z_index = CombatFx.Z_FX
 	_build_visuals()
 
-## A real bolt of light, built in four layers so it has a shape rather than a
-## colour: a wide soft outer glow, an accent body, a WHITE-HOT core (overbright,
-## so HDR bloom picks it up), and a per-type decoration that spins. Behind it,
-## two trails and a PointLight2D that carves through the dark. Falls back to the
-## legacy ColorRect when the generated art is missing.
+## A real bolt of light, built in THREE layers so it has a shape rather than a
+## colour: an accent body, a WHITE-HOT core (overbright, so HDR bloom picks it
+## up), and a per-type decoration. Behind it, two trails and a small PointLight2D.
+## Falls back to the legacy ColorRect when the generated art is missing.
+##
+## The fourth layer — a wide soft outer glow at 3.5x — is gone. Three stacked
+## radial gradients is how a bolt becomes a smooth blob with rays instead of a
+## shape, which is the read the QA critique named on the boss; the body and the
+## core already say "hot thing travelling fast", and the trail says which way.
 ##
 ## Each ability is meant to be identifiable in flight without reading the HUD:
 ##   * Prompt Blast — a compact cyan bolt with a breathing core;
@@ -102,15 +106,7 @@ func _build_visuals() -> void:
 	if dot:
 		sprite.visible = false
 		var is_lance: bool = proj_type == "stack_trace"
-		# 1. Outer glow — wide, dim, the halo the bolt is wrapped in.
-		var outer := Sprite2D.new()
-		outer.texture = dot
-		outer.material = FxLib.additive_material()
-		outer.modulate = Color(_accent.r * 1.05, _accent.g * 1.05, _accent.b * 1.05, 0.42)
-		var outer_scale: Vector2 = (Vector2(4.4, 3.1) if is_lance else Vector2(3.5, 2.9)) * _size_mult
-		outer.scale = outer_scale
-		add_child(outer)
-		# 2. Body — the accent at full strength.
+		# 1. Body — the accent at full strength.
 		var halo := Sprite2D.new()
 		halo.texture = dot
 		halo.material = FxLib.additive_material()
@@ -118,21 +114,18 @@ func _build_visuals() -> void:
 		var base_scale: Vector2 = (Vector2(2.8, 1.7) if is_lance else Vector2(2.1, 1.5)) * _size_mult
 		halo.scale = base_scale
 		add_child(halo)
-		# 3. Core — near-white, blooms on its own.
+		# 2. Core — near-white, blooms on its own.
 		var core := Sprite2D.new()
 		core.texture = dot
 		core.material = FxLib.additive_material()
-		core.modulate = Color(2.9, 2.9, 2.9)  # WHITE_HOT center
+		core.modulate = Color(2.4, 2.4, 2.4)  # WHITE_HOT center
 		var core_scale: Vector2 = Vector2(1.4, 0.7) * _size_mult
 		core.scale = core_scale
 		add_child(core)
 		# Spawn pop: the bolt snaps out to size in two frames.
 		halo.scale = base_scale * 0.4
-		outer.scale = outer_scale * 0.3
 		var pop := halo.create_tween()
 		pop.tween_property(halo, "scale", base_scale, 0.07) \
-			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		pop.parallel().tween_property(outer, "scale", outer_scale, 0.11) \
 			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		_animate_core(core, core_scale)
 		_build_decoration()
@@ -161,9 +154,12 @@ func _build_visuals() -> void:
 			Projectile._live_haze += 1
 			haze.tree_exited.connect(func() -> void:
 				Projectile._live_haze = maxi(0, Projectile._live_haze - 1))
-	# A tiny light so every shot is also a light source (bible lighting rules).
-	FxLib.point_light(self, FxLib.vivid(_accent), 1.25 if crit else 0.9,
-		0.48 if crit else 0.34)
+	# A tiny light so a shot passing a wall lights it for a frame. LAW 4 puts the
+	# region's own lights at 0.4-0.9 energy, and a bolt is in flight for a fifth
+	# of a second — it should read as travelling THROUGH the room's lighting, not
+	# as a brighter lamp than any lamp in it.
+	FxLib.point_light(self, FxLib.vivid(_accent), 0.75 if crit else 0.55,
+		0.40 if crit else 0.30)
 
 ## The core never sits still. A healthy bolt breathes; a hallucinated one
 ## flickers like something that is not sure it is there. Both loops are

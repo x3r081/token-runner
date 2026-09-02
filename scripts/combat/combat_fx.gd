@@ -559,6 +559,12 @@ static func shield_break(shield_node: Node2D, host: Node, pos: Vector2, color: C
 ## Ground telegraph: an outline at the danger radius plus a disc that fills over
 ## `fill_time`. When the disc is full, the hit lands. Fair difficulty, drawn.
 ## Returns the node so the caller can cancel it (stun, death) by freeing it.
+##
+## VISUAL_BIBLE_V2: a telegraph is a SHAPE, not a light. Round 6 drew both layers
+## additively with a 1.9x overbright edge, which at bloom threshold 1.0 turned
+## every wind-up into a soft radial gradient bleeding across the floor — the
+## exact smooth-glow read the QA critique named. Same information, flat: a 1px
+## outline that thickens to 2px as the disc fills, both under 60% alpha.
 static func marker(host: Node, pos: Vector2, color: Color, radius: float, fill_time: float) -> Node2D:
 	if not _ok(host):
 		return null
@@ -569,22 +575,20 @@ static func marker(host: Node, pos: Vector2, color: Color, radius: float, fill_t
 
 	var disc := Polygon2D.new()
 	disc.polygon = ring_points(28)
-	disc.color = Color(color.r, color.g, color.b, 0.20)
-	disc.material = FxLib.additive_material()
+	disc.color = Color(color.r, color.g, color.b, 0.18)
 	disc.scale = Vector2(0.01, 0.01)
 	root.add_child(disc)
 
 	var edge := Line2D.new()
 	edge.points = ring_points(32)
-	edge.material = FxLib.additive_material()
 	edge.scale = Vector2.ONE * radius
-	edge.width = 2.4 / radius
-	edge.default_color = Color(color.r * 1.9, color.g * 1.9, color.b * 1.9, 0.75)
+	edge.width = 2.0 / radius
+	edge.default_color = Color(color.r, color.g, color.b, 0.6)
 	root.add_child(edge)
 
 	var tw := root.create_tween()
 	tw.tween_property(disc, "scale", Vector2.ONE * radius, fill_time).set_trans(Tween.TRANS_LINEAR)
-	tw.parallel().tween_property(edge, "width", 5.5 / radius, fill_time)
+	tw.parallel().tween_property(edge, "width", 4.0 / radius, fill_time)
 	tw.tween_property(root, "modulate:a", 0.0, 0.16)
 	tw.tween_callback(root.queue_free)
 	return root
@@ -600,16 +604,19 @@ static func strike_arc(host: Node, pos: Vector2, dir: Vector2, color: Color,
 	host.add_child(root)
 	root.global_position = pos
 
+	# Flat fill, not additive: the wedge says WHERE, and it says it by covering
+	# floor, not by lighting it (LAW 3 — the floor is not one of the five things
+	# allowed to be bright). Capped at 60% so the ground is still readable under
+	# the thing that is about to hit you.
 	var wedge := Polygon2D.new()
 	wedge.polygon = wedge_points(dir.angle(), 1.5, 14)
 	wedge.color = Color(color.r, color.g, color.b, 0.0)
-	wedge.material = FxLib.additive_material()
 	wedge.scale = Vector2.ONE * radius
 	root.add_child(wedge)
 
 	var tw := root.create_tween()
-	tw.tween_property(wedge, "color:a", 0.32, fill_time * 0.8)
-	tw.tween_property(wedge, "color:a", 0.75, fill_time * 0.2)
+	tw.tween_property(wedge, "color:a", 0.28, fill_time * 0.8)
+	tw.tween_property(wedge, "color:a", 0.6, fill_time * 0.2)
 	tw.tween_property(root, "modulate:a", 0.0, 0.12)
 	tw.tween_callback(root.queue_free)
 	return root

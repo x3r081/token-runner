@@ -50,7 +50,12 @@ func _ready() -> void:
 	# LAW 9: nothing moves at rest except the 2px bob. A steady pool, sized to
 	# the coin — a token is one of the five things LAW 3 lets be bright, and
 	# being bright is enough; it does not also have to pulse.
-	glow.energy = 0.40
+	#
+	# 0.30, not 0.40: LAW 4 budgets a region SIX lights and a region carries 6-10
+	# tokens, so the token pool has to sit under the lamps rather than alongside
+	# them. The gold is legible from the sprite; the light is only there so the
+	# coin sits on a floor instead of floating over one.
+	glow.energy = 0.30
 	glow.texture = _make_glow_texture()
 
 ## The whole idle animation: a 2px bob, on whole pixels. Round 5 also spun the

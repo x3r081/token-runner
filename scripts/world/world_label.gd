@@ -121,13 +121,18 @@ const PUSH_MAX := 156.0
 ## bottom, and nothing else covers the sides.
 const BAND_EDGE := 18.0
 
-## Boss reserved bands, added to the top/bottom bands only while a boss is alive.
-## Read off scripts/combat/boss_hud.gd, whose own header names "y -230..-130,
-## x centre +-318" as "the band world text is expected to dodge". Taken
-## full-width rather than as their real centred rects: during a boss fight the
-## screen belongs to the fight.
+## Boss reserved band, added to the TOP band only while a boss is alive.
+##
+## ROUND 9: the whole boss layer now lives in the top announcement band —
+## boss_hud.gd draws the name at y 222..256, a 4px health bar at y 262..266 and
+## its phase call-outs at y 278..300, all of it inside the existing 372 above.
+## BOSS_BAND_BOTTOM used to reserve 242px at the FOOT of the screen for the
+## round-6 status plate, which was deleted with the plates; captions spent every
+## boss fight dodging a lane nothing occupies. It is 0 rather than removed so the
+## two bands stay a matched pair — if a boss element ever returns to the bottom
+## of the frame, this is the number that reserves it.
 const BOSS_BAND_TOP := 372.0
-const BOSS_BAND_BOTTOM := 242.0
+const BOSS_BAND_BOTTOM := 0.0
 
 ## The furthest the live dodge will ever carry a caption from its home, in world
 ## units. It has to be PUSH_MAX expressed in world units, or the two caps
@@ -262,6 +267,13 @@ static func begin(bounds: Rect2) -> void:
 		if o != null and is_instance_valid(o):
 			alive.append(o)
 	_live = alive
+
+## The room rect the current build is laying out inside, for the handful of
+## nodes that draw their OWN text and therefore never pass through _clamp_in()
+## — region_portal.gd's destination line is the one live case. Returning it
+## beats each of those re-deriving the room size from its builder's constants.
+static func bounds() -> Rect2:
+	return _bounds
 
 ## Reserve a box drawn by somebody else — a portal's destination plate, an NPC's
 ## name tag, a monitor face with baked-in text. Reserved first, at max priority,
@@ -563,9 +575,18 @@ static func _colliders(r: Rect2) -> Array:
 ## of the HUD lives, so a caption authored down there spends its life inside the
 ## ability-bar band asking for a screen-space rescue. Build-time headroom is
 ## cheaper than a permanent runtime push.
+##
+## EDGE_KEEP is the floor under every one of those margins (round-8 critique #9,
+## "a label clipped by the room edge"): whatever else this function is asked to
+## reserve, no caption is ever placed with any part of it — including the pixel
+## its drop shadow occupies — nearer than 24 units to the room's own bounds. The
+## top keeps its larger value because the HUD band lives there, not because the
+## wall does.
+const EDGE_KEEP := 24.0
+
 static func _clamp_in(at: Vector2, size: Vector2) -> Vector2:
-	var lo := _bounds.position + Vector2(26.0, 78.0)
-	var hi := _bounds.position + _bounds.size - size - Vector2(26.0, 60.0)
+	var lo := _bounds.position + Vector2(maxf(26.0, EDGE_KEEP), maxf(78.0, EDGE_KEEP))
+	var hi := _bounds.position + _bounds.size - size - Vector2(maxf(26.0, EDGE_KEEP), maxf(60.0, EDGE_KEEP))
 	return Vector2(clampf(at.x, lo.x, maxf(lo.x, hi.x)), clampf(at.y, lo.y, maxf(lo.y, hi.y)))
 
 # --------------------------------------------------------------- runtime ----
