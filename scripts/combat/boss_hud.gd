@@ -8,26 +8,39 @@ extends CanvasLayer
 ## popups (15) and dialogue (20) — a conversation, an incident ticket and the
 ## player's own readout all outrank a boss.
 ##
-## ROUND 10 — NOTHING AT REST.
+## ROUND 11 — NOTHING AT REST, AND NOTHING LEFT BEHIND.
 ##
-## Round 7 deleted the two plated panels. What round 9's frames still showed was
-## worse than a plate, because it was a lie: region_stackoverflow_ruins.png,
-## region_cloud_district.png and region_token_vault.png all captured a quiet room
-## — no fight, the player standing still — with "THE MERGE CONFLICT" / "THE $700
-## CLOUD BILL" / "THE INFINITE CONTEXT" burning across the middle of the frame in
-## red, over a red rule. Two separate faults produced that:
+## Round 7 deleted the two plated panels. What round 10's frames still showed was
+## worse than a plate, because it was a lie. Three separate faults produced it,
+## and all three are fixed here:
 ##
 ##   1. IT PLAYED AT REGION ENTRY. enemy_base.gd calls `play_entrance()` the
 ##      moment the boss is within 620 units, and region_builder spawns enemies
-##      420 units from the region's own spawn point — so every boss room
+##      >= 415 units from the region's own spawn point — so every boss room
 ##      announced itself on arrival, before the player had taken a step. The
-##      card is now GATED here (see `_poll_engagement`): the layer arms on that
-##      call and shows nothing until the boss is actually engaged — inside
-##      ENGAGE_RADIUS, or the first time it takes damage.
-##   2. THE BAR READ AS AN UNDERLINE. A 600px hairline six pixels under a
-##      centred 26px title is a text rule, not a gauge, and it was the same
-##      colour as the title. The rows are further apart now (BAR_ROW), and the
-##      colour is the ROOM's, not the enemy's (see ACCENT below).
+##      card is GATED (see `_poll_engagement`): the layer arms on that call and
+##      shows nothing until the boss is actually ENGAGED.
+##   2. THE GATE'S OWN RADIUS WAS THE SPAWN RADIUS. Round 10 gated on distance
+##      alone at 420, which is the number region_builder.gd guarantees BETWEEN
+##      the arrival plaza and every enemy it places (`_random_pos(rng, spawn,
+##      420.0)`, `_safe_scatter`'s >= 415 fallback). A boss standing exactly where
+##      the builder put it already satisfied that test, and one step of its own
+##      approach carried it over — so region_cloud_district.png,
+##      region_stackoverflow_ruins.png and region_token_vault.png STILL captured
+##      a card, a sub-caption's worth of clear air and a 600px bar over a quiet
+##      room. Distance is now only the outer bound; see ENGAGEMENT.
+##   3. IT SURVIVED THE ROOM IT BELONGED TO. region_api_bazaar.png prints Stack
+##      Overflow Ruins' "THE MERGE CONFLICT" in Ruins gold over the Bazaar's
+##      market stall; region_open_source_wildlands.png prints Cloud District's
+##      "THE $700 CLOUD BILL" in Cloud sky. This layer is not a child of the boss
+##      by the time that matters — world.gd `_adopt_layer` reparents every
+##      CanvasLayer born inside the pixel stage onto World, and its
+##      `_purge_adopted` sweep runs from the deferred message queue, i.e. BEFORE
+##      the scene tree flushes the delete queue that actually frees the old
+##      region. The host is still valid when the sweep asks, so the sweep keeps
+##      the layer, and a frame later the boss is gone and the card is not. A
+##      layer that outlives its boss is this file's problem to notice: see
+##      `_on_host_gone` and `_on_region_changed`.
 ##
 ## What it is, per VISUAL_BIBLE_V2 LAW 8:
 ##   NAME CARD   ONE line — the boss's name, HEADING size, in the region ACCENT,
@@ -53,8 +66,8 @@ extends CanvasLayer
 ##                       of the top 372 units while a boss is alive, which
 ##                       covers every row below.
 ##       y 222..256      the name line, and later the defeat stamp (transient)
-##       y 280..284      the health bar (persistent, once engaged)
-##       y 300..326      phase call-outs, and the defeat stamp's note
+##       y 310..314      the health bar (persistent, once engaged)
+##       y 334..360      phase call-outs, and the defeat stamp's note
 ## Every row goes through `_band()`, which is what guarantees no call-out can
 ## land on the player, on a HUD lane, or across the bar.
 ##
@@ -75,13 +88,15 @@ const BAND_TOP := 222.0
 const BAND_W := 720.0
 ## The three rows of the band, as offsets from BAND_TOP.
 const NAME_ROW_H := 34.0
-## 58 and not 40. At 40 the bar sat six pixels under the descender line of a
-## 26px title the full width of which it exceeded, and every QA frame read it as
-## an underline rule rather than as a health gauge — the critic named it as one.
-## 58 puts two dozen pixels of clear air between the sentence and the bar, which
-## is the difference between a rule and a second object.
-const BAR_ROW := 58.0
-const CALLOUT_ROW := 78.0
+## 88, and not 58, and certainly not the 40 it started at. A 600px hairline set
+## close under a centred 26px title is read as an UNDERLINE, not as a gauge —
+## every QA round has said so, round 10's included at 58, where the frames still
+## show a rule under a sentence. The two rows are now three line-heights apart:
+## far enough that the eye stops binding them into one object and starts reading
+## a name and, separately, a health bar.
+const BAR_ROW := 88.0
+## Below the bar, not through it. Tracks BAR_ROW so the two never collide.
+const CALLOUT_ROW := 112.0
 ## How long the whole entrance lasts: 0.25 in + ENTRANCE_DWELL + 0.32 out.
 ## Round 6 held it inside EnemyBase's 2.2s `_intro_lock` because the card was an
 ## opaque plate covering a third of the screen. One line of text is not a
@@ -93,23 +108,43 @@ const ENTRANCE_DWELL := 1.93
 ##
 ## enemy_base.gd emits no "engaged" signal. It decides in `_physics_process`
 ## that a boss has noticed you at 620 units and calls `play_entrance()` there,
-## and region_builder.gd spawns enemies 420 units from the region spawn — so
-## that call arrives on the frame the player walks into the room, which is
-## exactly the frame the card must NOT play on.
+## and region_builder.gd puts every enemy at least 415 units from the region
+## spawn — so that call arrives on the frame the player walks into the room,
+## which is exactly the frame the card must NOT play on.
 ##
-## `play_entrance()` therefore only ARMS this layer. The card waits for one of
-## two things, both of which mean "you are in a fight":
-##   * the boss is inside ENGAGE_RADIUS — the last 200 units of its own aggro,
-##     close enough that it is already coming for you;
-##   * the boss takes its first damage — `set_health()` sees current < maximum,
-##     which is the honest signal that you started it (sniping a boss from
-##     across the room still announces the fight).
+## `play_entrance()` therefore only ARMS this layer. The card then waits for one
+## of three things, every one of which means "you are in a fight" and none of
+## which is true of a boss standing where the builder left it:
+##
+##   FIRST BLOOD    `set_health()` sees current < maximum. The honest signal that
+##                  YOU started it; sniping a boss across the room still
+##                  announces the fight.
+##   IT SWUNG       `EnemyBase.is_committed()` — a wind-up, a charge, or a slam
+##                  telegraph. It is the enemy's own public "the player has to
+##                  react to this now", and nothing but a real fight sets it.
+##   IT CLOSED      the boss is inside ENGAGE_RADIUS *and* has covered
+##                  ENGAGE_CLOSE units since the layer armed.
+##
+## THE SECOND HALF OF THAT LAST TEST IS THE WHOLE FIX. ENGAGE_RADIUS is 420, and
+## 420 is also the radius region_builder.gd guarantees between the arrival plaza
+## and every enemy in the room — so "inside 420" is satisfied on the frame the
+## player arrives, and round 10's frames prove it: three quiet rooms, three boss
+## cards. Requiring the boss to have CLOSED on you separates "it is coming for
+## me" from "it is over there", which is the distinction the gate was always
+## trying to make and the one a bare radius cannot make in a room whose spawn
+## rule uses the same number.
+##
 ## Polled every ENGAGE_POLL rather than every frame: a card that lands within a
 ## quarter second of the boss closing is indistinguishable from one that lands
 ## on the exact frame, and this is a comparison per boss per quarter second
 ## instead of sixty per second.
 const ENGAGE_RADIUS := 420.0
 const ENGAGE_POLL := 0.25
+## How much ground the boss must cover, from wherever it stood when this layer
+## armed, before distance alone counts as engagement. Two thirds of a screen
+## height: far enough that no spawn placement can satisfy it standing still, and
+## short enough that a boss walking at you crosses it in about a second.
+const ENGAGE_CLOSE := 120.0
 
 ## Comedy bible: the joke rides ALONGSIDE the information. The name is the
 ## information (which boss is this) and it is what the card prints; the epithet
@@ -198,12 +233,24 @@ var _frac := 1.0
 var _armed := false
 var _engaged := false
 var _poll_t := 0.0
+## How far the boss stood from the player when the layer armed. The card needs it
+## to have closed ENGAGE_CLOSE on that, so "it is coming for you" cannot be
+## satisfied by a boss that has not moved. INF until the first poll reads it.
+var _arm_dist := INF
 ## The enemy this layer belongs to, and the thing it measures distance to. Both
 ## are cached and both are re-checked with `is_instance_valid` — `detach()`
 ## hands this layer to the scene when the boss dies, and the player can be
 ## replaced by a respawn.
 var _host: Node2D
 var _player: Node2D
+## Whether there was ever a boss to lose. A rig that mounts this layer under
+## something that is not a Node2D (a test harness) has no host to outlive, and
+## must not be mistaken for a layer whose boss has just been freed.
+var _had_host := false
+## Set the moment the death outro takes ownership: from here the boss node is
+## LEGITIMATELY about to disappear and this layer must NOT follow it out. Every
+## other way of losing the host — above all a region rebuild — is a stale card.
+var _closing := false
 
 func _init() -> void:
 	layer = 3
@@ -216,6 +263,15 @@ func _ready() -> void:
 	# child, so the parent at _ready IS the boss. Captured before anything can
 	# reparent it.
 	_host = get_parent() as Node2D
+	_had_host = _host != null
+	# TWO WAYS TO OUTLIVE THE ROOM, so both are watched. The boss can be freed
+	# under us (a region rebuild frees the whole region node, and by then
+	# world.gd has already reparented this layer onto World — see the header),
+	# and the region can change without the boss being freed on the same frame.
+	if _had_host and not _host.tree_exited.is_connected(_on_host_gone):
+		_host.tree_exited.connect(_on_host_gone)
+	if not GameManager.region_changed.is_connected(_on_region_changed):
+		GameManager.region_changed.connect(_on_region_changed)
 	accent = _region_accent()
 	_root = Control.new()
 	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -235,6 +291,13 @@ func _process(delta: float) -> void:
 	var tree := get_tree()
 	if tree == null or not is_instance_valid(_root):
 		return
+	# The boss is gone and it was not the death outro that took it: the room this
+	# card belongs to has been rebuilt under us. `tree_exited` normally gets here
+	# first; this is the backstop for a host freed without ever leaving the tree
+	# in a frame we saw.
+	if _had_host and not _closing and not is_instance_valid(_host):
+		_vanish()
+		return
 	var want := not tree.paused
 	if _root.visible != want:
 		_root.visible = want
@@ -244,7 +307,8 @@ func _process(delta: float) -> void:
 	if want and _armed and not _engaged:
 		_poll_engagement(delta)
 
-## Has the boss actually closed on the player? See ENGAGE_RADIUS.
+## Is the fight actually on? See the ENGAGEMENT block for the three tests and
+## for why the distance one is not allowed to stand on its own.
 func _poll_engagement(delta: float) -> void:
 	_poll_t -= delta
 	if _poll_t > 0.0:
@@ -252,11 +316,24 @@ func _poll_engagement(delta: float) -> void:
 	_poll_t = ENGAGE_POLL
 	if not is_instance_valid(_host):
 		return
+	# The enemy's own answer to "is the player being asked to react to me right
+	# now" (EnemyBase.is_committed: a wind-up, a charge, a boss telegraph). It
+	# cannot be true of a boss that has not reached you.
+	#
+	# Called dynamically: `_host` is typed Node2D — deliberately, because this
+	# layer is mounted by EnemyBase and must not import it back — so the method is
+	# not on the static type and `has_method` is the whole contract.
+	if _host.has_method("is_committed") and bool(_host.call("is_committed")):
+		_engage()
+		return
 	if not is_instance_valid(_player):
 		_player = get_tree().get_first_node_in_group("player") as Node2D
 		if _player == null:
 			return
-	if _host.global_position.distance_to(_player.global_position) <= ENGAGE_RADIUS:
+	var d := _host.global_position.distance_to(_player.global_position)
+	if _arm_dist == INF:
+		_arm_dist = d
+	if d <= ENGAGE_RADIUS and d <= _arm_dist - ENGAGE_CLOSE:
 		_engage()
 
 ## The fight has started: spend the card, and never arm again.
@@ -274,6 +351,48 @@ func _engage() -> void:
 func _mark_engaged() -> void:
 	_engaged = true
 	_armed = false
+
+# ------------------------------------------------------------- lifetime ----
+
+## The boss left the tree.
+##
+## If the death outro took it, `detach()` said so and the stamp is allowed to
+## finish over the corpse. Any other route — and in practice that means a region
+## rebuild freeing the room out from under a layer world.gd has already
+## reparented onto World — leaves a card announcing a fight in a room that no
+## longer exists. Go with the boss.
+func _on_host_gone() -> void:
+	if _closing:
+		return
+	_vanish()
+
+## The room changed. Whatever this layer was saying belonged to the last one —
+## an armed gate, a card mid-fade, a health bar, even a defeat stamp still
+## closing the incident. None of it is true here. No fade: the world under it
+## has already been replaced.
+func _on_region_changed(_region_id: String) -> void:
+	_vanish()
+
+## Off the screen NOW, and gone. Hidden before `queue_free()`, which is deferred
+## to the end of the frame — a layer the game has finished with must not be able
+## to paint one more frame at whatever alpha it happens to hold.
+func _vanish() -> void:
+	# Three callers race to get here (the host's `tree_exited`, the region signal,
+	# `_process`'s backstop) and `queue_free` only takes effect at the end of the
+	# frame, so the losers must fall straight through.
+	if is_queued_for_deletion():
+		return
+	_armed = false
+	if _entrance_tween and _entrance_tween.is_valid():
+		_entrance_tween.kill()
+	_entrance_tween = null
+	if _fill_tween and _fill_tween.is_valid():
+		_fill_tween.kill()
+	if _shake_tween and _shake_tween.is_valid():
+		_shake_tween.kill()
+	if is_instance_valid(_root):
+		_root.visible = false
+	queue_free()
 
 ## Every tween on this layer survives `get_tree().paused` — see the header.
 func _tw() -> Tween:
@@ -447,8 +566,11 @@ func play_entrance() -> void:
 		return
 	_armed = true
 	# Poll on the next tick rather than after a full quarter second, so a player
-	# who walks straight into the arena is not kept waiting for a timer.
+	# who walks straight into the arena is not kept waiting for a timer. The first
+	# poll is also what records `_arm_dist` — where the boss stood when it noticed
+	# you, which is the baseline "it has closed on you" is measured against.
 	_poll_t = 0.0
+	_arm_dist = INF
 
 ## The name fades in on the world, the bar fades in under it, the name fades out
 ## again. Nothing covers the player, nothing covers a world caption, and nothing
@@ -556,7 +678,14 @@ func announce_phase(phase_index: int) -> void:
 # --------------------------------------------------------------- death ----
 
 ## Hand this layer to the current scene so the outro survives the corpse.
+##
+## `_closing` is set FIRST and unconditionally, before any of the early returns:
+## it is what tells `_on_host_gone` that the boss is about to be freed on
+## purpose. (The reparent itself is usually already done — world.gd's
+## `_adopt_layer` moves every layer born inside the pixel stage onto World, which
+## IS `current_scene`, so this then finds nothing to do.)
 func detach() -> void:
+	_closing = true
 	var tree := get_tree()
 	if tree == null:
 		return
@@ -571,6 +700,10 @@ func detach() -> void:
 ## One line and one dim line under it — the hairline rule between them went with
 ## every other divider on this layer.
 func play_death() -> void:
+	# The corpse is on a 0.45s clock and this outro runs for two seconds after it,
+	# so the boss WILL be freed while the stamp is still on screen. Say so, even
+	# if `detach()` was skipped.
+	_closing = true
 	if not is_instance_valid(_root):
 		return
 	# The stamp goes in the announcement band; a card still fading in it would
@@ -624,6 +757,8 @@ func _death_beat() -> void:
 
 ## Fade out and free without the stamp — used if the boss leaves any other way.
 func dismiss() -> void:
+	# Deliberate removal, so losing the host afterwards is not a stale card.
+	_closing = true
 	_cancel_entrance()
 	if not is_instance_valid(_root):
 		queue_free()

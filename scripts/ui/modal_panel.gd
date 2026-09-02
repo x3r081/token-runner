@@ -8,13 +8,16 @@ extends Control
 ##
 ## Now there is exactly one modal look and it lives here:
 ##
-##   * body BASE at 96%, 1px LINE border, corner radius 2;
+##   * body BASE, OPAQUE, 1px LINE border, corner radius 2;
 ##   * no glow, no drop shadow, no sheen, no gradient, no per-screen accent
 ##     border — the panel is furniture, the content is the design;
 ##   * one ACCENT per screen (the title and the primary action), everything else
 ##     TEXT / TEXT_DIM;
 ##   * three type sizes, ever: SMALL / BODY / HEADING;
-##   * a scrim behind, so the world recedes instead of competing;
+##   * the WORLD dims to 35% while one is open (`dim_world`), so the room
+##     recedes instead of competing — and only the room: the HP bar, the cycle
+##     clock and the objective line stay at full strength, because none of these
+##     screens pauses the game;
 ##   * rows appear. They do not cascade, fade, breathe or stagger.
 ##
 ## Screens call modal_box() and use the size constants. That is the whole
@@ -55,18 +58,106 @@ const TOP_PAD := 128.0
 ## Never collapse a modal below this, whatever the viewport is.
 const MIN_HEIGHT := 220.0
 
-## Modal bodies are near-opaque on purpose: a neon world caption reads straight
-## through anything lighter and collides with the text on top of it.
-const BODY_ALPHA := 0.96
+## Modal bodies are OPAQUE. "Near-opaque" was 0.96, and 4% of a lit world is a
+## second layer of text: ui_quest_log.png prints "You walked past the desk
+## again…" through the panel and across its own body copy, and ui_dream_app.png
+## carries a prop silhouette behind the price list. The world recedes because the
+## stage is DIMMED (see `dim_world`), not because the panel is thin.
+const BODY_ALPHA := 1.0
 const SCRIM_ALPHA := 0.86
 const SCRIM_TINT := Color(0.012, 0.016, 0.038, 1.0)
 
+## THE WORLD DIM, and the group it is applied to.
+##
+## pixel_stage.gd renders the entire world into one SubViewport and blits it as
+## one CanvasItem, which makes "dim the world and nothing else" a single
+## `modulate` on a single node — structurally incapable of touching the HUD, the
+## panel, or anything else on a CanvasLayer. That is strictly better than the
+## full-screen scrim it replaces, which had to be hand-placed at index 0 of the
+## HUD layer to avoid dimming the HP bar and the cycle clock along with the room.
+##
+## 0.35: the room is still legible (you can see the boss walking toward you while
+## you shop) and no longer competes with the panel's text.
+const STAGE_GROUP := "pixel_stage"
+const WORLD_DIM := 0.35
+## Where a stage's own modulate is parked while it is dimmed, so restoring cannot
+## invent a value that was never there.
+const DIM_META := "_modal_dim_from"
+## Marks a panel that is already holding the world down, so a screen that calls
+## both `register_modal` and `attach_scrim` takes exactly one hold.
+const HOLD_META := "_modal_dim_held"
+
+## How many modals are currently holding the world down. Static: the panels are
+## unrelated nodes and several can legitimately be open at once (the map over the
+## pause menu). It outlives a scene reload, which is why hud.gd clears it when a
+## fresh world comes up.
+static var _dim_depth := 0
+
 func register_modal() -> void:
 	UIManager.push_modal()
+	# Idempotent per panel, so a screen that also calls `attach_scrim` does not
+	# hold the world down twice.
+	dim_world(self)
 	tree_exiting.connect(_unregister_modal, CONNECT_ONE_SHOT)
 
 func _unregister_modal() -> void:
 	UIManager.pop_modal()
+
+# ----------------------------------------------------------- world dim ----
+
+## Dim the world for as long as `panel` is on screen.
+##
+## Idempotent per panel (a screen may call this and `attach_scrim`, and both go
+## through here), and the release is bound to the panel's own `tree_exiting`, so
+## there is no close path that can forget it — including `queue_free()` from
+## world.gd's toggle, a region change taking the panel with it, or the whole HUD
+## going away.
+static func dim_world(panel: Control) -> void:
+	if panel == null or not panel.is_inside_tree():
+		return
+	if panel.has_meta(HOLD_META):
+		return
+	panel.set_meta(HOLD_META, true)
+	var tree := panel.get_tree()
+	_dim_depth += 1
+	_apply_world_dim(tree, true)
+	# The tree is captured rather than read back on the way out: by the time
+	# `tree_exiting` fires the panel is on its way off the tree and may no longer
+	# be able to answer `get_tree()`.
+	var release := func() -> void:
+		_release_world_dim(tree)
+	panel.tree_exiting.connect(release, CONNECT_ONE_SHOT)
+
+## One panel let go. The world comes back when the last of them has.
+static func _release_world_dim(tree: SceneTree) -> void:
+	_dim_depth = maxi(0, _dim_depth - 1)
+	if _dim_depth == 0:
+		_apply_world_dim(tree, false)
+
+## Drop every hold and put the world back. A fresh world calls this (hud.gd):
+## `_dim_depth` is static and a panel that died with the previous scene never got
+## to release it, which would open the new run at 35%.
+static func clear_world_dim(tree: SceneTree) -> void:
+	_dim_depth = 0
+	_apply_world_dim(tree, false)
+
+static func _apply_world_dim(tree: SceneTree, on: bool) -> void:
+	if tree == null:
+		return
+	for n in tree.get_nodes_in_group(STAGE_GROUP):
+		var ci := n as CanvasItem
+		if ci == null:
+			continue
+		if on:
+			if not ci.has_meta(DIM_META):
+				ci.set_meta(DIM_META, ci.modulate)
+			var was: Color = ci.get_meta(DIM_META)
+			ci.modulate = Color(WORLD_DIM * was.r, WORLD_DIM * was.g,
+				WORLD_DIM * was.b, was.a)
+		elif ci.has_meta(DIM_META):
+			var back: Color = ci.get_meta(DIM_META)
+			ci.modulate = back
+			ci.remove_meta(DIM_META)
 
 # ------------------------------------------------------------ shared kit ----
 
@@ -93,35 +184,35 @@ static func rule() -> StyleBoxFlat:
 	s.set_corner_radius_all(0)
 	return s
 
-## Full-screen dim behind a modal.
+## Make the world recede behind a modal.
 ##
-## The scrim is the panel's SIBLING rather than a child drawn with
-## show_behind_parent: a Container re-lays-out its Control children, and the
-## panel's own entrance tween modulates its children, which would fade the dim
-## back out from underneath the panel. As a sibling the draw order and the alpha
-## are both unambiguous, and it dies with the panel.
+## ROUND 11 MOVES THE DIM OFF THIS NODE. The scrim was a full-screen ColorRect
+## pushed to index 0 of the HUD layer, and every line of that sentence was a
+## compromise: index 0 so it would not also dim the HP bar and the cycle clock
+## (modals do not pause the tree — the player is still being hit while the map is
+## open), a sibling rather than a child so the panel's entrance tween could not
+## fade it, a full-rect Control so it covered the same area the world does.
+## `dim_world` gets all of that for free by modulating the pixel stage itself:
+## the world is one CanvasItem, so dimming it cannot reach anything else, and
+## there is no node to order, reparent or fade.
 ##
-## It goes to index 0 of the HUD layer, NOT directly under the panel. That is
-## deliberate and load-bearing: modals do not pause the tree (UIManager only
-## counts them — see ui_manager.gd), so while the console or the map is open the
-## player is still walking around and enemies are still swinging. A scrim sitting
-## directly under the panel covers the HUD too, and an 86% dim over the HP bar,
-## the resource readout and the objective line means the player cannot see they
-## are being killed. At index 0 the dim lands on the WORLD, the HUD draws over it
-## at full strength, and the modal draws over both.
+## The ColorRect survives, transparent, because it is still the honest owner of
+## nothing at all: the name, the lifetime and the return value are unchanged for
+## the three screens that call this, and `alpha` is still read so the signature
+## does not lie about taking a number it no longer paints with.
 static func attach_scrim(panel: Control, alpha: float = SCRIM_ALPHA) -> ColorRect:
 	if panel == null or not panel.is_inside_tree():
 		return null
 	var parent := panel.get_parent()
 	if parent == null:
 		return null
+	dim_world(panel)
 	var scrim := ColorRect.new()
 	scrim.name = "%sScrim" % panel.name
-	scrim.color = _GameTheme.with_alpha(SCRIM_TINT, alpha)
-	# Below the HUD, so it must not eat clicks aimed at HUD controls; the modal
-	# body itself is opaque and stops anything aimed at the panel.
+	scrim.color = _GameTheme.with_alpha(SCRIM_TINT, alpha * 0.0)
+	# It draws nothing and it must never eat a click aimed at a HUD control; the
+	# modal body itself is opaque and stops anything aimed at the panel.
 	scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# Must keep dimming while the tree is paused (a modal can be up over a pause).
 	scrim.process_mode = Node.PROCESS_MODE_ALWAYS
 	parent.add_child(scrim)
 	parent.move_child(scrim, 0)

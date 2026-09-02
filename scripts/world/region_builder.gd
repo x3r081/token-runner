@@ -365,6 +365,27 @@ static func _in_portal(p: Vector2) -> bool:
 			return true
 	return false
 
+## Round-12 critique (f), "portal spill haloing onto crates (dependency)". The
+## 200x200 box above is a keep-out for anything a PASS chooses — _build_structures
+## runs every themed cluster through _clear_portal — but the hand-composed
+## set-pieces place their crates by hand, and the node_modules heap spreads +/-70
+## units from (296,286) straight into the Localhost door at (250,392). A crate is
+## the worst possible neighbour for a portal: it is a flat lit box, so the door's
+## own light (region_portal.gd, a file this one does not own) reads as a halo
+## painted onto cargo rather than as a way out.
+##
+## 120 units, radial, because a door's light falls off radially and the box's
+## corners are already 141 from its centre. Anything closer is simply not drawn:
+## the heap is eight crates deep and losing the one nearest the door costs the
+## composition nothing.
+const PORTAL_CRATE_KEEP := 120.0
+
+static func _crate_ok(p: Vector2) -> bool:
+	for r in _portal_boxes:
+		if p.distance_to(r.get_center()) < PORTAL_CRATE_KEEP:
+			return false
+	return true
+
 ## Push a position out of any portal box by the shortest move that still lands in
 ## the walkable interior — a door tucked against a side wall has only three ways
 ## out, and the naive "shortest axis" answer walks the prop into the masonry
@@ -431,8 +452,83 @@ static func _in_lane(p: Vector2) -> bool:
 ## 32 units above its post.
 const HUD_KEEP_Y := 244.0
 
+## THE OTHER HALF OF IT — round-12 critique #3, systemic across nine of ten
+## regions: "the spawn camera puts the bottom row of the room under the ability
+## bar (Cloud ghost boss, SO Ruins beast, Vault eye turret, Corporate enemy, GPU
+## bug + rack, Production crate + enemy, Wildlands maintainer, API reseller,
+## Dependency maintainer)".
+##
+## The arrival frame is 720 world units tall and the player lands at h*0.5, so it
+## shows y 120..840 of a 1280x960 room. Round 11 fixed the TOP of that band and
+## left the bottom unowned — and the bottom is where MORE of the HUD lives: the
+## objective line, the toast lane, the six ability slots and the controls footer
+## are painted across the last 110 world units, y 730..840. Anything the builder
+## puts there is read through text for as long as the player stands still, and a
+## thing standing just BELOW the frame (a boss at y 862 is 128 units tall) shows
+## the player its head and nothing else.
+##
+## So: the same rule, mirrored. spawn.y + 250 .. spawn.y + 360.
+const HUD_KEEP_Y_LOW := 730.0
+const HUD_KEEP_LOW_END := 840.0
+
+## Where a position pushed out of the low band lands. UP is the default (the
+## floor above the band is open in every region); DOWN is used when the position
+## is already in the band's lower half, and it clears the band by enough that a
+## 64-unit-tall body's head does not poke back into it.
+const HUD_LOW_UP := 724.0
+const HUD_LOW_DOWN := 856.0
+
+## The two corner readouts, in world units: the token/credit counter top-left and
+## the HP/Focus bars top-right, both inside the top 70 units of the arrival view.
+## Subsumed by HUD_KEEP_Y (244 > 190) for a 1280x960 room, and written down
+## anyway so the rule survives the next time somebody re-derives the strip.
+const HUD_CORNER_Y := 190.0
+const HUD_CORNER_W_L := 260.0
+const HUD_CORNER_W_R := 300.0
+
 static func _under_hud(p: Vector2) -> bool:
 	return p.y < HUD_KEEP_Y
+
+static func _below_hud(p: Vector2) -> bool:
+	return p.y >= HUD_KEEP_Y_LOW and p.y <= HUD_KEEP_LOW_END
+
+static func _in_hud_corner(p: Vector2) -> bool:
+	if p.y > HUD_CORNER_Y:
+		return false
+	var w := float(REGION_SIZE.x * TILE_SIZE)
+	return p.x <= HUD_CORNER_W_L or p.x >= w - HUD_CORNER_W_R
+
+## The one predicate every CHOOSING pass asks. (_under_hud stays as its own
+## function because a dozen call sites clamp against HUD_KEEP_Y directly.)
+static func _in_hud_bands(p: Vector2) -> bool:
+	return _under_hud(p) or _below_hud(p) or _in_hud_corner(p)
+
+## Push a chosen position out of the arrival frame's HUD bands by the shortest
+## VERTICAL move that stays in the walkable interior — vertical because both
+## bands are full-width, so sliding sideways never leaves either of them.
+static func _clear_hud_bands(p: Vector2) -> Vector2:
+	var out := p
+	if out.y < HUD_KEEP_Y:
+		out.y = HUD_KEEP_Y
+	elif out.y >= HUD_KEEP_Y_LOW and out.y <= HUD_KEEP_LOW_END:
+		var h := float(REGION_SIZE.y * TILE_SIZE)
+		var down_ok := HUD_LOW_DOWN <= h - 66.0
+		var nearer_up := (out.y - HUD_KEEP_Y_LOW) <= (HUD_KEEP_LOW_END - out.y)
+		out.y = HUD_LOW_UP if (nearer_up or not down_ok) else HUD_LOW_DOWN
+	return Vector2(round(out.x * 0.5) * 2.0, round(out.y * 0.5) * 2.0)
+
+## An NPC is the one thing that can only leave the low band UPWARD. npc.gd hangs
+## the name tag at y-106..-86 and stacks idle barks above that, so a person moved
+## BELOW the band prints their own label back inside it — which is exactly what
+## the Wildlands maintainer (y 852, tag at 736) and the on-call engineer (y 848,
+## tag at 732) do in the captured frames. y+17 is the heel of the sprite.
+static func _npc_spot(p: Vector2) -> Vector2:
+	var q := p
+	if q.y < HUD_KEEP_Y + 40.0:
+		q.y = HUD_KEEP_Y + 40.0
+	elif q.y > HUD_KEEP_Y_LOW - 24.0:
+		q.y = HUD_KEEP_Y_LOW - 24.0
+	return Vector2(round(q.x * 0.5) * 2.0, round(q.y * 0.5) * 2.0)
 
 static func _plaza_center(w: float, h: float) -> Vector2:
 	var c: Vector2 = _layout.get("c", Vector2.ZERO)
@@ -664,6 +760,11 @@ static func _floor_decals(parent: Node2D, region_id: String, w: int, h: int) -> 
 		var name_i: String = str(pool[rng.randi() % pool.size()])
 		var pos := Vector2(rng.randf_range(180, float(w) - 180), rng.randf_range(HUD_KEEP_Y, float(h) - 160))
 		pos = Vector2(round(pos.x * 0.5) * 2.0, round(pos.y * 0.5) * 2.0)
+		# Out of BOTH HUD bands (critique #3). A hairline crack under the ability
+		# bar is a mark the player can never look at, and a decal is the one thing
+		# in this file with no reason to be anywhere in particular.
+		if _in_hud_bands(pos):
+			continue
 		# Off the walkway band: a maintained deck with a crack across it stops
 		# reading as maintained.
 		if absf(pos.y - _band_y(pos.x, float(w), float(h), seed_v)) < _band_half(pos.x, float(w), seed_v) + 20.0:
@@ -929,12 +1030,14 @@ static func _build_region_detail(parent: Node2D, theme: Dictionary, w: int, h: i
 		if placed >= 4:
 			break
 		# The y floor is the HUD keep-out, not the wall: a 0.48x prop dropped at
-		# y 140 is a shape drawn behind the region title (critique #6).
+		# y 140 is a shape drawn behind the region title (critique #6). Since
+		# round 12 the keep-out has a floor AND a ceiling (critique #3), so this
+		# scatter can no longer drop a silhouette under the ability bar either.
 		var p := Vector2(rng.randf_range(100, w - 100), rng.randf_range(HUD_KEEP_Y + 20.0, h - 90))
 		p = Vector2(round(p.x * 0.5) * 2.0, round(p.y * 0.5) * 2.0)
 		if p.distance_to(center) < 240.0:
 			continue
-		if _in_portal(p) or _in_lane(p) or _under_hud(p):
+		if _in_portal(p) or _in_lane(p) or _in_hud_bands(p):
 			continue
 		if _plaza_field(p, float(w), float(h), _layout_seed) < 40.0:
 			continue
@@ -975,10 +1078,16 @@ static func _build_signature(parent: Node2D, region_id: String, theme: Dictionar
 	# on the horizon, a navy rectangle in the corner of the HUD. The remaining
 	# pair sits at y 372, low enough that even a 150px texture at 1.7x clears the
 	# strip.
+	#
+	# ROUND 12 retires the y 770 pair for the same reason one storey down
+	# (critique #3): a 1.45x silhouette at h-190 stands in the bottom HUD band,
+	# where the objective line and the ability bar are printed over it. The pair
+	# at h-76 is BELOW the arrival frame entirely, which is where a landmark you
+	# walk toward belongs.
 	var spots: Array[Vector2] = [
-		Vector2(126.0, float(h) - 190.0), Vector2(float(w) - 126.0, float(h) - 190.0),
 		Vector2(126.0, 372.0), Vector2(float(w) - 126.0, 372.0),
 		Vector2(350.0, float(h) - 76.0), Vector2(float(w) - 350.0, float(h) - 76.0),
+		Vector2(126.0, 620.0), Vector2(float(w) - 126.0, 620.0),
 	]
 	var posts := _region_enemy_posts(region_id)
 	var focal: Vector2 = theme.get("focal", Vector2.ZERO)
@@ -987,7 +1096,7 @@ static func _build_signature(parent: Node2D, region_id: String, theme: Dictionar
 		if placed >= 2:
 			break
 		var lp: Vector2 = spots[i]
-		if _in_cover(lp):
+		if _in_cover(lp) or _in_hud_bands(lp):
 			continue
 		var clear := true
 		for pp: Vector2 in posts:
@@ -1228,8 +1337,16 @@ static func _flicker(light: PointLight2D, amount: float = 0.10, period: float = 
 ## a rack of five of them out of phase forever. `phase` is kept in the signature
 ## and ignored: every caller passes one, and the parameter is cheaper to keep
 ## than nine call sites are to edit.
+##
+## ROUND 12, critique #8: the chip's COLOUR is now capped too. Every caller
+## passes the region's `glow` or `accent`, and in the GPU Mines those are ember
+## #FF6B2D and heat #FF3D2D — so six racks and three ore carts were wearing
+## twenty-one saturated red pips in a region whose enemies signal with exactly
+## that hue (LAW 7: "exactly one red tell", and it belongs to the enemy). A status
+## chip is desaturated toward its own grey and capped at 60% value, which is what
+## LAW 3 allows anything that is not one of the frame's five bright things.
 static func _led(parent: Node2D, pos: Vector2, color: Color, _phase: float, z: int) -> void:
-	_glow_rect(parent, pos, Vector2(3, 2), color, z)
+	_glow_rect(parent, pos, Vector2(3, 2), _dull(color, 0.35, 0.60), z)
 
 ## Soft dark ellipse so raised props sit ON the floor instead of hovering near it.
 static func _shadow_tex() -> Texture2D:
@@ -1501,13 +1618,17 @@ static func _gate(parent: Node2D, pos: Vector2, col: Color, w: int, h: int) -> v
 		_rect(parent, bp, Vector2(10, 26), Color(0.05, 0.055, 0.09, 0.95), _depth(bp.y, 13.0))
 		_glow_rect(parent, bp + Vector2(0, -14), Vector2(6, 4), Color(col.r, col.g, col.b, 0.55), _depth(bp.y, 14.0))
 
-## Stacked crate heap with a collapsing silhouette.
+## Stacked crate heap with a collapsing silhouette. Any crate that lands inside a
+## doorway's light is dropped rather than nudged (critique (f)) — the heap is
+## eight deep and its silhouette does not depend on any one box.
 static func _heap(parent: Node2D, pos: Vector2, col: Color, n: int, sc: float, seed_v: int) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_v
 	for i in n:
 		var t := float(i) / maxf(1.0, float(n - 1))
 		var p := pos + Vector2(rng.randf_range(-1.0, 1.0) * 70.0 * (1.0 - t * 0.6), -t * 62.0 + rng.randf_range(-6, 6))
+		if not _crate_ok(p):
+			continue
 		var s := sc * (1.0 - t * 0.28)
 		var v := 1.0 - t * 0.22
 		_prop(parent, "struct_crate", p, s, Color(col.r * v, col.g * v, col.b * v), rng.randf_range(-0.16, 0.16))
@@ -1532,8 +1653,14 @@ static func _heap(parent: Node2D, pos: Vector2, col: Color, n: int, sc: float, s
 ##     emissive pixel per light source" means.
 static func _stall(parent: Node2D, pos: Vector2, awning: Color, goods: Color, seed_v: int, canopied: bool = true) -> void:
 	var zi := _depth(pos.y, 46.0)
-	_prop(parent, "struct_crate", pos + Vector2(-46, 10), 0.85, Color(0.62, 0.5, 0.42))
-	_prop(parent, "struct_crate", pos + Vector2(46, 10), 0.85, Color(0.58, 0.46, 0.4))
+	# The stock either side of the counter, dropped rather than nudged when the
+	# pitch stands close to a doorway (critique (f)).
+	var crate_l := pos + Vector2(-46.0, 10.0)
+	var crate_r := pos + Vector2(46.0, 10.0)
+	if _crate_ok(crate_l):
+		_prop(parent, "struct_crate", crate_l, 0.85, Color(0.62, 0.5, 0.42))
+	if _crate_ok(crate_r):
+		_prop(parent, "struct_crate", crate_r, 0.85, Color(0.58, 0.46, 0.4))
 	_drop_shadow(parent, pos + Vector2(0, 14), 165.0, zi - 1, 0.38)
 	_rect(parent, pos, Vector2(150, 16), Color(0.24, 0.2, 0.26), zi)          # counter top
 	_rect(parent, pos + Vector2(0, -7), Vector2(150, 3), Color(0.4, 0.36, 0.44), zi + 1)
@@ -1628,14 +1755,27 @@ static func _rails(parent: Node2D, y: float, x0: float, x1: float) -> void:
 	for i in int((x1 - x0) / 34.0):
 		_rect(parent, Vector2(x0 + float(i) * 34.0 + 17.0, y), Vector2(9.0, 28.0), Color(0.1, 0.08, 0.07, 0.85), -91)
 
-## Ore cart, loaded with glowing compute nobody has been allocated.
+## Ore cart, loaded with compute nobody has been allocated.
+##
+## ROUND 12, critique #8: "conveyor units carry five hostile-red LEDs each (15 red
+## pips)". They did — a row of five 9x6 additive chips at 0.75 alpha in the
+## region's hottest hue, on three carts, in the one region whose ACCENT and WARM
+## are both red. Fifteen red marks in a frame is fifteen enemy tells that are not
+## enemies, and LAW 7 gives a light source ONE emissive pixel.
+##
+## So: one chip, dulled by _led to <= 60% value, and the load itself is a dark
+## mass with a lit top edge instead of a row of lamps. `hot` is still consumed —
+## the cart is warm, it is just not signalling.
 static func _cart(parent: Node2D, pos: Vector2, hot: Color, tilt: float) -> void:
 	var zi := _depth(pos.y, 26.0)
 	_drop_shadow(parent, pos + Vector2(0, 20), 88.0, zi - 1, 0.42)
 	_rect(parent, pos, Vector2(76, 42), Color(0.24, 0.2, 0.2), zi, tilt)
 	_rect(parent, pos + Vector2(0, -19), Vector2(76, 6), Color(0.42, 0.35, 0.32), zi + 1, tilt)
-	for i in 5:
-		_glow_rect(parent, pos + Vector2(-26.0 + float(i) * 13.0, -22.0), Vector2(9, 6), Color(hot.r, hot.g, hot.b, 0.75), zi + 2, tilt)
+	# The load: unlit ore, three tones, sitting in the tub.
+	_rect(parent, pos + Vector2(0, -22), Vector2(58, 8), Color(0.20, 0.17, 0.16), zi + 2, tilt)
+	_rect(parent, pos + Vector2(0, -25), Vector2(50, 2), Color(0.30, 0.25, 0.23), zi + 3, tilt)
+	# ONE status chip, on the cart's own body.
+	_led(parent, pos + Vector2(-26.0, -22.0), hot, 0.0, zi + 4)
 	for k: float in [1.0, -1.0]:
 		_rect(parent, pos + Vector2(k * 27.0, 21.0), Vector2(15, 15), Color(0.12, 0.1, 0.1), zi + 1)
 
@@ -1717,7 +1857,10 @@ static func _sp_dependency(z: Node2D, glow: Color, accent: Color) -> void:
 	_rect(z, Vector2(1010, 296), Vector2(120, 8), Color(0.06, 0.1, 0.05), _depth(296, 8))
 	# The lockfile shrine. Merged by hand. We do not speak of it. Its two candle
 	# lamps went with every other sub-focal lamp in the file (critique (f)).
-	_prop(z, "struct_slab", Vector2(360, 806), 0.6, Color(0.5, 0.62, 0.44))
+	# Dropped BELOW the arrival frame (critique #3): at y 806 it stood in the
+	# bottom HUD band, i.e. behind the objective line, which is a strange place
+	# for a thing nobody is supposed to look at directly.
+	_prop(z, "struct_slab", Vector2(360, 872), 0.6, Color(0.5, 0.62, 0.44))
 	# THE CONVEYOR IS GONE — round-11 critique #6, "a flat dark-green bar with an
 	# acid cap under the region title". It was a 330x40 filled rect with a 330x4
 	# lighter rect on top of it, eleven slat marks, a 6x40 additive acid-green
@@ -1726,14 +1869,17 @@ static func _sp_dependency(z: Node2D, glow: Color, accent: Color) -> void:
 	# Nothing about it read as a machine; it read as exactly what the critique
 	# called it, a flat bar with a bright cap. The heap it fed is still there and
 	# still the largest silhouette in the room.
-	# The maintainer's depot — crates and one folding table, unlit.
-	_prop(z, "struct_crate", Vector2(1002, 800), 0.9, accent)
-	_prop(z, "struct_crate", Vector2(1150, 806), 0.85, Color(accent.r * 0.85, accent.g * 0.85, accent.b * 0.85))
-	_rect(z, Vector2(1076, 796), Vector2(130, 14), Color(0.26, 0.22, 0.18), _depth(796, 8))
+	# The maintainer's depot — crates and one folding table, unlit. Lifted 90
+	# units with the maintainer himself (critique #3): the whole pitch, person
+	# included, stood in the bottom HUD band, so the one quest-giver in the region
+	# was read through the ability bar and his name tag through the toast lane.
+	_prop(z, "struct_crate", Vector2(1002, 712), 0.9, accent)
+	_prop(z, "struct_crate", Vector2(1150, 716), 0.85, Color(accent.r * 0.85, accent.g * 0.85, accent.b * 0.85))
+	_rect(z, Vector2(1076, 710), Vector2(130, 14), Color(0.26, 0.22, 0.18), _depth(710, 8))
 
 	# Somebody's evening, left where it ended: a cold cup by the depot and the
 	# drum the conveyor was fed from, still half wound.
-	_prop(z, "dress_noodle_cup", Vector2(196, 812), 1.0, Color(0.86, 0.94, 0.8))
+	_prop(z, "dress_noodle_cup", Vector2(196, 872), 1.0, Color(0.86, 0.94, 0.8))
 	_prop(z, "dress_cable_spool", Vector2(168, 646), 0.9, Color(0.72, 0.86, 0.66))
 
 static func _sp_stackoverflow(z: Node2D, glow: Color, _accent: Color) -> void:
@@ -1754,18 +1900,22 @@ static func _sp_stackoverflow(z: Node2D, glow: Color, _accent: Color) -> void:
 	_floor_patch(z, Vector2(640, 292), 300.0, glow, 0.14, -94)
 	# Cairn of duplicates, stacked by a hermit with a lot of time. West of the
 	# spawn column since round 10 (critique #3) — at x 524 the top of the stack
-	# sat in the toast lane.
+	# sat in the toast lane. Round 12 lifts its BASE out of the bottom HUD band
+	# too: at y 856 the pile's four lower stones were drawn straight through the
+	# ability bar, so what the player saw of it was the top rock and nothing else.
 	for i in 5:
-		_prop(z, "struct_slab", Vector2(420.0 + float(i % 2) * 8.0, 856.0 - float(i) * 26.0), 0.34 - float(i) * 0.03, Color(0.6, 0.54, 0.44), float(i) * 0.4)
+		_prop(z, "struct_slab", Vector2(470.0 + float(i % 2) * 8.0, 726.0 - float(i) * 26.0), 0.34 - float(i) * 0.03, Color(0.6, 0.54, 0.44), float(i) * 0.4)
 	# The pilgrim shrine. You bring your question here. The question has been
 	# asked. The answer is four versions out of date and marked as duplicate.
-	_shrine(z, Vector2(324, 716), glow)
+	# 46 units up, which is what it takes for the ring's two southern candles to
+	# clear the bottom HUD band (critique #3).
+	_shrine(z, Vector2(324, 670), glow)
 	# The hermit's fire, burning documentation for warmth. Mid-ground: two stones
 	# and the dark between them. Its 240px pool and its lamp went with every other
 	# second light in the file (critique (f)) — the ruins spend their one on the
 	# Accepted Answer, which is the joke.
 	for k: float in [1.0, -1.0]:
-		_prop(z, "struct_slab", Vector2(1000 + k * 92.0, 740), 0.3, Color(0.56, 0.5, 0.42), k * 0.2)
+		_prop(z, "struct_slab", Vector2(1000 + k * 92.0, 700), 0.3, Color(0.56, 0.5, 0.42), k * 0.2)
 
 	# One more answer-stone, snapped, still lit. Nobody remembers the question.
 	_prop(z, "dress_monolith", Vector2(190, 646), 1.0, Color(0.78, 0.7, 0.54))
@@ -1797,15 +1947,25 @@ static func _sp_bazaar(z: Node2D, glow: Color, accent: Color) -> void:
 	_lamp(z, Vector2(640, 320), glow, 1.1, 2.6, false, 340.0)
 	# The haggling pit: a ring of crates around a low table nobody wins at, west
 	# of the spawn column and out of the toast lane (critique #3). Unlit.
-	_floor_patch(z, Vector2(392, 848), 380.0, accent, 0.1, -94)
+	#
+	# ROUND 12: the ring straddled the bottom HUD band — three of its seven crates
+	# sat at y 756..808, under the objective line — so the pit is 38 units further
+	# south and its ellipse is FLATTER (40, not 92). Same footprint on the x axis,
+	# same read; every crate now lands below y 840, i.e. below the arrival frame,
+	# which is where a place you walk down to belongs.
+	var pit := Vector2(392, 886)
+	_floor_patch(z, pit, 380.0, accent, 0.1, -94)
 	for i in 7:
 		var a := TAU * float(i) / 7.0
-		_prop(z, "struct_crate", Vector2(392, 848) + Vector2(cos(a) * 150.0, sin(a) * 92.0), 0.55, Color(0.72, 0.56, 0.4), a * 0.2)
-	_drop_shadow(z, Vector2(392, 860), 110.0, _depth(848, 16) - 1, 0.36)
-	_rect(z, Vector2(392, 848), Vector2(96, 30), Color(0.3, 0.2, 0.3), _depth(848, 16))
+		_prop(z, "struct_crate", pit + Vector2(cos(a) * 150.0, sin(a) * 40.0), 0.55, Color(0.72, 0.56, 0.4), a * 0.2)
+	_drop_shadow(z, pit + Vector2(0, 12), 110.0, _depth(pit.y, 16) - 1, 0.36)
+	_rect(z, pit, Vector2(96, 30), Color(0.3, 0.2, 0.3), _depth(pit.y, 16))
 	# The reseller's own stall: uncanopied, so the man standing behind it is not
-	# drawn underneath his own awning.
-	_stall(z, Vector2(1088, 806), glow, accent, 94, false)
+	# drawn underneath his own awning. Moved 106 units north and 52 east with the
+	# reseller (critique #3, "API reseller under the ability bar") — east because
+	# the Cloud District door's reserved box reaches x 1136, and a man standing in
+	# a doorway is the other half of that critique.
+	_stall(z, Vector2(1140, 700), glow, accent, 94, false)
 	# A pitch nobody licensed, wedged in where the aisle widens, and the shutters
 	# of two that closed. Props, not quads.
 	_prop(z, "dress_stall", Vector2(830, 874), 0.95, Color(0.94, 0.8, 0.9))
@@ -1834,9 +1994,13 @@ static func _sp_cloud(z: Node2D, glow: Color, accent: Color) -> void:
 	_screen(z, Vector2(884, 620), accent, Vector2(1.5, 1.1), _depth(648, 48))
 	_floor_patch(z, Vector2(884, 700), 320.0, glow, 0.14, -94)
 	_lamp(z, Vector2(884, 606), glow, 1.2, 3.0, true, 340.0)
-	# The sales booth. It is elastic. Do not ask what that means.
-	_prop(z, "struct_console", Vector2(1128, 782), 0.9, Color(0.7, 0.8, 0.95))
-	_screen(z, Vector2(1128, 762), glow, Vector2(1.1, 0.9), _depth(782, 54))
+	# The sales booth. It is elastic. Do not ask what that means. 70 units north
+	# and 68 east with the salesperson (critique #3): the booth stood in the
+	# bottom HUD band and its owner's name tag printed into the toast lane. East,
+	# because the Wildlands door's reserved box reaches x 1164 and the whole point
+	# of moving him is that he stops standing in front of something.
+	_prop(z, "struct_console", Vector2(1196, 712), 0.9, Color(0.7, 0.8, 0.95))
+	_screen(z, Vector2(1196, 692), glow, Vector2(1.1, 0.9), _depth(712, 54))
 
 	# The plant that keeps the cathedral cold, and the conduit waiting on a
 	# change window that has been rescheduled four times.
@@ -1847,20 +2011,25 @@ static func _sp_opensource(z: Node2D, glow: Color, _accent: Color) -> void:
 	## The region's ONE set-piece caption (LAW 4: <= 4 world labels).
 	# West of the camp: the generic NPC hint lands at (862,866) beside the
 	# maintainer, and a caption at 916 shared pixels with it.
-	_sign(z, Vector2(744, 866), "MAINTAINER", glow, 12)
+	_sign(z, Vector2(744, 716), "MAINTAINER", glow, 12)
 	# The maintainer's camp: one fire, one person, 4,000 dependents. THE focal —
 	# the warmest, brightest pool in the wildlands is the human — and, since
 	# round 11, the region's only light. The separate 340px pool that used to sit
 	# under it is folded into the lamp's own, so the fire throws one puddle.
-	_lamp(z, Vector2(1058, 812), Color(1.0, 0.64, 0.28), 1.15, 2.4, true, 340.0)
+	#
+	# ROUND 12 lifts the whole camp 150 units (critique #3, "Wildlands maintainer"
+	# under the ability bar). The camp is one composition — fire, stones, crates,
+	# bench, person, caption — so it moves as one; the internal offsets are
+	# untouched, and the maintainer still stands 40 units downhill of his own fire.
+	_lamp(z, Vector2(1058, 662), Color(1.0, 0.64, 0.28), 1.15, 2.4, true, 340.0)
 	for i in 5:
 		var a := TAU * float(i) / 5.0
-		_rect(z, Vector2(1058, 812) + Vector2(cos(a) * 34.0, sin(a) * 20.0), Vector2(9, 9), Color(0.18, 0.16, 0.14), _depth(812, 6), a)
-	_prop(z, "struct_crate", Vector2(970, 848), 0.6, Color(0.5, 0.68, 0.46))
-	_prop(z, "struct_crate", Vector2(1146, 852), 0.6, Color(0.46, 0.64, 0.44))
+		_rect(z, Vector2(1058, 662) + Vector2(cos(a) * 34.0, sin(a) * 20.0), Vector2(9, 9), Color(0.18, 0.16, 0.14), _depth(662, 6), a)
+	_prop(z, "struct_crate", Vector2(970, 698), 0.6, Color(0.5, 0.68, 0.46))
+	_prop(z, "struct_crate", Vector2(1146, 702), 0.6, Color(0.46, 0.64, 0.44))
 	var fire := CPUParticles2D.new()
 	fire.name = "Campfire"
-	fire.position = Vector2(1058, 808)
+	fire.position = Vector2(1058, 658)
 	fire.z_index = 300
 	fire.amount = 16
 	fire.lifetime = 1.5
@@ -1880,11 +2049,14 @@ static func _sp_opensource(z: Node2D, glow: Color, _accent: Color) -> void:
 	# (critique #3): the maintainer's bench, a drawn prop, with the crates and the
 	# fire beside it. Everything in this corner is a texture with a material on
 	# it; nothing here is a coloured quad any more.
-	_prop(z, "dress_stall", Vector2(886, 748), 1.0, Color(0.62, 0.78, 0.58))
-	_prop(z, "struct_crate", Vector2(792, 776), 0.7, Color(0.48, 0.66, 0.46))
-	# The issue graveyard. Open since 2019. Reacted to with hearts.
+	_prop(z, "dress_stall", Vector2(886, 598), 1.0, Color(0.62, 0.78, 0.58))
+	_prop(z, "struct_crate", Vector2(792, 626), 0.7, Color(0.48, 0.66, 0.46))
+	# The issue graveyard. Open since 2019. Reacted to with hearts. Both rows used
+	# to sit inside the bottom HUD band (758 and 832); they are pushed BELOW the
+	# arrival frame instead of above it, because the two legacy systems squatting
+	# on them are staged down there and the joke is that they are squatting.
 	for i in 8:
-		var gp := Vector2(220.0 + float(i % 4) * 78.0, 758.0 + float(i / 4) * 74.0)
+		var gp := Vector2(220.0 + float(i % 4) * 78.0, 846.0 + float(i / 4) * 54.0)
 		_prop(z, "struct_slab", gp, 0.28, Color(0.44, 0.62, 0.46), (float(i) - 3.5) * 0.05)
 	# The README monument. Accurate six months ago. Lit by its own screen; its
 	# lamp went with every other second light (critique (f)).
@@ -1903,7 +2075,7 @@ static func _sp_opensource(z: Node2D, glow: Color, _accent: Color) -> void:
 
 static func _sp_corporate(z: Node2D, glow: Color, accent: Color) -> void:
 	## The region's ONE set-piece caption (LAW 4: <= 4 world labels).
-	_sign(z, Vector2(896, 872), "ALL-HANDS STAGE", glow, 12)
+	_sign(z, Vector2(896, 720), "ALL-HANDS STAGE", glow, 12)
 	# The cubicle farm. Two banks, so the traffic lane stays a corridor. ONE lit
 	# face per bank (critique #9 counted fifteen): the rest is dark glass, which
 	# is what an open plan looks like at the hour this game is set, and it leaves
@@ -1911,14 +2083,18 @@ static func _sp_corporate(z: Node2D, glow: Color, accent: Color) -> void:
 	for i in 4:
 		_cubicle(z, Vector2(250.0 + float(i) * 260.0, 232.0), Color(0.6, 0.66, 0.8), glow, i == 1)
 	# The south bank drops from three desks to two: the middle one stood at x 576,
-	# directly under the ability bar in every arrival frame (critique #3).
+	# directly under the ability bar in every arrival frame (critique #3). Both
+	# step west in round 12 so the stage, which has moved north out of the bottom
+	# HUD band, has the east third of the floor to itself.
 	for i in 2:
-		_cubicle(z, Vector2(340.0 + float(i) * 540.0, 700.0), Color(0.56, 0.62, 0.78), accent, i == 1)
+		_cubicle(z, Vector2(300.0 + float(i) * 420.0, 700.0), Color(0.56, 0.62, 0.78), accent, i == 1)
 	# The maze itself: glass runs and stub walls that turn an open plan into a
-	# corridor with corners, without ever colliding with anything.
+	# corridor with corners, without ever colliding with anything. The runs are
+	# 220 apart rather than 260 for the same reason: the easternmost used to reach
+	# x 940, i.e. into the stage's new footprint.
 	for i in 3:
-		_partition(z, Vector2(316.0 + float(i) * 260.0, 320.0), Vector2(208.0, 12.0), glow)
-		_partition(z, Vector2(316.0 + float(i) * 260.0, 664.0), Vector2(208.0, 12.0), accent)
+		_partition(z, Vector2(276.0 + float(i) * 220.0, 320.0), Vector2(208.0, 12.0), glow)
+		_partition(z, Vector2(276.0 + float(i) * 220.0, 664.0), Vector2(208.0, 12.0), accent)
 	for i in 4:
 		_partition(z, Vector2(250.0 + float(i) * 260.0, 286.0), Vector2(12.0, 82.0), glow)
 	# The all-hands stage, permanently set up. THE focal, and the region's one
@@ -1929,12 +2105,18 @@ static func _sp_corporate(z: Node2D, glow: Color, accent: Color) -> void:
 	# behind the SVP, and it was baked at the 0.6 ceiling. At 0.42 it is still the
 	# brightest surface in that corner and it no longer competes with the person
 	# in front of it — which is the whole point of a stage.
-	_drop_shadow(z, Vector2(1000, 846), 270.0, _depth(812, 30) - 1, 0.4)
-	_rect(z, Vector2(1000, 812), Vector2(250, 60), Color(0.18, 0.2, 0.28), _depth(812, 30))
-	_rect(z, Vector2(1000, 786), Vector2(250, 5), Color(0.32, 0.36, 0.5), _depth(812, 32))
-	_rect(z, Vector2(930, 780), Vector2(30, 42), Color(0.24, 0.26, 0.36), _depth(796, 22))
-	_screen(z, Vector2(1000, 742), glow, Vector2(2.6, 1.7), _depth(812, 34), 0.42)
-	_lamp(z, Vector2(1000, 722), glow, 1.05, 2.6, false, 320.0)
+	#
+	# ROUND 12, critique #3: the platform ran y 782..846 and the SVP stood on it at
+	# 786 — the whole set-piece, and the only person in the region, inside the
+	# bottom HUD band. The stage moves 130 units north as one block (its internal
+	# offsets are untouched), which puts the platform at 656..716, the screen clear
+	# of the band, and the SVP's name tag in open air.
+	_drop_shadow(z, Vector2(1000, 716), 270.0, _depth(682, 30) - 1, 0.4)
+	_rect(z, Vector2(1000, 682), Vector2(250, 60), Color(0.18, 0.2, 0.28), _depth(682, 30))
+	_rect(z, Vector2(1000, 656), Vector2(250, 5), Color(0.32, 0.36, 0.5), _depth(682, 32))
+	_rect(z, Vector2(930, 650), Vector2(30, 42), Color(0.24, 0.26, 0.36), _depth(666, 22))
+	_screen(z, Vector2(1000, 612), glow, Vector2(2.6, 1.7), _depth(682, 34), 0.42)
+	_lamp(z, Vector2(1000, 592), glow, 1.05, 2.6, false, 320.0)
 	# Reception: a desk, a ticket queue, and no receptionist. Its screen is the
 	# light; the 180px puddle it used to throw is not.
 	_drop_shadow(z, Vector2(258, 660), 165.0, _depth(640, 18) - 1, 0.36)
@@ -1959,9 +2141,13 @@ static func _sp_gpu(z: Node2D, glow: Color, accent: Color) -> void:
 	# axis-aligned nor 45 degrees, so every one of them was an anti-aliased diagonal
 	# drawn across a pixel-art floor — the same defect critique #8 names in the
 	# reference room, one region over and in the HUD's top strip besides.
-	# Cooling towers, losing.
+	# Cooling towers, losing. Lifted out of the bottom HUD band (critique #3): at
+	# y 792 the mine's two largest silhouettes were drawn behind the objective
+	# line and the ability bar, so what read at the arrival was their tops. At 622
+	# they stand among the rig banks' own towers, which is where a cooling plant
+	# belongs anyway.
 	for k: float in [1.0, -1.0]:
-		var cp := Vector2(640.0 - k * 456.0, 792.0)
+		var cp := Vector2(640.0 - k * 456.0, 622.0)
 		_prop(z, "struct_tower", cp, 1.25, Color(0.62, 0.56, 0.56))
 		_glow_rect(z, cp + Vector2(0, -78), Vector2(30, 4), Color(0.62, 0.64, 0.66, 0.4), _depth(cp.y, 80.0))
 		# ONE plume. LAW 4 allows two emitters a region and the ambient dust layer
@@ -2063,11 +2249,17 @@ static func _sp_production(z: Node2D, glow: Color, accent: Color) -> void:
 	# THE BUTTON. Red. Domed. Guarded by a sign nobody reads. The dome is lit at
 	# 60% rather than 90% (LAW 3): it is a button, not one of the five things in
 	# the frame allowed to be bright — and it is no longer also a lamp.
-	_prop(z, "struct_slab", Vector2(268, 800), 0.55, Color(0.58, 0.4, 0.42))
-	_glow_rect(z, Vector2(268, 758), Vector2(24, 14), Color(0.60, 0.16, 0.16, 0.55), _depth(800, 62))
-	# The postmortem graveyard: action items, all still open.
+	# 100 units north of where it stood (critique #3, "Production crate + enemy"
+	# under the ability bar): the pedestal and its dome sat at y 758..800, i.e.
+	# behind the objective line, which is the one strip of floor a red domed
+	# button must never be hiding in.
+	_prop(z, "struct_slab", Vector2(268, 700), 0.55, Color(0.58, 0.4, 0.42))
+	_glow_rect(z, Vector2(268, 658), Vector2(24, 14), Color(0.60, 0.16, 0.16, 0.55), _depth(700, 62))
+	# The postmortem graveyard: action items, all still open. Both rows pushed
+	# BELOW the arrival frame rather than above it — the monolith is staged down
+	# there, and an action item you have to walk south to read is the joke.
 	for i in 6:
-		_prop(z, "struct_slab", Vector2(940.0 + float(i % 3) * 74.0, 784.0 + float(i / 3) * 66.0), 0.26, Color(0.52, 0.4, 0.42), (float(i) - 2.5) * 0.06)
+		_prop(z, "struct_slab", Vector2(940.0 + float(i % 3) * 74.0, 846.0 + float(i / 3) * 54.0), 0.26, Color(0.52, 0.4, 0.42), (float(i) - 2.5) * 0.06)
 
 	# Perimeter emitters installed after the last incident, which was not a
 	# perimeter problem.
@@ -2097,7 +2289,7 @@ static func _sp_vault(z: Node2D, glow: Color, accent: Color) -> void:
 	# stain on the floor and nothing else — their lamps went with every other
 	# second light in the file (critique (f)).
 	for k: float in [1.0, -1.0]:
-		_floor_patch(z, Vector2(640.0 - k * 366.0, 790.0), 300.0, VIOLET, 0.14, -94)
+		_floor_patch(z, Vector2(640.0 - k * 366.0, 690.0), 300.0, VIOLET, 0.14, -94)
 	# The security lattice is GONE. Two 372px overbright violet bays laid end to
 	# end still drew one near-continuous horizontal beam across the whole frame at
 	# y 662 — critique #6, "a violet horizontal beam" — and a perfectly straight
@@ -2107,8 +2299,11 @@ static func _sp_vault(z: Node2D, glow: Color, accent: Color) -> void:
 	# The balance console. It says "yes". Moved off the spawn column (critique
 	# #3): its lit face at (640,778) was the "sign board under the toast" — the
 	# vault's arrival frame drew it directly behind the reward line.
-	_prop(z, "struct_console", Vector2(444, 764), 0.95, Color(0.9, 0.78, 0.46))
-	_screen(z, Vector2(444, 742), accent, Vector2(1.4, 1.0), _depth(764, 56))
+	# ...and 64 units further north again in round 12: at y 764 its lit face was
+	# back in the bottom HUD band, behind the objective line this time instead of
+	# behind the toast (critique #3).
+	_prop(z, "struct_console", Vector2(444, 700), 0.95, Color(0.9, 0.78, 0.46))
+	_screen(z, Vector2(444, 680), accent, Vector2(1.4, 1.0), _depth(700, 56))
 
 	# The two emitter heads the lattice used to come out of, kept as dark props
 	# either side of the counting floor, and a cart of reserves left where the
@@ -2171,8 +2366,12 @@ static func _region_theme(region_id: String) -> Dictionary:
 				{"t": "struct_arch", "p": Vector2(272, 604), "s": 1.0, "m": Color(0.58, 0.55, 0.48)},
 				{"t": "struct_arch", "p": Vector2(1012, 620), "s": 0.95, "m": Color(0.54, 0.51, 0.45)},
 			]
-			structs += _clu(196, 792, "struct_slab", 2, 0.75, Color(0.55, 0.52, 0.46), 60)
-			structs += _clu(1156, 780, "struct_slab", 2, 0.7, Color(0.51, 0.48, 0.43), 60)
+			# Both southern slab piles spread through the bottom HUD band (732..852
+			# and 720..840 respectively — critique #3). The western one goes fully
+			# below the arrival frame beside the boss's clearing; the eastern one
+			# comes up to the ruin's mid-floor, where the second arch already is.
+			structs += _clu(196, 890, "struct_slab", 2, 0.75, Color(0.55, 0.52, 0.46), 40)
+			structs += _clu(1156, 660, "struct_slab", 2, 0.7, Color(0.51, 0.48, 0.43), 50)
 			return {
 				"wall": Color(0.46, 0.43, 0.37),
 				"glow": Color("#E8C46B"), "accent": Color("#C97B4A"),
@@ -2194,7 +2393,10 @@ static func _region_theme(region_id: String) -> Dictionary:
 			# ACCENT sky #6BC7FF, WARM near-white #E8F4FF.
 			var structs := _clu(196, 604, "struct_orb", 2, 0.7, Color(0.50, 0.55, 0.62), 60)
 			structs += _clu(1116, 612, "struct_orb", 2, 0.65, Color(0.53, 0.57, 0.63), 60)
-			structs += _clu(214, 800, "struct_tower", 2, 0.75, Color(0.47, 0.51, 0.58), 55)
+			# Lifted from y 800 (critique #3): the pair spread into the bottom HUD
+			# band, and a struct_tower is tall, so what the arrival frame showed of
+			# them was two dark bars behind the objective line.
+			structs += _clu(214, 640, "struct_tower", 2, 0.75, Color(0.47, 0.51, 0.58), 40)
 			return {
 				"wall": Color(0.42, 0.45, 0.52),
 				"glow": Color("#6BC7FF"), "accent": Color("#E8F4FF"),
@@ -2211,7 +2413,7 @@ static func _region_theme(region_id: String) -> Dictionary:
 			return {
 				"wall": Color(0.38, 0.44, 0.39),
 				"glow": Color("#58E07C"), "accent": Color("#C9A24A"),
-				"focal": Vector2(1058, 812),  # the maintainer's campfire
+				"focal": Vector2(1058, 662),  # the maintainer's campfire
 				"structs": structs, "signs": [],
 			}
 		"corporate_enterprise":
@@ -2223,7 +2425,7 @@ static func _region_theme(region_id: String) -> Dictionary:
 			return {
 				"wall": Color(0.42, 0.44, 0.50),
 				"glow": Color("#4D7CFF"), "accent": Color("#93A7C8"),
-				"focal": Vector2(1000, 742),  # the all-hands stage screen
+				"focal": Vector2(1000, 612),  # the all-hands stage screen
 				"structs": structs, "signs": [],
 			}
 		"gpu_mines":
@@ -2297,6 +2499,13 @@ static var _cover_rects: Array[Rect2] = []
 ##     drawn centred on its post with its body about 32 units above it, so a post
 ##     at y 166 puts a silhouette straight through the region title, and one at
 ##     (176,224) puts one under the token counter.
+##   * and, since round 12, no post is in the bottom band either (730..840). An
+##     enemy sprite is 64 units tall and a BOSS is 128 (node scale 2 x sprite
+##     scale 2), so the five bosses that stood at y 856..880 were showing the
+##     player their heads through the ability bar and nothing else — critique #3's
+##     "Cloud ghost boss / SO Ruins beast / Vault eye turret / Corporate enemy /
+##     Production crate + enemy". They are staged at y 890 now: still south, still
+##     in their arenas, and the arrival frame's last row is empty floor.
 ##
 ## Those two rules fight each other in the top of the room — at y 250 the aggro
 ## radius allows only |x - 640| >= 345 — which is why the northern posts below are
@@ -2316,24 +2525,24 @@ static func _region_enemy_posts(region_id: String) -> Array:
 			# clearing, which is the only wide open floor in the ruins. The two
 			# north posts stand clear of the toppled slabs at (238,300) and
 			# (1096,318), and the south one clear of the shrine's sign plate.
-			return [Vector2(172, 368), Vector2(1010, 250), Vector2(180, 706), Vector2(866, 868)]
+			return [Vector2(172, 368), Vector2(1010, 250), Vector2(180, 696), Vector2(866, 890)]
 		"api_bazaar":
 			# Rate limiters posted at the market gates, bugs in the west aisle.
-			return [Vector2(1120, 300), Vector2(900, 890), Vector2(250, 700), Vector2(250, 268), Vector2(180, 252)]
+			return [Vector2(1120, 300), Vector2(900, 890), Vector2(250, 696), Vector2(250, 268), Vector2(180, 252)]
 		"cloud_district":
 			# The bill occupies the south floor; the leaks sit on the racks.
-			return [Vector2(880, 862), Vector2(238, 296), Vector2(1082, 278)]
+			return [Vector2(880, 890), Vector2(238, 296), Vector2(1082, 278)]
 		"open_source_wildlands":
 			# Legacy systems squatting on the issue graveyard — the thing worth
 			# taking is the thing that is defended. Bugs patrol the perimeter.
 			# The README bug stands west of the monument, not behind it.
-			return [Vector2(246, 792), Vector2(404, 866), Vector2(186, 266), Vector2(1124, 268), Vector2(1148, 620)]
+			return [Vector2(246, 890), Vector2(404, 890), Vector2(186, 266), Vector2(1124, 268), Vector2(1148, 620)]
 		"corporate_enterprise":
 			# The architect owns the south-west floor; scope creep is everywhere
 			# else, which is thematically the only correct arrangement. The
 			# reception picket moved off the "raise a ticket" sign plate — a
 			# world plate draws at z 1150 and hides anything standing under it.
-			return [Vector2(286, 856), Vector2(250, 248), Vector2(152, 596), Vector2(1108, 252)]
+			return [Vector2(286, 890), Vector2(250, 248), Vector2(152, 596), Vector2(1108, 252)]
 		"gpu_mines":
 			# Leaks on both rig banks and one down at the spoil heap; two bugs at
 			# the mouth of the heat pit, which is where you want to be standing.
@@ -2341,16 +2550,16 @@ static func _region_enemy_posts(region_id: String) -> Array:
 			# the gaps between them: the gaps are at x 366 and x 970, and both of
 			# those sit under the HUD in the arrival frame.
 			return [Vector2(228, 250), Vector2(236, 356), Vector2(1010, 252), Vector2(1114, 320),
-				Vector2(250, 782), Vector2(750, 894), Vector2(1060, 894)]
+				Vector2(250, 890), Vector2(750, 894), Vector2(1060, 894)]
 		"production":
 			# The monolith holds the south floor below the war room. The
 			# hallucinations are gathered around the status page, agreeing —
 			# west of it, clear of the slab and of the STATUS PAGE plate.
-			return [Vector2(420, 880), Vector2(170, 262), Vector2(1092, 268), Vector2(1148, 560)]
+			return [Vector2(420, 890), Vector2(170, 262), Vector2(1092, 268), Vector2(1148, 560)]
 		"token_vault":
 			# Two rate limiters on the shelving rows, the infinite context in the
 			# open south-east where there is room to run away from it.
-			return [Vector2(250, 258), Vector2(1092, 258), Vector2(872, 860)]
+			return [Vector2(250, 258), Vector2(1092, 258), Vector2(872, 890)]
 		_: return []
 
 ## Boss arena anchor (visual only — the post table above is what actually
@@ -2359,11 +2568,11 @@ static func _region_enemy_posts(region_id: String) -> Array:
 ## corners and every other piece of scenery kept out of it.
 static func _region_boss_arena(region_id: String) -> Vector2:
 	match region_id:
-		"stackoverflow_ruins": return Vector2(866, 868)
-		"cloud_district": return Vector2(880, 862)
-		"corporate_enterprise": return Vector2(286, 856)
-		"production": return Vector2(420, 880)
-		"token_vault": return Vector2(872, 860)
+		"stackoverflow_ruins": return Vector2(866, 890)
+		"cloud_district": return Vector2(880, 890)
+		"corporate_enterprise": return Vector2(286, 890)
+		"production": return Vector2(420, 890)
+		"token_vault": return Vector2(872, 890)
 		_: return Vector2.ZERO
 
 ## Solid cover, per region. Small isolated blocks only — never a wall, never two
@@ -2379,6 +2588,12 @@ static func _region_boss_arena(region_id: String) -> Vector2:
 ## two that were load-bearing for a fight are replaced further down the same wall
 ## (cloud (1180,400), gpu (1180,520)); the rest are simply gone, which is what a
 ## quiet corner looks like.
+##
+## ROUND 12 does the same at the other end: seven blocks stood at y 740..830, in
+## the bottom HUD band (critique #3), so they were barriers the player fought
+## around while reading the objective line through them. Each moves to y 880 —
+## below the arrival frame, beside the boss it is there to shape — except the
+## wildlands' western pair, which the issue graveyard and the camp already own.
 static func _region_cover(region_id: String) -> Array:
 	match region_id:
 		"dependency_district":
@@ -2389,15 +2604,15 @@ static func _region_cover(region_id: String) -> Array:
 			# new posts — 87 units apart is a barrier an enemy spawns against.
 			return [Vector2(150, 660), Vector2(520, 700), Vector2(1160, 372)]
 		"stackoverflow_ruins":
-			return [Vector2(1180, 380), Vector2(300, 830), Vector2(760, 800), Vector2(980, 880)]
+			return [Vector2(1180, 380), Vector2(300, 880), Vector2(700, 880), Vector2(980, 880)]
 		"api_bazaar":
 			return [Vector2(700, 880), Vector2(150, 600), Vector2(170, 340)]
 		"cloud_district":
-			return [Vector2(780, 830), Vector2(1000, 900), Vector2(1180, 400)]
+			return [Vector2(720, 880), Vector2(1000, 900), Vector2(1180, 400)]
 		"open_source_wildlands":
-			return [Vector2(150, 700), Vector2(520, 820), Vector2(1160, 740)]
+			return [Vector2(150, 700), Vector2(640, 880), Vector2(1160, 880)]
 		"corporate_enterprise":
-			return [Vector2(180, 790), Vector2(400, 880), Vector2(160, 340), Vector2(1170, 340)]
+			return [Vector2(180, 880), Vector2(400, 880), Vector2(160, 340), Vector2(1170, 340)]
 		"gpu_mines":
 			return [Vector2(1180, 520), Vector2(150, 860), Vector2(860, 880), Vector2(1160, 900)]
 		"production":
@@ -2417,7 +2632,10 @@ static func _build_encounters(parent: Node2D, region_id: String, theme: Dictiona
 		# The clearing is drawn around the boss post but clamped inward, because
 		# several posts sit close enough to a wall that an un-clamped ring would
 		# be painted over the wall or off the map entirely.
-		_arena(z, Vector2(clampf(arena.x, 260.0, float(w) - 260.0), clampf(arena.y, 250.0, float(h) - 140.0)), accent)
+		# h - 110 rather than h - 140 since round 12: the bosses are staged at
+		# y 890 now (critique #3), and a ring drawn 70 units north of the thing it
+		# is meant to be around stops reading as that thing's floor.
+		_arena(z, Vector2(clampf(arena.x, 260.0, float(w) - 260.0), clampf(arena.y, 250.0, float(h) - 110.0)), accent)
 	var idx := 0
 	for cp: Vector2 in _region_cover(region_id):
 		_cover(z, cp, glow, accent, idx)
@@ -2508,6 +2726,12 @@ static func _staged(want: Vector2, spawn: Vector2, rng: RandomNumberGenerator) -
 		var need := sqrt(maxf(415.0 * 415.0 - dy * dy, 0.0))
 		var side := 1.0 if p.x >= spawn.x else -1.0
 		p = Vector2(clampf(spawn.x + side * (need + 4.0), 130.0, w - 130.0), HUD_KEEP_Y)
+	# ...and the same treatment at the other end (critique #3). The push is
+	# vertical because the low band is full-width, and it happens BEFORE the
+	# radius check below so a post shoved out of the band can still fall back to
+	# the safe scatter if the move brought it inside the arrival ring.
+	if _below_hud(p):
+		p = _clear_hud_bands(p)
 	if p.distance_to(spawn) < 415.0:
 		return _safe_scatter(rng, spawn, w, h)
 	return p
@@ -2520,8 +2744,10 @@ static func _staged(want: Vector2, spawn: Vector2, rng: RandomNumberGenerator) -
 ## walkable interior, so the guarantee holds no matter what the RNG does.
 static func _safe_scatter(rng: RandomNumberGenerator, spawn: Vector2, w: float, h: float) -> Vector2:
 	var p := _random_pos(rng, spawn, 420.0)
-	if p.distance_to(spawn) >= 420.0:
+	if p.distance_to(spawn) >= 420.0 and not _below_hud(p):
 		return p
+	# All four anchors are outside BOTH HUD bands: HUD_KEEP_Y + 16 clears the top
+	# strip, and h - 100 (860) clears the bottom one by 20 (critique #3).
 	var anchors: Array[Vector2] = [
 		Vector2(200.0, HUD_KEEP_Y + 16.0), Vector2(w - 200.0, HUD_KEEP_Y + 16.0),
 		Vector2(200.0, h - 100.0), Vector2(w - 200.0, h - 100.0),
@@ -2599,7 +2825,10 @@ static func _populate_region(region_id: String, props: Node2D, enemies: Node2D, 
 		for q in npc_data.get("quests", []):
 			qids.append(str(q))
 		n.quest_ids = qids
-		n.position = npc_data.pos
+		# The anchors in _region_npcs are all outside the HUD bands by hand; this
+		# is the guard-rail that keeps the next composition edit from putting a
+		# quest-giver back under the ability bar (critique #3).
+		n.position = _npc_spot(npc_data.pos)
 		npcs.add_child(n)
 
 	# Region-specific interactables
@@ -2664,16 +2893,27 @@ static func _token_spots(region_id: String, spawn: Vector2) -> Array[Vector2]:
 	var out: Array[Vector2] = []
 	for p: Vector2 in want:
 		# The y floor is the HUD keep-out: a gold coin is small and bright, and
-		# one clamped to y 170 would bob under the region title all night.
-		var q := Vector2(clampf(p.x, 140.0, w - 140.0), clampf(p.y, HUD_KEEP_Y, h - 120.0))
-		# Nudge off cover and off the player's own landing spot, on a short spiral
-		# so the composed position is kept wherever it was already fine.
+		# one clamped to y 170 would bob under the region title all night. Since
+		# round 12 the keep-out has a bottom half too, and the coin by the NPC is
+		# the one this catches every time: np + (-110, 62) lands in the band for
+		# six of the nine regions.
+		var q := _clear_hud_bands(Vector2(clampf(p.x, 140.0, w - 140.0), clampf(p.y, HUD_KEEP_Y, h - 120.0)))
+		# Nudge off cover and off the player's own landing spot, keeping the
+		# composed position wherever it was already fine.
+		#
+		# The nudge walks OUTWARD from the spawn (with a widening fan, so a coin
+		# pinned between two barriers still gets out) rather than around the old
+		# fixed spiral, which turned through 1.9 radians a step and could — and in
+		# the Bazaar always did — carry a coin straight back across the landing
+		# spot it was trying to leave, all twelve times.
 		for step in 12:
-			if not _in_cover(q) and q.distance_to(spawn) > 96.0:
+			if not _in_cover(q) and q.distance_to(spawn) > 96.0 and not _below_hud(q):
 				break
-			var a2 := float(step) * 1.9
-			q += Vector2(cos(a2), sin(a2)) * 34.0
-			q = Vector2(clampf(q.x, 140.0, w - 140.0), clampf(q.y, 170.0, h - 120.0))
+			var d2 := q - spawn
+			if d2.length() < 1.0:
+				d2 = Vector2(1.0, 0.0)
+			q += d2.normalized().rotated(float(step) * 0.5) * 34.0
+			q = _clear_hud_bands(Vector2(clampf(q.x, 140.0, w - 140.0), clampf(q.y, 170.0, h - 120.0)))
 		out.append(Vector2(round(q.x * 0.5) * 2.0, round(q.y * 0.5) * 2.0))
 	return out
 
@@ -2687,6 +2927,10 @@ static func _random_pos(rng: RandomNumberGenerator, center: Vector2, min_dist: f
 			# Solid cover exists now. A token scattered inside a barrier is a
 			# collection objective the player cannot finish, so reject those.
 			if _in_cover(pos):
+				continue
+			# ...and neither of the HUD bands (critique #3): a coin the player
+			# cannot see is the same defect as a coin he cannot reach.
+			if _below_hud(pos):
 				continue
 			return pos
 	# Fallback lands on the landing plaza, which never holds cover.
@@ -2734,26 +2978,37 @@ static func _region_enemies(region_id: String) -> Array:
 ## worth walking to. The room is 1280x960 with walls, so nothing may exceed
 ## x 1220 / y 900 — the API reseller used to stand at x=1300, i.e. inside the wall,
 ## half off-camera, which is a large part of why the Bazaar felt empty.
+##
+## ROUND 12, critique #3: six of these stood at y 748..852 — inside the bottom HUD
+## band, or close enough below it that the NAME TAG landed there. npc.gd hangs the
+## plate 106 units above the feet and stacks barks above that, so the maintainer
+## at y 852 printed his own name at 736: under the objective line, every visit.
+## A person is the one thing here that can only leave the band UPWARD (see
+## _npc_spot), so each of them moved up, and each one's set-piece moved with them
+## rather than leaving them standing in open floor next to an empty stall.
 static func _region_npcs(region_id: String) -> Array:
 	match region_id:
 		"localhost":
 			return [{"id": "roommate_ai", "pos": Vector2(1200, 900), "quests": ["hello_localhost", "tiny_change", "ship_dream_app"]}]
 		"dependency_district":
-			return [{"id": "maintainer", "pos": Vector2(1076, 786), "quests": ["install_node", "fix_without_touching", "pin_everything", "caret_gamble"]}]
+			return [{"id": "maintainer", "pos": Vector2(1076, 700), "quests": ["install_node", "fix_without_touching", "pin_everything", "caret_gamble"]}]
 		"stackoverflow_ruins":
 			return [{"id": "stackoverflow_hermit", "pos": Vector2(1000, 704), "quests": ["stackoverflow_pilgrimage", "merge_conflict_hell"]}]
 		"api_bazaar":
-			return [{"id": "api_reseller", "pos": Vector2(1088, 782), "quests": ["one_more_api_call", "junior_agent"]}, {"id": "junior_agent", "pos": Vector2(800, 620), "quests": ["junior_agent"]}]
+			return [{"id": "api_reseller", "pos": Vector2(1140, 690), "quests": ["one_more_api_call", "junior_agent"]}, {"id": "junior_agent", "pos": Vector2(800, 620), "quests": ["junior_agent"]}]
 		"cloud_district":
-			return [{"id": "cloud_salesperson", "pos": Vector2(1128, 748), "quests": ["cloud_migration", "context_window_full"]}]
+			return [{"id": "cloud_salesperson", "pos": Vector2(1196, 700), "quests": ["cloud_migration", "context_window_full"]}]
 		"open_source_wildlands":
-			return [{"id": "oss_maintainer", "pos": Vector2(1058, 852), "quests": ["license_puzzle"]}]
+			return [{"id": "oss_maintainer", "pos": Vector2(1058, 702), "quests": ["license_puzzle"]}]
 		"corporate_enterprise":
-			return [{"id": "svp_ai", "pos": Vector2(1000, 786), "quests": ["enterprise_ready", "mission_statement"]}]
+			return [{"id": "svp_ai", "pos": Vector2(1000, 656), "quests": ["enterprise_ready", "mission_statement"]}]
 		"gpu_mines":
 			return [{"id": "gpu_foreman", "pos": Vector2(1136, 692), "quests": ["gpu_rush"]}]
 		"production":
-			return [{"id": "oncall_engineer", "pos": Vector2(1090, 848), "quests": ["production_down"]}]
+			# The one NPC with no furniture of his own, so he simply steps north out
+			# of the band — and off the Token Vault door's reserved column, which is
+			# why he is at x 860 rather than under the war room he is reporting on.
+			return [{"id": "oncall_engineer", "pos": Vector2(860, 700), "quests": ["production_down"]}]
 		_: return []
 
 ## Portal placement. Round 5 put every door at exactly (cx +/- 400, cy), so the
@@ -2837,12 +3092,12 @@ const REGION_FLAVOR := {
 	"dependency_district": [
 		["prop_node_modules", Vector2(300, 300), "node_modules"],
 		["prop_leftpad", Vector2(1010, 300), "left-pad"],
-		["prop_lockfile", Vector2(360, 772), "package-lock.json"],
+		["prop_lockfile", Vector2(360, 860), "package-lock.json"],
 	],
 	"api_bazaar": [
 		["prop_api_stall", Vector2(566, 342), "API reseller stall"],
 		["prop_status_page", Vector2(266, 630), "Status page"],
-		["prop_pricing", Vector2(392, 834), "Pricing board"],
+		["prop_pricing", Vector2(392, 876), "Pricing board"],
 	],
 	"stackoverflow_ruins": [
 		["prop_gravestone", Vector2(238, 300), "Question gravestone"],
@@ -2850,15 +3105,15 @@ const REGION_FLAVOR := {
 	],
 	"cloud_district": [
 		["prop_invoice", Vector2(884, 672), "Cloud invoice"],
-		["prop_dashboard", Vector2(1128, 764), "Cloud dashboard"],
+		["prop_dashboard", Vector2(1196, 694), "Cloud dashboard"],
 	],
 	"gpu_mines": [
 		["prop_rig", Vector2(318, 262), "Mining rig"],
-		["prop_fan", Vector2(1096, 786), "Cooling fan"],
+		["prop_fan", Vector2(1096, 676), "Cooling fan"],
 	],
 	"open_source_wildlands": [
-		["prop_sponsor", Vector2(1058, 780), "Sponsor button"],
-		["prop_issue", Vector2(296, 760), "Open issue #4092"],
+		["prop_sponsor", Vector2(1058, 630), "Sponsor button"],
+		["prop_issue", Vector2(296, 846), "Open issue #4092"],
 	],
 	"corporate_enterprise": [
 		["prop_mission", Vector2(258, 616), "Mission statement"],
@@ -2866,7 +3121,7 @@ const REGION_FLAVOR := {
 	],
 	"production": [
 		["prop_pager", Vector2(856, 340), "On-call pager"],
-		["prop_runbook", Vector2(268, 774), "Incident runbook"],
+		["prop_runbook", Vector2(268, 674), "Incident runbook"],
 	],
 	"token_vault": [
 		["prop_vault", Vector2(640, 296), "Token vault"],

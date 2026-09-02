@@ -44,7 +44,21 @@ static var _add_mat_cache: CanvasItemMaterial
 ## 1430 its two-line destination plate was cut in half by the viewport instead of
 ## by the masonry ("→ Dependency / District"). 80 units further in puts the whole
 ## plate, at its widest, inside the first frame the player ever sees.
-const PORTAL_POS := Vector2(ROOM_W * TILE - 250, ROOM_H * TILE * 0.5)
+##
+## ROUND 12, critique #7: "the exit portal and its caption are half outside the
+## world rect at spawn". Round 11's pixel stage changed the sum — the view is
+## exactly 1280 world units wide now, not 1490 — so a door at 1350 sat 10 units
+## from the right edge with its plate sawn in half. There are two ways to fix a
+## thing that is half in frame and the arrival frame only wants one of them: the
+## door goes FULLY OUT. The flat is 1600 wide, so the spawn is placed where the
+## camera clamps hard left (see build()) and the first frame is the room's left
+## 1280 — kitchen, battlestation, rug, Claude — with the way out over the player's
+## right shoulder, found by the EXIT sign and the waypoint chevron.
+##
+## 190 in from the wall is what that costs: the disc lands at 1386..1434 and the
+## destination plate, at its widest, at 1280..1540 — clear of the frame's edge at
+## 1280 and clear of the masonry at 1580.
+const PORTAL_POS := Vector2(ROOM_W * TILE - 190, ROOM_H * TILE * 0.5)
 
 ## VISUAL_BIBLE_V2 LAW 2, the localhost row: BASE #0E0C14, ACCENT #24F0DC cyan,
 ## WARM #FFB74A amber. Three hues, and the round-6 apartment had eleven — five
@@ -66,7 +80,17 @@ static func build(parent: Node2D) -> Dictionary:
 	parent.y_sort_enabled = true
 	_lights_used = 0
 	var size := Vector2(ROOM_W * TILE, ROOM_H * TILE)
-	var spawn := Vector2(720, 640)
+	# 120 units west of where the flat used to start you (critique #7). The camera
+	# is a zoom-0.5 Camera2D in a 640x360 stage, so it frames 1280x720 world units
+	# and clamps at the room's edges: at any spawn.x <= 640 the view is exactly
+	# x 0..1280, i.e. the room's left 1280, with the door at 1410 and its caption
+	# entirely outside it. That is the whole of the fix — one arrival frame with
+	# nothing cut in half in it — and it costs 120 units of walk to the exit.
+	#
+	# 600 also lands the player ON the rug (400..720 x 488..712) rather than beside
+	# it, and leaves Claude at (820,560) where he was: still north-east, still the
+	# first thing the objective line points at.
+	var spawn := Vector2(600, 640)
 	_reserve_labels()
 	_build_floor(parent)
 	_build_rug(parent)
@@ -294,6 +318,40 @@ static func _floor_patch(parent: Node2D, pos: Vector2, width: float, col: Color,
 	s.z_index = z
 	parent.add_child(s)
 
+# ------------------------------------------------------- arrival frame ------
+
+## THE FIRST FRAME OF THE GAME, in world units. The camera is a zoom-0.5
+## Camera2D inside a 640x360 stage (pixel_stage.gd), so it shows 1280x720 world
+## units, and at a (600,640) spawn it is clamped hard against the room's left
+## wall: x 0..1280, y 280..1000. The flat is 1600 wide, so that is the room's left
+## four fifths and the door is beyond it, which is the point (critique #7).
+##
+## Two strips of that frame belong to the HUD and not to the apartment: the top
+## ~70 units carry the token counter, the region name and the HP/Focus bars, and
+## the bottom ~110 carry the objective line, the toast lane, the six ability slots
+## and the controls footer. RegionBuilder owns the same two bands for the nine
+## generated rooms (HUD_KEEP_Y / HUD_KEEP_Y_LOW); these are the flat's copy,
+## measured from its own spawn rather than from a 1280x960 room's.
+const ARRIVAL_VIEW := Rect2(0.0, 280.0, 1280.0, 720.0)
+const ARRIVAL_LOW := 890.0    # spawn.y + 250
+const ARRIVAL_EDGE := 40.0    # how far a body must stay off the frame's cut edge
+
+static func _below_hud(p: Vector2) -> bool:
+	return p.y >= ARRIVAL_LOW and p.y <= ARRIVAL_VIEW.end.y
+
+## Guard-rail for anything the flat PLACES rather than composes: out of the
+## bottom HUD band (upward, which is the only direction with floor in it), and
+## off the frame's right-hand cut — critique #7's "a bug enemy is clipped at the
+## right edge" is a body straddling x 1280, and half a bug is not a bug.
+static func _arrival_spot(p: Vector2) -> Vector2:
+	var q := p
+	if _below_hud(q):
+		q.y = ARRIVAL_LOW - 24.0
+	var edge := ARRIVAL_VIEW.end.x
+	if absf(q.x - edge) < ARRIVAL_EDGE:
+		q.x = (edge + ARRIVAL_EDGE) if q.x >= edge else (edge - ARRIVAL_EDGE)
+	return Vector2(round(q.x * 0.5) * 2.0, round(q.y * 0.5) * 2.0)
+
 # ------------------------------------------------------- label placement ----
 
 ## Boxes owned by nodes this builder does not draw the text for: the portal's
@@ -317,21 +375,25 @@ static func _reserve_labels() -> void:
 	# high of centre) — deliberately tight, because "← talk to Claude first" has
 	# to stay right next to him to mean anything.
 	WorldLabel.reserve(Rect2(Vector2(820, 560) + Vector2(-42, -62), Vector2(84, 86)))
-	# The player himself: his spawn footprint at (720,640) and the lane he walks
+	# The player himself: his spawn footprint at (600,640) and the lane he walks
 	# up to reach Claude. This is the one box in the room a caption may never
 	# have, and it had one — see the note on the "talk to Claude first" sign in
 	# _build_signs.
 	#
 	# The footprint is world_label.gd's own PLAYER_BODY, Rect2(-46,-84,92,110),
-	# which puts the character at 674..766 x 556..666 when he spawns at
-	# (720,640); this box adds a margin and the strip of floor between him and
-	# Claude. It stops at y 500 on purpose, so it does not also swallow the band
-	# the battlestation captions live in — the "↑ Dream App terminal" sign is
-	# already fighting Claude's bark column for that air and must not lose the
-	# rest of it. Verified against the ladder: no apartment sign's HOME slot
-	# touches this box, so nothing is displaced by adding it and nothing hides.
-	WorldLabel.reserve(Rect2(Vector2(672, 500), Vector2(194, 186)))
-	for m: Vector2 in [Vector2(430, 300), Vector2(540, 296), Vector2(650, 300), Vector2(1060, 318), Vector2(1170, 320)]:
+	# which puts the character at 554..646 x 556..666 when he spawns at
+	# (600,640); this box adds a margin and the strip of floor between him and
+	# Claude, which is 120 units longer since round 12 moved the spawn west. It
+	# stops at y 500 on purpose, so it does not also swallow the band the
+	# battlestation captions live in — the "↑ Dream App terminal" sign is already
+	# fighting Claude's bark column for that air and must not lose the rest of it.
+	# Verified against the ladder: no apartment sign's HOME slot touches this box,
+	# so nothing is displaced by adding it and nothing hides.
+	WorldLabel.reserve(Rect2(Vector2(552, 500), Vector2(314, 186)))
+	# The rig's two faces moved 60 units south in round 12 (critique #3: at y 318
+	# they sat in the top-right corner box, under the HP and Focus bars), so their
+	# reservations follow them.
+	for m: Vector2 in [Vector2(430, 300), Vector2(540, 296), Vector2(650, 300), Vector2(1060, 378), Vector2(1170, 380)]:
 		WorldLabel.reserve(Rect2(m - Vector2(44, 34), Vector2(108, 64)))
 
 # ---------------------------------------------------------- grounding -------
@@ -552,7 +614,13 @@ static func _build_gpu_rig(parent: Node2D) -> void:
 	var z := Node2D.new()
 	z.name = "GpuRig"
 	parent.add_child(z)
-	var desk_y := 360.0
+	# ROUND 12, critique #3, the top-RIGHT corner box: the arrival frame shows
+	# world y 280..1000, the HP and Focus bars are painted across its first 70
+	# units (y 280..350) in the last 300 of its width, and the rig's two monitor
+	# faces stood at y 318 and 320 — i.e. the bars were drawn over two dark
+	# screens, every visit. The whole workstation steps 60 units south; nothing
+	# about the composition changes except that the corner above it is empty.
+	var desk_y := 420.0
 	var desk_z := _depth(desk_y, 48)
 	_drop_shadow(z, Vector2(1120, desk_y + 40), 208.0, desk_z - 1)
 	_put(z, "furn_desk", Vector2(1120, desk_y), desk_z, 0.9)
@@ -561,15 +629,15 @@ static func _build_gpu_rig(parent: Node2D) -> void:
 	# light bank sitting three metres from its first; the rig's thermal pool below
 	# still says the machine is running. Neither carries a readout either: the
 	# joke about 94 degrees belongs behind [E] on the terminal prop, per LAW 10.
-	_add_monitor(z, Vector2(1060, 318), WARM, "", WARM, false, false)
-	_add_monitor(z, Vector2(1170, 320), WARM, "", WARM, false, false)
+	_add_monitor(z, Vector2(1060, 378), WARM, "", WARM, false, false)
+	_add_monitor(z, Vector2(1170, 380), WARM, "", WARM, false, false)
 	# stacked GPU crates
-	var box_z := _depth(470, 52)
-	_drop_shadow(z, Vector2(1200, 512), 118.0, box_z - 1)
-	_put(z, "furn_boxes", Vector2(1200, 470), box_z, 0.8, Color(0.7, 0.85, 1.0))
-	var chair_z := _depth(470, 44)
-	_drop_shadow(z, Vector2(1110, 505), 84.0, chair_z - 1)
-	_put(z, "furn_chair", Vector2(1110, 470), chair_z, 1.0, Color(0.85, 0.85, 1.0))
+	var box_z := _depth(530, 52)
+	_drop_shadow(z, Vector2(1200, 572), 118.0, box_z - 1)
+	_put(z, "furn_boxes", Vector2(1200, 530), box_z, 0.8, Color(0.7, 0.85, 1.0))
+	var chair_z := _depth(530, 44)
+	_drop_shadow(z, Vector2(1110, 565), 84.0, chair_z - 1)
+	_put(z, "furn_chair", Vector2(1110, 530), chair_z, 1.0, Color(0.85, 0.85, 1.0))
 
 # --------------------------------------------------------- server corner ----
 
@@ -610,8 +678,14 @@ static func _build_kitchen(parent: Node2D) -> void:
 	# One can colour, desaturated. Three saturated flavours of regret on the floor
 	# was three more hues than LAW 2 allows the room.
 	var can_cols: Array[Color] = [Color(0.46, 0.48, 0.44), Color(0.50, 0.46, 0.42), Color(0.44, 0.47, 0.50)]
+	# ROUND 12, critique #3, the top-LEFT corner box: the arrival frame starts at
+	# world y 280 and the token/credit readout is printed across its first 70
+	# units in the first 260 of its width — which is exactly where these five cans
+	# lay (x 185..273, y 308..322). "70 tk · 20 cp" was being read through a pile
+	# of empties. 58 units south puts them on open boards under the counter's
+	# baseline, still spilling out of the kitchen they came from.
 	for i in 5:
-		var cpos := Vector2(185 + i * 22, 308 + (i % 2) * 14)
+		var cpos := Vector2(185 + i * 22, 366 + (i % 2) * 14)
 		var col: Color = can_cols[i % 3]
 		if _put(z, "int_can", cpos, _depth(cpos.y, 8), 1.0, col):
 			continue
@@ -647,14 +721,19 @@ static func _build_clutter(parent: Node2D) -> void:
 	var boxes_z := _depth(850, 52)
 	_drop_shadow(z, Vector2(210, 894), 130.0, boxes_z - 1)
 	_put(z, "furn_boxes", Vector2(210, 850), boxes_z)
-	var boxes2_z := _depth(900, 52)
-	_drop_shadow(z, Vector2(300, 932), 96.0, boxes2_z - 1)
-	_put(z, "furn_boxes", Vector2(300, 900), boxes2_z, 0.7)
+	# The flat's bottom HUD band is world y 890..1000 (spawn.y + 250 .. + 360), so
+	# the second stack at y 900 stood behind the ability bar and the controls
+	# footer (critique #3). Tucked in beside the first instead.
+	var boxes2_z := _depth(846, 52)
+	_drop_shadow(z, Vector2(330, 878), 96.0, boxes2_z - 1)
+	_put(z, "furn_boxes", Vector2(330, 846), boxes2_z, 0.7)
 	# Pizza-box strata, beside the sign that calls it archaeology: a leaning
 	# tower of closed boxes (deeper layers greasier) plus one open single with
 	# the last slice preserved in situ. The flat rects stay as the fallback.
 	if _put(z, "int_pizza_stack", Vector2(905, 812), _depth(812.0, 27.0)):
-		_put(z, "int_pizza_box", Vector2(723, 896), _depth(896.0, 16.0))
+		# 868, not 896: the single box sat dead centre in the bottom HUD band,
+		# directly under the "+5 tokens" toast lane (critique #3).
+		_put(z, "int_pizza_box", Vector2(700, 868), _depth(868.0, 16.0))
 	else:
 		for p: Vector2 in [Vector2(880, 800), Vector2(930, 820), Vector2(700, 880)]:
 			var box := ColorRect.new()
@@ -674,8 +753,11 @@ static func _build_clutter(parent: Node2D) -> void:
 	_drop_shadow(z, Vector2(1462, 336), 84.0, spool_z - 1, 0.30)
 	_put(z, "dress_cable_spool", Vector2(1462, 300), spool_z, 0.85, Color(0.86, 0.88, 0.96))
 	# Cable spaghetti from the battlestation to the server corner
-	_cable(z, [Vector2(520, 400), Vector2(700, 430), Vector2(950, 380), Vector2(1300, 300)], Color(0.1, 0.1, 0.12))
-	_cable(z, [Vector2(1120, 430), Vector2(1250, 380), Vector2(1400, 320)], Color(0.12, 0.11, 0.13))
+	# The long run ends at 360 rather than 300: its last span used to climb into
+	# the top-right corner box, i.e. a dark line drawn under the HP bars
+	# (critique #3). The rig's own loom follows the rig's 60-unit move south.
+	_cable(z, [Vector2(520, 400), Vector2(700, 430), Vector2(950, 400), Vector2(1300, 380)], Color(0.1, 0.1, 0.12))
+	_cable(z, [Vector2(1120, 490), Vector2(1250, 440), Vector2(1400, 380)], Color(0.12, 0.11, 0.13))
 	_cable(z, [Vector2(300, 300), Vector2(360, 420), Vector2(430, 470)], Color(0.09, 0.09, 0.11))
 	# The four additive catch-lights that used to sit on the cable bends are gone.
 	# A specular dot on a cable is not one of LAW 3's five bright things, and four
@@ -686,11 +768,11 @@ static func _build_clutter(parent: Node2D) -> void:
 	# converge on it from both desks (extra cables only when the strip exists,
 	# so no run ever ends at empty floor).
 	if _put(z, "int_power_strip", Vector2(706, 436), -76):
-		_cable(z, [Vector2(1120, 430), Vector2(960, 466), Vector2(812, 452), Vector2(716, 438)], Color(0.11, 0.10, 0.13))
+		_cable(z, [Vector2(1120, 490), Vector2(960, 470), Vector2(812, 452), Vector2(716, 438)], Color(0.11, 0.10, 0.13))
 		_cable(z, [Vector2(696, 436), Vector2(602, 452), Vector2(508, 438), Vector2(452, 458)], Color(0.10, 0.11, 0.14))
 	# Sticky notes along both desk fronts. Estimates. All of them say TODO.
 	_put(z, "int_sticky_strip", Vector2(476, 349), _depth(340.0, 48.0) + 1)
-	_put(z, "int_sticky_strip", Vector2(1086, 372), _depth(360.0, 48.0) + 1, 0.8)
+	_put(z, "int_sticky_strip", Vector2(1086, 432), _depth(420.0, 48.0) + 1, 0.8)
 	# Wall posters (side walls) for depth + jokes
 	# Two of the three posters lose their text. Printed matter is artwork, and
 	# three more blocks of glowing world type in a room capped at four labels is
@@ -885,9 +967,19 @@ static func _poster(parent: Node2D, pos: Vector2, color: Color, text: String, gl
 
 # ------------------------------------------------------------ lighting ------
 
-## Hero lighting. FOUR sources, and they are all things you can point at in the
-## picture: the one lamp this person owns, the monitor bank, the city through the
-## window, and the exit neon. Claude's key light is the fifth, in _build_poi_pools.
+## Hero lighting. TWO sources, and they are the two LAW 3 allows: the one lamp
+## this person owns, and the monitor bank he is destroying his life in front of.
+##
+## ROUND 12: the flat ran FOUR PointLight2Ds (lamp, monitor bank, window fill,
+## and Claude's key in _build_poi_pools) on top of world.gd's two wall fixtures,
+## which is a room lit from six directions and therefore lit from none. The two
+## that go are the two with no fixture in the picture: the "city through the
+## window" — a light standing in a room, in a flat whose window is a texture on
+## the back wall — and Claude's private spotlight. BOTH KEEP THEIR POOLS. A pool
+## is a puddle on the floor with an edge; a PointLight2D is a second exposure
+## laid over every sprite in reach, and it was the second exposure that flattened
+## the room. Claude still stands in a warm circle, and the objective line, his
+## name tag and the waypoint chevron are what actually find him.
 ##
 ## ROUND 7 removed eleven more: a light per monitor (five), the fridge, the bed,
 ## the server racks, the SHIP OR DIE poster, the doorway wash and the portal
@@ -910,11 +1002,9 @@ static func _build_lighting(parent: Node2D) -> void:
 	# the floor in front of the desk.
 	_add_light(z, Vector2(545, 335), ACCENT, 0.6, 3.4)
 	_light_pool(z, Vector2(545, 410), 360.0, ACCENT, 0.22)
-	# 3. City light through the big window — a cool FILL behind the desk, not a
-	# third key. LAW 3 allows two motivated sources and this room's two are the
-	# lamp and the monitor bank; at 0.7 energy and a 0.22 wash the window was
-	# quietly making a third, which is most of why the flat reads evenly lit.
-	_add_light(z, Vector2(545, 170), Color(0.48, 0.60, 0.88), 0.5, 4.2)
+	# 3. City light through the big window — a cool FILL behind the desk, and now
+	# ONLY a fill: the PointLight2D is gone (round 12) and what is left is the
+	# wash on the floorboards, which is the part that ever read as a window.
 	var pool := Sprite2D.new()
 	pool.texture = _light_tex()
 	pool.material = _additive_mat()
@@ -934,7 +1024,7 @@ static func _build_lighting(parent: Node2D) -> void:
 	# BED's with them: a 300px cold puddle in the corner of a dark bedroom with
 	# nothing above it to be coming from. The rig's stays — a rack of GPUs at
 	# load is a heat source you can point at, and the flat's fiction is built on it.
-	_light_pool(z, Vector2(1120, 424), 300.0, WARM, 0.14)         # the rig's thermals
+	_light_pool(z, Vector2(1120, 484), 300.0, WARM, 0.14)         # the rig's thermals
 	# 4. The exit fixture, DARK (critique #9: "5 monitors + cyan tube" alight in a
 	# room LAW 3 gives two motivated sources). A flickering overbright tube on the
 	# ceiling was the brightest thing in the right half of the frame — brighter
@@ -947,7 +1037,10 @@ static func _build_lighting(parent: Node2D) -> void:
 	# black bar drawn over the player's head. It y-sorts like the furniture it is.
 	_rect(z, Vector2(PORTAL_POS.x, 366.0), Vector2(106, 12), Color(0.05, 0.055, 0.075, 0.95), _depth(366.0, 6.0))
 	_rect(z, Vector2(PORTAL_POS.x, 371.0), Vector2(94, 3), Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.16), _depth(366.0, 7.0))
-	_light_pool(z, PORTAL_POS + Vector2(-20, 10), 380.0, ACCENT, 0.15)
+	# Centred ON the door and 80 units narrower than it was, so the doorway's
+	# puddle stops at x 1260 and the arrival frame (which ends at 1280) does not
+	# get a bar of cyan bleeding in from an object it cannot see (critique #7).
+	_light_pool(z, PORTAL_POS + Vector2(0, 10), 300.0, ACCENT, 0.15)
 
 ## Claude, standing in the one honest spotlight in the apartment. That is the
 ## whole function now.
@@ -961,7 +1054,9 @@ static func _build_poi_pools(parent: Node2D) -> void:
 	var z := Node2D.new()
 	z.name = "PoiPools"
 	parent.add_child(z)
-	_add_light(z, Vector2(820, 552), Color(1.0, 0.87, 0.62), 0.55, 3.0)
+	# ROUND 12: the PointLight2D is gone and the puddle stays (see _build_lighting
+	# for why). Four real lights in a two-hue flat was double LAW 3's allowance,
+	# and this was the one with nothing above it to be coming from.
 	_light_pool(z, Vector2(820, 586), 240.0, Color(1.0, 0.85, 0.58), 0.26)
 	# The last two point-of-interest puddles — one on the Dream App terminal, one
 	# on the deploy button — are gone with round-11 critique (f). They were the
@@ -1063,11 +1158,18 @@ static func _build_signs(parent: Node2D) -> void:
 	var z := Node2D.new()
 	z.name = "Signs"
 	parent.add_child(z)
-	# Above the door and clear of both the rig's monitor faces (reserved to y 350)
-	# and the portal's own 260x220 box (which starts at y 402). It travels with
-	# PORTAL_POS: the door moved 80 units in this round and a fixed arrow would
-	# have ended up inside the box it is supposed to point at.
-	_sign(z, Vector2(PORTAL_POS.x - 154.0, 366), "EXIT \u2192", ACCENT, 3, "headline")
+	# Above the door and clear of both the rig's monitor faces and the portal's own
+	# 260x220 box. It travels with PORTAL_POS, so a door that moves cannot leave
+	# its own arrow behind.
+	#
+	# ROUND 12: 170 back and up at y 300, for two reasons. The door is fully
+	# outside the arrival frame now (critique #7), so the EXIT arrow is the ONLY
+	# thing telling a new player there is a way out \u2014 it has to be inside the
+	# frame's right edge at x 1280, and at PORTAL_POS.x - 170 its text runs
+	# 1205..1275. And y 366 is now the rig's reserved monitor band (the rig moved
+	# south this round), which would have displaced the one caption in the flat
+	# that must never move.
+	_sign(z, Vector2(PORTAL_POS.x - 170.0, 300), "EXIT \u2192", ACCENT, 3, "headline")
 	# On Claude's FAR side and at the height of his FEET, never above him
 	# (round-8 critique #9): his name tag owns the whole column above his head and
 	# the frames show this line landing in it. His silhouette is reserved to
@@ -1117,11 +1219,11 @@ static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 	for i in token_positions.size():
 		var t = token_scene.instantiate()
 		t.token_type = token_types[i % token_types.size()]
-		t.position = token_positions[i]
+		t.position = _arrival_spot(token_positions[i])
 		tokens.add_child(t)
 
 	# Keep the opening gentle: bugs live on the FAR-RIGHT (toward the exit), away
-	# from the spawn (720,640), Claude (820,560) and the token-collection path, so
+	# from the spawn (600,640), Claude (820,560) and the token-collection path, so
 	# a new player can explore/collect/talk before combat is encountered by heading
 	# for the door. (Respawns return to the spawn point, never into this cluster.)
 	var enemy_scene := preload("res://scenes/combat/enemy.tscn")
@@ -1131,7 +1233,10 @@ static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 		var en = enemy_scene.instantiate()
 		en.enemy_type = "bug"
 		en.max_hp = 20
-		en.position = pos
+		# _arrival_spot keeps a body off the frame's right-hand cut (critique #7).
+		# Both of these already stand 50+ units clear of it; the guard is what
+		# stops the next nudge putting half a bug back on the edge.
+		en.position = _arrival_spot(pos)
 		enemies.add_child(en)
 
 	var npc_scene := preload("res://scenes/world/npc.tscn")
@@ -1166,7 +1271,7 @@ static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 		"prop_bed": [Vector2(1300, 772), "Bed"],
 		"prop_server": [Vector2(1452, 272), "Server rack"],
 		"prop_whiteboard": [Vector2(950, 138), "Whiteboard"],
-		"prop_terminal": [Vector2(1120, 416), "Terminal"],
+		"prop_terminal": [Vector2(1120, 476), "Terminal"],
 		"prop_router": [Vector2(1352, 300), "Router"],
 		"prop_monitors": [Vector2(600, 300), "Battlestation monitors"],
 		"prop_sticker": [Vector2(470, 430), "Sticker-covered laptop"],

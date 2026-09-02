@@ -21,7 +21,7 @@ extends Control
 ##   a README that says 'TODO: ...'     ONE line while there is no architecture;
 ##                                      the diagram appears when there is one
 ##   Features 0 · Stability 0 · ...     what you have built
-##   ✗ Features 0/15 · ...              why you cannot ship
+##   [ ] Features 0/15 · ...            why you cannot ship
 ##   You have 70 tk · ... · +2% debt    what you can spend
 ##   nine upgrade rows                  one line each
 ##   Deploy To Production               the one primary action
@@ -350,15 +350,22 @@ func _confirm_purchase(bought: String, debt: int) -> void:
 			_subtitle.text = _base_subtitle
 			_subtitle.add_theme_color_override("font_color", _GameTheme.TEXT_DIM))
 
-## The ship checklist: explicit ✓/✗ per requirement, so "why can't I deploy" is
+## The ship checklist: an explicit [x]/[ ] per requirement, so "why can't I deploy"
+## is
 ## answered without guesswork.
 ##
 ## The framing sentence that used to sit on top of it has moved INTO the status
 ## line under the title, where it is the only thing that line does — "Not
 ## shippable · 5 requirements outstanding" says the same thing as "NOT SHIPPABLE
-## — 5 requirements left. Buy the ✗ rows below." in half the words, and the ✗
-## rows are directly beneath it, so the instruction was telling the player what
-## they were already looking at.
+## — 5 requirements left. Buy the unticked rows below." in half the words, and
+## those rows are directly beneath it, so the instruction was telling the player
+## what they were already looking at.
+##
+## THE MARKS ARE ASCII. `GameTheme.ui_font()` reports has_char() == false for
+## U+2713 ✓ and U+2717 ✗, so both were coming from an unchosen fallback face at
+## a hinting setting nobody picked; the same hole rendered the quest log's ☐ as
+## a stray horizontal stroke. [x] / [ ] is in the font and matches the bracket
+## idiom the HUD already uses for keys.
 func _update_ship_status() -> void:
 	var req := DreamAppManager.get_ship_requirements()
 	var ready := GameManager.can_ship()
@@ -371,9 +378,9 @@ func _update_ship_status() -> void:
 			["Infrastructure tier", req.infra_tier]]:
 		var d: Dictionary = entry[1]
 		var ok: bool = int(d.current) >= int(d.required)
-		var mark := "✓"
+		var mark := "[x]"
 		if not ok:
-			mark = "✗"
+			mark = "[ ]"
 			missing += 1
 		rows.append("  %s %s %d/%d" % [mark, String(entry[0]), int(d.current), int(d.required)])
 	status.text = "\n".join(rows)
@@ -399,10 +406,10 @@ func _update_ship_status() -> void:
 		_ship_btn.text = "Deploy To Production  (not yet)"
 
 const _DENIALS := [
-	"Deploy refused. The ✗ rows below are not a suggestion.",
-	"Denied. You cannot ship a ✗. We checked. Repeatedly.",
-	"Blocked. Buy the missing upgrades first — the ✗ rows, specifically.",
-	"No. And the button will keep saying no until the checklist is all ✓.",
+	"Deploy refused. The unticked rows below are not a suggestion.",
+	"Denied. You cannot ship a [ ]. We checked. Repeatedly.",
+	"Blocked. Buy the missing upgrades first — the unticked rows, specifically.",
+	"No. And the button will keep saying no until the checklist is all [x].",
 ]
 
 func _on_ship() -> void:

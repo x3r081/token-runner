@@ -177,7 +177,8 @@ func _active_card(parent: Node, info: Dictionary) -> void:
 		var prog := int(progress.get(str(od.get("id", "")), 0))
 		var need := int(od.get("count", 1))
 		var checked := prog >= need
-		var mark := "☑" if checked else "☐"
+		# See the "BALLOT BOX" note above _done_card.
+		var mark := "[x]" if checked else "[ ]"
 		var count_txt := "" if need <= 1 else ("   %d / %d" % [prog, need])
 		var body := str(od.get("text", od.get("id", "?")))
 		_row(vb, "   %s %s%s" % [mark, body, count_txt],
@@ -193,9 +194,23 @@ func _available_card(parent: Node, info: Dictionary) -> void:
 	_row(vb, _headline(info), _Modal.BODY, _GameTheme.TEXT)
 	_row(vb, "From:  %s" % _giver_line(info), _Modal.SMALL, _GameTheme.TEXT_DIM)
 
+## THE UI FONT DOES NOT HAVE A BALLOT BOX.
+##
+## `GameTheme.ui_font()` is `ThemeDB.fallback_font` — a SUBSET of Open Sans with
+## its hinting instructions stripped — rasterised with antialiasing OFF and the
+## autohinter on (see game_theme.gd). `Font.has_char()` says false for U+2610 ☐,
+## U+2611 ☑, U+2713 ✓ and U+2714 ✔, so every one of them was being drawn by some
+## other face in the fallback chain, at a size and a hinting setting nobody chose
+## for it. At SMALL the box collapsed to one or two stray horizontal strokes: the
+## quest log printed "z Talk to Claude" and the guide overlay printed a column of
+## "=" and "¬" down its ship checklist — five rows, five different marks.
+##
+## ASCII, in the same bracket idiom the game already uses for keys ([E], [H]).
+## It is in the font, it is one glyph wide at every size, and it reads as a
+## checklist from across the room.
 func _done_card(parent: Node, info: Dictionary) -> void:
 	var vb := _card(parent, _GameTheme.TEXT_DIM)
-	_row(vb, "✔  %s" % _headline(info), _Modal.SMALL, _GameTheme.TEXT_DIM)
+	_row(vb, "[x]  %s" % _headline(info), _Modal.SMALL, _GameTheme.TEXT_DIM)
 
 ## A quest block. No panel, no border, no glow: a VBox and the whitespace around
 ## it. `_accent` is kept so callers read as before; the block has no colour of

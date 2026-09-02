@@ -409,7 +409,9 @@ func _section_requirements() -> void:
 		# Met rows recede, unmet rows stay at full TEXT: the list you still have
 		# to work through is the one that should be legible from across the room.
 		var col: Color = _GameTheme.TEXT_DIM if done else _GameTheme.TEXT
-		_cell(grid, "☑" if done else "☐", _Modal.SMALL, col)
+		# ASCII on purpose — the UI font has no U+2610/U+2611 and the fallback
+		# face rasterised them as stray strokes. See quest_log.gd's note.
+		_cell(grid, "[x]" if done else "[ ]", _Modal.SMALL, col)
 		_cell(grid, str(REQ_LABELS.get(key, key)), _Modal.SMALL, col)
 		_cell(grid, "%d / %d" % [cur_v, req_v], _Modal.SMALL, col)
 	if DreamAppManager.can_ship():

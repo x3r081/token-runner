@@ -268,6 +268,7 @@ func _process(delta: float) -> void:
 		set_process(false)
 		return
 	_clock += delta
+	_update_label_visibility()
 	if _player == null or not is_instance_valid(_player):
 		_player = get_tree().get_first_node_in_group("player") as Node2D
 	var near := 0.0
@@ -291,6 +292,37 @@ func _process(delta: float) -> void:
 	_disc_mat.set_shader_parameter("core_heat", _heat)
 	if _light:
 		_light.energy = 0.5 * (0.94 + 0.06 * breathe) + near * 0.20
+
+## A CAPTION FOR A BODY THE PLAYER CANNOT SEE.
+##
+## ROUND 12, critique #6 — "three stacked navigation cues in the top-right of
+## token_vault". Two of them were the waypoint's, and the waypoint agent fixed
+## those. The third is THIS label: the vault's return portal stands above the
+## arrival camera's top edge, so the swirl is a sliver behind the region title
+## and the only legible thing left is "← Return to Localhost", hanging in open
+## floor beside the pinned chevron and its "Localhost · 14m" readout. Three
+## cues, one destination, and the one drawn largest points at nothing visible.
+##
+## The rule: a portal names its destination only while the portal is on screen.
+## The test is the CENTRE, not the bounds — a disc whose middle is past the
+## frame edge is not a doorway the player can read, it is a smear against the
+## HUD, and a label anchored 64 units under it lands in the room proper with no
+## visible object to belong to. Off-screen wayfinding is the beacon's job and
+## the beacon is already doing it.
+func _update_label_visibility() -> void:
+	if label == null:
+		return
+	var vp := get_viewport()
+	if vp == null:
+		return
+	var cam := vp.get_camera_2d()
+	if cam == null:
+		return
+	var vis := Vector2(vp.get_visible_rect().size) / cam.zoom
+	var view := Rect2(cam.get_screen_center_position() - vis * 0.5, vis)
+	var on := view.has_point(global_position)
+	if label.visible != on:
+		label.visible = on
 
 func _on_body_entered(body: Node2D) -> void:
 	if not body.is_in_group("player"):

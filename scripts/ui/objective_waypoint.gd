@@ -28,6 +28,36 @@ extends Control
 ## `_portal_clearance` and `_npc_clearance` now measure the target's real top
 ## edge off the live node and float the beacon above THAT.
 ##
+## ROUND 11 — A FROZEN MARKER IS A LYING MARKER, and the arrow is pixel art.
+##
+## Two defects, both visible in round 10's captures:
+##
+##   1. THE CHEVRON INSIDE THE PORTAL (production, corporate_enterprise). Round
+##      7's clearance arithmetic is not what failed — measure the other eight
+##      frames and the beacon sits exactly where it should, a comfortable margin
+##      above the swirl. What failed is that in THOSE TWO ROOMS this node had
+##      stopped running. Both fire a scripted event on arrival (world.gd
+##      `_trigger_production_incident` / `_trigger_all_hands_demo`), the event
+##      takes the tree, and a PAUSABLE `_process` that never ticks leaves the
+##      marker VISIBLE at the coordinates of the room you just left: production
+##      prints GPU Mines' chevron, corporate prints the Wildlands' one, each
+##      landing by coincidence inside the new room's portal. Two changes close
+##      it — `PROCESS_MODE_ALWAYS`, so `_should_hide()` can always run and hide
+##      the marker while something else owns the screen; and `_on_region_change`,
+##      which drops the target outright so a frozen frame can only ever show
+##      NOTHING rather than the wrong thing. The clearance is now also measured
+##      off the chevron's own TIP rather than its centre, so "never on the disc"
+##      is a geometric guarantee and not a margin that happens to be big enough.
+##   2. THE ROTATED ARROW (token_vault). The pinned marker was a polygon spun to
+##      an arbitrary angle, rasterised through the UI fit as a smooth-edged
+##      triangle — the one anti-aliased object in a frame that is otherwise a
+##      strict pixel grid (LAW 1), and the critic named it as such. It now snaps
+##      to one of EIGHT directions and is REBUILT rather than rotated: the points
+##      are rotated by a whole octant and rounded to whole units, and
+##      `_marker.rotation` stays 0 for the life of the node. The pulse moved from
+##      scale to opacity for the same reason — a chevron scaled by 0.94 has
+##      fractional vertices, which is the other way to grow soft edges.
+##
 ## Everything else STRUCTURAL is untouched, because all of it was load-bearing:
 ##   * the on-screen / off-screen split and the edge-pin geometry
 ##   * the panel exclusion rects, so the marker never parks on a readout
@@ -83,15 +113,29 @@ const VIEW_PAD_BOTTOM := 84.0
 ## this is pure spacing between the chevron and the words.
 const PLATE_PAD_X := 4.0
 const PLATE_PAD_Y := 2.0
-## The marker's own reach from its centre at scale 1 (the dark outline chevron,
-## a 19px point scaled 1.3). The readout clears that, times the marker's LIVE
-## scale, plus PLATE_GAP.
+## THE MARKER'S OWN GEOMETRY, in UI units, at MAG_ON_SCREEN.
+##
+## The chevron is 19 units from origin to point and 12 the other way, and the
+## dark seat behind it is the same shape at OUTLINE_GIRTH. So:
+##   CHEVRON_REACH   how far the marker reaches TOWARD what it points at
+##   CHEVRON_BACK    how far it reaches the other way, which is the side the
+##                   readout hangs off when the beacon is aimed down at a target
+## Both are quoted at magnification 1 and scaled by the live magnification.
 const CHEVRON_REACH := 24.7
+const CHEVRON_BACK := 15.6
 const RING_REACH := 24.7
+## The dark seat, one step larger than the body — LAW 7's "1px outline in
+## #0A0C16", applied to the one piece of UI that lives out in the world.
+const OUTLINE_GIRTH := 1.3
+## How big the marker is drawn in each of its two states. Whole-ish numbers on
+## purpose: the polygon is REBUILT at this magnification and rounded to whole
+## units, never scaled by a Node2D transform (see `_aim`).
+const MAG_ON_SCREEN := 1.0
+const MAG_PINNED := 1.2
 ## Clear air between the chevron's outer edge and the nearest edge of the
 ## readout. Never below 8: closer than that and the words read as part of the
 ## marker rather than as a caption under it.
-const PLATE_GAP := 9.0
+const PLATE_GAP := 12.0
 ## The band at the top of the screen that guidance owns and may not leave.
 ## Below it: the strip's cycle line ends at ~96. Above it: boss_hud.gd starts its
 ## announcement band at 222 precisely because this node hangs a readout here. A
@@ -108,7 +152,13 @@ const GUIDE_BAND_BOTTOM := 190.0
 ## sitting on the swirl, on top of the portal's own "→ GPU Mines" label.
 ## Guidance may not cover the thing it is pointing at, and it may never cover a
 ## label; both numbers are measured from the target's real TOP EDGE now.
-const PORTAL_BEACON_CLEAR := 36.0
+##
+## ROUND 11: for a PORTAL this is now the gap between the swirl's top edge and
+## the chevron's own downward TIP, not its centre. A clearance measured to a
+## centre is a promise about a point in the middle of a 40-unit-tall shape; a
+## clearance measured to the tip is the actual distance a viewer sees, and it is
+## the only version of the number that can be checked against a frame.
+const PORTAL_BEACON_CLEAR := 40.0
 const NPC_LABEL_CLEAR := 44.0
 ## Fallbacks for the two measurements, used only when the live node cannot be
 ## read: region_portal.gd's BODY_RADIUS, and npc.gd's nameplate top
@@ -119,6 +169,20 @@ const NPC_NAME_TOP := -110.0
 const PLATE_EDGE_PAD := 12.0
 
 const COMPASS := ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+
+## The chevron, pointing "up" (-Y), in whole units. Every orientation the marker
+## can take is this shape rotated by a whole eighth of a turn and rounded back
+## onto the grid — see `_aim`. It is never rotated as a transform.
+## NOTE: this is a typed Array, not a PackedVector2Array. `PackedVector2Array([...])`
+## is a runtime conversion, not a constant expression, and `const` rejects it
+## ("Assigned value for constant isn't a constant expression") — which killed the
+## whole script, and with it hud.gd, silently. An Array[Vector2] literal of
+## Vector2 constructors IS constant-foldable; `_add_chevron` packs it.
+const CHEVRON_PTS: Array[Vector2] = [
+	Vector2(0, -19), Vector2(14, 12), Vector2(0, 4), Vector2(-14, 12),
+]
+## An eighth of a turn: the only angular step the marker is allowed.
+const OCTANT := PI * 0.25
 
 ## Dry consolation prize for when the quest system has nothing for you.
 const IDLE_TARGET_NAME := "Way out"
@@ -151,6 +215,13 @@ var _target_is_npc := false
 ## mode of the chevron is carried by its WORDS now, not by a second hue.
 var _accent := _GameTheme.CYAN
 
+## Which of the eight directions the chevron is currently built for, and at which
+## magnification. -1 is "nothing built yet". The polygons are only rewritten when
+## one of the two actually changes — for a beacon sitting over a target that is
+## once, ever.
+var _octant := -1
+var _mag := 0.0
+
 var _t := 0.0
 var _resolve_t := 999.0
 var _metres := 0
@@ -159,10 +230,6 @@ var _player_cache: Node2D = null
 var _last_label_name := ""
 var _last_label_metres := -1
 var _last_label_cross := false
-## "through this portal" is only true while you can SEE the portal; pinned at the
-## screen edge the same words point at a wall. The on-screen state is therefore
-## part of the readout's cache key.
-var _last_label_inside := false
 
 ## HUD elements the marker must never sit on top of. Recomputed only when the
 ## viewport size changes, so the per-frame cost is two Rect2 point tests.
@@ -174,11 +241,20 @@ func _ready() -> void:
 	name = "ObjectiveWaypoint"
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# A MARKER THAT STOPS TICKING MUST STILL BE ABLE TO HIDE ITSELF. Everything
+	# that takes the screen from the player also pauses the tree — a scripted
+	# event, a dialogue, the pause menu — and a pausable `_process` cannot run
+	# `_should_hide()` to get out of the way. It freezes instead, visible, at
+	# whatever it was pointing at before, which is how region_production.png
+	# ended up showing GPU Mines' chevron inside Production's portal. The work
+	# this does while paused is one group scan every RESOLVE_INTERVAL and an early
+	# return out of `_should_hide()`.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_build()
 	QuestManager.quest_started.connect(_on_quest_signal)
 	QuestManager.quest_updated.connect(_on_quest_signal)
 	QuestManager.quest_completed.connect(_on_quest_signal)
-	GameManager.region_changed.connect(_on_quest_signal)
+	GameManager.region_changed.connect(_on_region_change)
 	# The objective line is content-sized, so re-measure the exclusion whenever
 	# it changes instead of only on a viewport resize (which in a windowed
 	# session may never happen after startup).
@@ -194,17 +270,19 @@ func _build() -> void:
 	_marker = Node2D.new()
 	_marker.name = "Marker"
 	_marker.visible = false
+	# NEVER ROTATED, NEVER SCALED. `_aim` rewrites the polygons instead, so every
+	# vertex the marker ever has is a whole number of UI units (LAW 1). A rotated
+	# transform is what made the token_vault arrow a smooth triangle.
+	_marker.rotation = 0.0
+	_marker.scale = Vector2.ONE
 	add_child(_marker)
 
-	# Points "up" (-Y) at rotation 0; rotation aims it at the target.
-	var pts := PackedVector2Array([
-		Vector2(0, -19), Vector2(14, 12), Vector2(0, 4), Vector2(-14, 12),
-	])
-	# The dark seat, one step larger than the body — the "1px outline in #0A0C16"
-	# LAW 7 asks of every sprite, applied to the one piece of UI that lives out
-	# in the world with them.
-	_outline = _add_chevron(pts, Color(_GameTheme.VOID.r, _GameTheme.VOID.g, _GameTheme.VOID.b, 0.9), 1.3)
-	_body = _add_chevron(pts, _accent, 1.0)
+	# The dark seat is drawn first (behind), the accent body over it. Both carry
+	# the same points at different magnifications — see `_aim`.
+	_outline = _add_chevron(CHEVRON_PTS,
+		Color(_GameTheme.VOID.r, _GameTheme.VOID.g, _GameTheme.VOID.b, 0.9), OUTLINE_GIRTH)
+	_body = _add_chevron(CHEVRON_PTS, _accent, 1.0)
+	_aim(Vector2.DOWN, MAG_ON_SCREEN)
 
 	# Positioning box for the readout. StyleBoxEmpty: the opaque bordered plate
 	# with the accent lip and the shadow is gone, and the text stands on its own
@@ -234,13 +312,47 @@ func _build() -> void:
 	_GameTheme.outline_text(_label)
 	_plate.add_child(_label)
 
-func _add_chevron(pts: PackedVector2Array, col: Color, sc: float) -> Polygon2D:
+## One layer of the chevron. `sc` is the shape's GIRTH, baked into the points by
+## `_aim` rather than applied as a transform: a Polygon2D scaled by 1.3 has
+## fractional vertices, and fractional vertices are the soft edges LAW 1 forbids.
+## It is stored on the node so `_aim` can rebuild both layers from one loop.
+func _add_chevron(pts: Array[Vector2], col: Color, sc: float) -> Polygon2D:
 	var p := Polygon2D.new()
-	p.polygon = pts
+	p.polygon = PackedVector2Array(pts)
 	p.color = col
-	p.scale = Vector2(sc, sc)
+	p.scale = Vector2.ONE
+	p.antialiased = false
+	p.set_meta("girth", sc)
 	_marker.add_child(p)
 	return p
+
+## Point the marker along `dir`, SNAPPED to one of eight directions, by rebuilding
+## the polygons rather than by rotating them.
+##
+## The base shape points up (-Y), and the old code aimed it with
+## `rotation = dir.angle() + PI/2`; the same expression picks the octant here.
+## Each vertex is scaled by the layer's girth and the magnification, rotated by a
+## whole eighth of a turn, and ROUNDED — so a diagonal chevron is still built out
+## of whole units and rasterises with the same hard edges as the cardinal ones.
+##
+## Rebuilds only when the octant or the magnification actually changes.
+func _aim(dir: Vector2, mag: float) -> void:
+	var oct := 4
+	if dir.length_squared() > 0.000001:
+		oct = posmod(int(round((dir.angle() + PI * 0.5) / OCTANT)), 8)
+	if oct == _octant and is_equal_approx(mag, _mag):
+		return
+	_octant = oct
+	_mag = mag
+	var a := float(oct) * OCTANT
+	for layer: Polygon2D in [_outline, _body]:
+		if not is_instance_valid(layer):
+			continue
+		var girth: float = float(layer.get_meta("girth", 1.0)) * mag
+		var pts := PackedVector2Array()
+		for p: Vector2 in CHEVRON_PTS:
+			pts.append((p * girth).rotated(a).round())
+		layer.polygon = pts
 
 # ------------------------------------------------------------------ signals --
 ## Any quest/region change invalidates the cached node. Resolving is deferred to
@@ -249,6 +361,23 @@ func _add_chevron(pts: PackedVector2Array, col: Color, sc: float) -> Polygon2D:
 ## corpses of the old region.
 func _on_quest_signal(_a = null, _b = null) -> void:
 	_resolve_t = RESOLVE_INTERVAL
+
+## A REGION CHANGE INVALIDATES THE MARKER, not just its cache.
+##
+## The portal it is pointing at is about to be freed with the room, and the room
+## that replaces it has not been built yet — so for one frame there is genuinely
+## nothing to point at, and for longer than that if the new region opens with a
+## scripted event (production, corporate_enterprise) that stops this node
+## ticking. Dropping the target and hiding HERE, from the signal handler, is what
+## makes those two cases show nothing instead of the last room's chevron sitting
+## in the new room's portal.
+func _on_region_change(_region_id: String = "") -> void:
+	_target = null
+	_had_target = false
+	_target_is_portal = false
+	_target_is_npc = false
+	_show(false)
+	_on_quest_signal()
 
 ## Public: force an immediate re-resolve (the HUD calls this on demand).
 func refresh_now() -> void:
@@ -386,17 +515,19 @@ func _place() -> void:
 		Vector2(VIEW_PAD_X, VIEW_PAD_TOP),
 		Vector2(maxf(view.x - VIEW_PAD_X * 2.0, 64.0), maxf(view.y - VIEW_PAD_TOP - VIEW_PAD_BOTTOM, 64.0))
 	).has_point(sp)
-	# LAW 9: the waypoint pulses 0.9 -> 1.0. Nothing else about it moves.
-	var pulse := 0.5 + 0.5 * sin(_t * 3.0)
-	# The marker's live scale, resolved before anything is placed: the readout's
-	# clearance is measured off the marker's real outer edge rather than a flat
-	# number (see CHEVRON_REACH), so the scale has to be settled first.
-	var s := (1.0 if inside else 1.18) * (0.9 + 0.1 * pulse)
-	_marker.scale = Vector2(s, s)
+	# LAW 9: the waypoint pulses 0.9 -> 1.0. It pulses in OPACITY, applied at the
+	# bottom of this function — a scale pulse puts the chevron's vertices on
+	# fractional coordinates sixty times a second, which is the same soft-edge
+	# fault as rotating it (LAW 1). Nothing else about the marker moves.
+	var pulse := 0.9 + 0.1 * (0.5 + 0.5 * sin(_t * 3.0))
+	# The marker's magnification, settled before anything is placed: every
+	# clearance below is measured off the marker's real outer edge (see
+	# CHEVRON_REACH), so the size has to be known first.
+	var s := MAG_ON_SCREEN if inside else MAG_PINNED
 	# Text — and therefore the readout's real box — before any geometry: every
 	# offset below is computed from its measured size, which is what makes the
 	# layout hold for "Open Source Wildlands" as well as for "Tokens".
-	_update_label_text(inside)
+	_update_label_text()
 	# Which side of the chevron the readout hangs off. Straight up when the
 	# beacon sits over its target; back toward the screen centre when pinned.
 	var plate_dir := Vector2.UP
@@ -405,12 +536,16 @@ func _place() -> void:
 	# clearance argument twice a second instead of settling it once.
 	var plate_anchor := Vector2.ZERO
 
+	# How far the marker reaches on the side the readout hangs off. Aimed DOWN at
+	# an on-screen target the readout sits above its back edge; pinned at the
+	# screen edge it sits behind its tip.
+	var back := CHEVRON_BACK * s
 	if inside:
 		# On screen: a beacon bobbing above the thing, aimed straight down at it,
 		# and CLEAR of both the thing's own art and the thing's own label.
 		var lift := BEACON_LIFT
 		if _target_is_portal:
-			lift = maxf(lift, _portal_clearance(vp))
+			lift = maxf(lift, _portal_clearance(vp, sp, s))
 		elif _target_is_npc:
 			lift = maxf(lift, _npc_clearance(vp))
 		var bob := sin(_t * 2.6) * 4.0
@@ -422,10 +557,10 @@ func _place() -> void:
 		pos = _avoid_vertical(pos, _ex_quest)
 		pos = _avoid_vertical(pos, _ex_toast)
 		_marker.position = pos.round()
-		_marker.rotation = PI
+		_aim(Vector2.DOWN, s)
 		plate_anchor = Vector2(pos.x, pos.y - bob)
 	else:
-		# Off screen: clamp to the margin box, angled along the line to the target.
+		# Off screen: clamp to the margin box, aimed along the line to the target.
 		var half := rect_size * 0.5
 		var centre := rect_pos + half
 		var d := sp - centre
@@ -433,13 +568,13 @@ func _place() -> void:
 			d = Vector2(0, -1)
 		var k := minf(half.x / maxf(absf(d.x), 0.01), half.y / maxf(absf(d.y), 0.01))
 		_marker.position = _avoid(centre + d * k).round()
-		_marker.rotation = d.angle() + PI * 0.5
+		_aim(d, s)
 		# Readout tucked back toward the screen centre so it never clips off-frame.
 		plate_dir = -d.normalized()
 		plate_anchor = _marker.position
+		back = (RING_REACH if _cross_region else CHEVRON_REACH) * s
 
-	var reach := (RING_REACH if _cross_region else CHEVRON_REACH) * s
-	_place_plate(plate_anchor, plate_dir, view, reach + PLATE_GAP)
+	_place_plate(plate_anchor, plate_dir, view, back + PLATE_GAP)
 
 	var alpha := 1.0
 	var p := _player()
@@ -450,7 +585,8 @@ func _place() -> void:
 			alpha = lerpf(0.16, 1.0, clampf(dist / NEAR_RADIUS, 0.0, 1.0))
 	if _fallback:
 		alpha *= 0.6
-	_marker.modulate.a = alpha
+	# LAW 9's 0.9 -> 1.0, on the chevron only: the words do not breathe.
+	_marker.modulate.a = alpha * pulse
 	_plate.modulate.a = alpha
 	_show(true)
 
@@ -551,18 +687,24 @@ func _portal_radius() -> float:
 			return s2.texture.get_size().y * 0.5 * absf(s2.scale.y)
 	return PORTAL_BODY_RADIUS
 
-## How far above a PORTAL's projected position the beacon floats: the marker's
-## centre sits PORTAL_BEACON_CLEAR above the swirl's TOP EDGE, which leaves its
-## downward point about half that clear of the artwork — attached to the
-## doorway, never on it.
+## How far above a PORTAL's projected position the beacon floats, as a lift from
+## `sp`: enough that the chevron's downward TIP lands PORTAL_BEACON_CLEAR above
+## the swirl's top edge. Attached to the doorway, never on it.
 ##
-## `sp` is already SP_NUDGE world units above the origin, so that much of the
-## body is paid for; the rest of the radius plus the clearance is what is left.
+## The top edge is PROJECTED, not computed: the world point at the top of the
+## disc goes through `_world_to_ui`, the same transform that placed `sp`. Round 7
+## multiplied the radius by `_zoom_of()` instead and reached the same answer by a
+## second route — two ways of asking where the portal is, which is one more than
+## a guarantee can survive. One transform, one answer, and the clearance is then
+## a plain subtraction in the space the marker is actually positioned in.
+##
 ## The portal's own destination label lives BELOW the mouth (region_portal.gd
 ## LABEL_TOP), so clearing the art clears the text by construction — the beacon
 ## and the label are on opposite sides of the doorway and cannot meet.
-func _portal_clearance(vp: Viewport) -> float:
-	return (_portal_radius() - SP_NUDGE) * _zoom_of(vp) + PORTAL_BEACON_CLEAR
+func _portal_clearance(vp: Viewport, sp: Vector2, mag: float) -> float:
+	var top: float = _world_to_ui(
+		_target.global_position + Vector2(0, -_portal_radius()), vp).y
+	return sp.y - (top - PORTAL_BEACON_CLEAR - CHEVRON_REACH * mag)
 
 ## How far above an NPC the beacon floats: NPC_LABEL_CLEAR above the TOP of
 ## their nameplate.
@@ -595,32 +737,25 @@ func _apply_accent() -> void:
 	if is_instance_valid(_body):
 		_body.color = _accent
 
-## ONE line, always. Everything the design law requires — where you are headed,
-## how far, and the physical action — fits on a single line.
+## ONE line, always: where you are headed and how far. Nothing else.
 ##
-## `on_screen` matters: "through this portal" is an instruction only while the
-## portal is in frame. Pinned at the screen edge those words point at a wall, so
-## the phrasing switches to the direction the chevron is already giving.
-func _update_label_text(on_screen: bool) -> void:
+## ROUND 11 removes the last variant of it. Off screen the line used to read
+## "Localhost · 14m · head for the portal", and region_token_vault.png is what
+## that costs: an arrow, "Localhost · 14m · head for the portal" beside it, and
+## the portal's own "← Return to Localhost" a few pixels above — THREE navigation
+## cues stacked in one corner, all saying the same sentence. The instruction was
+## also the least useful third of it, because the chevron is already pointing at
+## the door and the door is already captioned. One line, one arrow, and the
+## portal keeps its own name (LAW 4: wayfinding first, and once).
+func _update_label_text() -> void:
 	if _target_name == _last_label_name and _metres == _last_label_metres \
-			and _cross_region == _last_label_cross and on_screen == _last_label_inside:
+			and _cross_region == _last_label_cross:
 		return
 	_last_label_name = _target_name
 	_last_label_metres = _metres
 	_last_label_cross = _cross_region
-	_last_label_inside = on_screen
 	if _cross_region:
-		if on_screen:
-			# VISUAL_BIBLE_V2 defect #5: while the portal is in frame the doorway
-			# is already a two-element cluster — this chevron (direction and
-			# distance) and region_portal's own $Label (the destination name).
-			# "· through this portal" was a third element saying what the arch
-			# under it already says, and in the dependency frame it ran straight
-			# across the "node_modules" prop caption. Off screen there is no
-			# portal to read, so THAT phrasing stays.
-			_label.text = "%s · %dm" % [_target_name, _metres]
-		else:
-			_label.text = "%s · %dm · head for the portal" % [_target_name, _metres]
+		_label.text = "%s · %dm" % [_target_name, _metres]
 	elif _target_name == "":
 		_label.text = "%dm" % _metres
 	elif _metres <= 3:

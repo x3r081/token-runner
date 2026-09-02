@@ -99,9 +99,9 @@ func _deploy_blocked_text() -> String:
 			["Infrastructure tier", req.infra_tier]]:
 		var d: Dictionary = entry[1]
 		if int(d.current) < int(d.required):
-			rows.append("  ✗ %s %d/%d" % [String(entry[0]), int(d.current), int(d.required)])
+			rows.append("  [ ] %s %d/%d" % [String(entry[0]), int(d.current), int(d.required)])
 	if rows.is_empty():
-		rows.append("  ✗ something the checklist knows about and this button does not.")
+		rows.append("  [ ] something the checklist knows about and this button does not.")
 	return "Deploy blocked. The Dream App is not shippable yet.\n\nOUTSTANDING:\n%s\n\nOpen the Dream App console with [B] and buy the missing upgrades. Tokens come from pickups, quests and defeated bugs.\n\n(Yes, you could ship it anyway. No, you cannot: we added a check. You're welcome.)" % "\n".join(rows)
 
 ## Running-gag inboxes, ads and healthchecks — rotated so a repeat visit is a

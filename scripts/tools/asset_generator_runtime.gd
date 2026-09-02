@@ -1108,12 +1108,16 @@ func _floor_tones(hex: String, alt: bool) -> FloorTones:
 
 ## Per-region floor tiles (LAW 6). Ten materials, each one recognisable at 32px
 ## and none of them a tinted copy of another: plank grain, sludge slabs,
-## cracked sandstone, a basket weave, a steel grille, loam, carpet pile,
-## riveted plate, poured concrete and laid gold.
+## cracked sandstone, flagstone under rug runners, a steel grille, loam, carpet
+## pile, riveted plate, poured concrete and laid gold. Each pair is measured
+## twice on the way out — for luminance, and for quiet.
 func _generate_tileset() -> void:
 	for rname: String in FLOOR_REGIONS:
-		_save_floor_tile(_make_floor_tile(rname, false), "tile_%s.png" % rname)
-		_save_floor_tile(_make_floor_tile(rname, true), "tile_%s_b.png" % rname)
+		var a := _make_floor_tile(rname, false)
+		var b := _make_floor_tile(rname, true)
+		_save_floor_tile(a, "tile_%s.png" % rname)
+		_save_floor_tile(b, "tile_%s_b.png" % rname)
+		_report_floor_quiet(rname, a, b)
 
 ## One seamless 64x64 floor texture. `alt` is the B variant: the same material
 ## two percent down, with its one small inset detail.
@@ -1150,9 +1154,81 @@ func _save_floor_tile(img: Image, filename: String) -> void:
 			filename, m, FLOOR_MEAN_MIN, FLOOR_MEAN_MAX])
 	_save_image(img, filename)
 
+## ---- The second gate: QUIET. -------------------------------------------
+## The luminance gate above answers "is this floor visible". It cannot answer
+## "is this floor calm", and round 12 found a floor that passed the first and
+## failed the second badly: the API Bazaar weave was in the window at every
+## pixel and still turned the frame into static, because it changed tone every
+## two pixels across all 4096 of them. Only 16.7% of that frame was quiet
+## against 67-77% in every other region.
+##
+## So quiet becomes a number too. Lay the A/B pair down as a 4x4 checkerboard
+## — the worst case, since the builder's cell hash only ever asks for the B
+## variant 38% of the time — cut the render into 32px blocks, and count the
+## blocks whose internal luminance range is at most FLOOR_QUIET_RANGE. A block
+## that spans nothing but stone is quiet; a block a rug runner crosses is not,
+## and that is the point. The ratio is how much of the ground a stall can
+## stand on without competing with it.
+const FLOOR_QUIET_BLOCK := 32
+const FLOOR_QUIET_RANGE := 12.0
+const FLOOR_QUIET_MIN := 0.65
+## Only the material this window was written for is GATED. The other nine
+## floors are the critic's keep list — sandstone's mortar joints and the
+## grating's load bars are meant to be read, and measuring them as "loud" is
+## correct and irrelevant. They are printed as data and never failed.
+const FLOOR_QUIET_GATED := "api_bazaar"
+
+## Rec.709 luma of every pixel, once, so the block loop below never touches
+## get_pixel again (it would otherwise read 65536 pixels per region).
+func _tile_luma(img: Image) -> PackedFloat32Array:
+	var w := img.get_width()
+	var h := img.get_height()
+	var out := PackedFloat32Array()
+	out.resize(w * h)
+	for y in h:
+		for x in w:
+			out[y * w + x] = _luma255(img.get_pixel(x, y))
+	return out
+
+@warning_ignore("integer_division")
+func _floor_quiet_fraction(a: Image, b: Image) -> float:
+	var tw := a.get_width()
+	var th := a.get_height()
+	var cols := (tw * 4) / FLOOR_QUIET_BLOCK
+	var rows := (th * 4) / FLOOR_QUIET_BLOCK
+	if cols <= 0 or rows <= 0:
+		return 1.0
+	var la := _tile_luma(a)
+	var lb := _tile_luma(b)
+	var quiet := 0
+	for by in rows:
+		for bx in cols:
+			var lo := 1024.0
+			var hi := -1024.0
+			for iy in FLOOR_QUIET_BLOCK:
+				var gy := by * FLOOR_QUIET_BLOCK + iy
+				for ix in FLOOR_QUIET_BLOCK:
+					var gx := bx * FLOOR_QUIET_BLOCK + ix
+					var src := lb if (((gx / tw) + (gy / th)) & 1) == 1 else la
+					var l := src[(gy % th) * tw + (gx % tw)]
+					lo = minf(lo, l)
+					hi = maxf(hi, l)
+			if hi - lo <= FLOOR_QUIET_RANGE:
+				quiet += 1
+	return float(quiet) / float(rows * cols)
+
+func _report_floor_quiet(rname: String, a: Image, b: Image) -> void:
+	var q := _floor_quiet_fraction(a, b)
+	print("LAW 6 quiet: %-14s %3d%% of 32px blocks within %d/255" % [
+		rname, int(round(q * 100.0)), int(FLOOR_QUIET_RANGE)])
+	if rname == FLOOR_QUIET_GATED and q < FLOOR_QUIET_MIN:
+		push_error("LAW 6 quiet: %s floor at %.2f is under the %.2f minimum" % [
+			rname, q, FLOOR_QUIET_MIN])
+
 ## Every region material, in one place. Light is from the top-left everywhere,
 ## so a seam is followed by a lit lip and never the other way round, and `alt`
-## adds the single inset detail and nothing else.
+## adds the single inset detail and nothing else — except the bazaar, whose
+## alt carries the rug runner that the field no longer wears all over.
 func _floor_material(img: Image, mat: String, t: FloorTones, alt: bool) -> void:
 	match mat:
 		"planks":
@@ -1267,35 +1343,95 @@ func _floor_sandstone(img: Image, t: FloorTones, alt: bool) -> void:
 		for i in 9:
 			_px(img, 36 + i, 20 + (i >> 1), t.seam)
 
-## API BAZAAR — the market's woven floor. A basket weave in 16px blocks that
-## alternate warp and weft: four cords per block, each with a lit crown and a
-## shaded flank, and a dark butt end where the block passes under its
-## neighbour. The old kilim stamped a full diamond into every 32px cell, which
-## is a PATTERN competing with every stall standing on it; the motif survives
-## as one small inlay on the B tile.
+## API BAZAAR — flagstone, with the weave kept as rug runners.
+##
+## ROUND 12, finding #4: the basket weave that used to live here alternated
+## t.hi and t.lip every two pixels across all 4096, and three hundred of those
+## tiles is not a material — it is visual static. LAW 6 asks for STRUCTURE, and
+## structure is not texture: a floor earns it with a few long readable lines,
+## not with a tone change every other pixel. The market's stalls, tokens and
+## NPCs were competing with the ground they stand on.
+##
+## The field is now flagstone. Four 32px stones per tile in a running bond, two
+## stone tones 5.6% apart, one 1px joint and the 1px lit lip that follows it.
+## Every pixel of the field lives inside a single WEAVE_QUIET_RANGE window, so
+## a 32px block that lands anywhere on the stone measures quiet.
+##
+## The weave is not deleted, it is placed: it survives at FULL material
+## contrast (LAW 6's seam AND its highlight both appear in it, which the field
+## no longer spends) as one 8px-pitch runner band along the bottom border of
+## the B tile only. The builder asks for B on 38% of cells, so the market keeps
+## rugs underfoot on about a third of its ground and the rest is quiet stone.
+## _report_floor_quiet measures the result at 75%.
+##
+## Values are fractions of the LAW 6 base tone. The joint is not a ratio but a
+## subtraction: it sits exactly WEAVE_QUIET_RANGE below the brightest pixel in
+## the field, which spends the whole quiet budget on the one line that has to
+## read and leaves the 12/255 gate its margin for 8-bit rounding.
+const WEAVE_LIP := 1.060
+const WEAVE_STONE_HI := 1.030
+const WEAVE_STONE_LO := 0.975
+const WEAVE_GRAIN := 0.015
+const WEAVE_QUIET_RANGE := 10.5
+## The runner: a lit leading edge, twelve rows of 4px basket weave (so the
+## motif's pitch is 8px, four times the static it replaces), and the contact
+## shadow where the far edge lies back down on the stone. It stays wholly
+## inside the tile's lower half, which is what holds the quiet fraction at
+## 0.75: the two upper 32px blocks of a B tile never see it.
+const WEAVE_BAND_Y := 50
+
 func _floor_weave(img: Image, t: FloorTones, alt: bool) -> void:
+	var b := _luma255(t.base)
+	# Named apart from t.lip / t.seam on purpose: these two are the FIELD's
+	# quiet pair, and the runner below still wants the material's loud one.
+	var stone_lip := _at_luma(t.base, b * WEAVE_LIP)
+	var stone_joint := _at_luma(t.base, maxf(b * WEAVE_LIP - WEAVE_QUIET_RANGE, 1.0))
+	var stone: Array[Color] = [
+		_at_luma(t.base, b * WEAVE_STONE_HI),
+		_at_luma(t.base, b * WEAVE_STONE_LO),
+	]
+	var grain_lo: Array[Color] = []
+	var grain_hi: Array[Color] = []
+	for s: Color in stone:
+		var sl := _luma255(s)
+		grain_lo.append(_at_luma(s, sl * (1.0 - WEAVE_GRAIN)))
+		grain_hi.append(_at_luma(s, sl * (1.0 + WEAVE_GRAIN)))
 	for y in 64:
+		# Running bond: the lower course steps half a stone, so no vertical
+		# joint ever runs the full height of the floor.
+		var course := y >> 5
+		var sy := y & 31
 		for x in 64:
-			var horiz := (((x >> 4) + (y >> 4)) & 1) == 0
-			var u: int = (y & 15) if horiz else (x & 15)
-			var v: int = (x & 15) if horiz else (y & 15)
-			var c: Color = t.base
-			if u == 0:
-				c = t.seam
-			elif (u & 3) == 1:
-				c = t.hi
-			elif (u & 3) == 3:
-				c = t.lip
-			if v == 0:
-				c = t.seam
-			elif v == 15:
-				c = t.lip
+			var ox := (x + course * 16) & 63
+			var sx := ox & 31
+			var i := ((ox >> 5) + course) & 1
+			var c: Color = stone[i]
+			if sx == 0 or sy == 0:
+				c = stone_joint
+			elif sx == 1 or sy == 1:
+				c = stone_lip
+			else:
+				# Cut-stone grain: 4px blocks at +/-1.5%, well inside LAW 6's
+				# 3% jitter and far too small to read as a second pattern.
+				var g := ((sx * 3 + sy * 5) >> 2) % 5
+				if g == 0:
+					c = grain_lo[i]
+				elif g == 3:
+					c = grain_hi[i]
 			_px(img, x, y, c)
-	if alt:
-		for dx in range(-3, 4):
-			for dy in range(-3, 4):
-				if absi(dx) + absi(dy) == 3:
-					_px(img, 40 + dx, 24 + dy, t.hi)
+	if not alt:
+		return
+	for x in 64:
+		_px(img, x, WEAVE_BAND_Y, t.hi)
+		_px(img, x, 63, t.seam)
+	for y in range(WEAVE_BAND_Y + 1, 63):
+		var r := y - WEAVE_BAND_Y - 1
+		for x in 64:
+			var over := (((x >> 2) + (r >> 2)) & 1) == 0
+			var c: Color = t.lip
+			if over:
+				c = t.hi if (r & 3) == 0 else t.mid
+			_px(img, x, y, c)
 
 ## CLOUD DISTRICT — steel grating. A 16px lattice of load bars lit on their
 ## top-left, a pan recessed between them, and one square drain hole per cell

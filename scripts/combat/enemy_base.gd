@@ -780,7 +780,8 @@ func _physics_process(delta: float) -> void:
 		return
 	if _intro_lock > 0.0:
 		_intro_lock -= delta
-	if is_boss and not _intro_done and global_position.distance_to(target.global_position) < 620.0:
+	if is_boss and not _intro_done and global_position.distance_to(target.global_position) < 620.0 \
+			and _on_camera():
 		_play_boss_intro()
 	# A committed swing owns the frame: the enemy plants and cannot chase, which
 	# is exactly what makes the telegraph dodgeable.
@@ -1344,6 +1345,35 @@ func _build_boss_presence() -> void:
 
 ## Name card, letterbox, camera push, ambience shift. Plays once, and never
 ## takes control away — the player can walk, shoot and leave during all of it.
+## IS THIS BODY INSIDE THE FRAME THE PLAYER IS ACTUALLY LOOKING AT?
+##
+## ROUND 12's critique #3 staged every boss at y 890, and the arrival camera
+## shows y 120..840 of a 1280x960 room — so a boss is DELIBERATELY off the bottom
+## of the frame when the room finishes building. The entrance trigger below is a
+## distance test (620 units) and a boss at (866,890) stands 469 units from the
+## spawn, so it fired on the first frame of every boss region: a 240-unit
+## shockwave, a 150-unit ring, a 26-dot glow burst, a camera punch, a trauma
+## kick and the boss music, all detonating around an object that is not on
+## screen. What the player got was a bright saturated wave welling up from under
+## the ability bar with no visible cause — measured at 34,000 pixels over
+## luminance 180 in the bottom third of region_production.png and
+## region_corporate_enterprise.png, against ~2,000 in every other room.
+##
+## An entrance is a thing you are supposed to WATCH. It now waits until the boss
+## is in the frame to be seen making it; chasing brings it in within a second or
+## two. `take_damage()` still triggers the intro unconditionally, so sniping a
+## boss from beyond the trigger is unchanged and the fight is never anonymous.
+func _on_camera() -> bool:
+	var vp := get_viewport()
+	if vp == null:
+		return true
+	var cam := vp.get_camera_2d()
+	if cam == null:
+		return true
+	var vis := Vector2(vp.get_visible_rect().size) / cam.zoom
+	var view := Rect2(cam.get_screen_center_position() - vis * 0.5, vis)
+	return view.has_point(global_position)
+
 func _play_boss_intro() -> void:
 	if _intro_done:
 		return

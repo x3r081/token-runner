@@ -687,6 +687,25 @@ func _rug() -> void:
 	# LAW 2: it used to carry indigo, teal, rust, gold thread AND a fringe
 	# colour — five hues in one prop, in a region that is allowed three. It is
 	# now the region's cool BASE plus ONE accent band, in three values.
+	#
+	# ROUND 12: "the rug is a flat navy quad with an anti-aliased diamond
+	# outline." Both halves were drawing mistakes rather than palette ones.
+	#
+	# FLAT: the field was ONE colour across 286x190 pixels, so the one woven
+	# object in the apartment read as a painted board next to a plank floor
+	# that has three tones and a grain. It now carries a 4px basket weave in
+	# two tones 5.8% apart — inside LAW 6's 6% ceiling, which is exactly the
+	# difference between a weave you feel and a check you count. Four pixels
+	# is also the smallest cell that survives the camera's half-scale, so the
+	# texture reads instead of shimmering.
+	#
+	# ANTI-ALIASED: nothing anti-aliased that diamond; the maths did. The old
+	# medallion was plotted with `int(absf(x - cx) * 0.7) + int(absf(y - cy))`,
+	# and the 0.7 walks the diagonal in irregular one- and two-pixel steps,
+	# which is what a smoothed edge looks like once it is 1px wide. Plain
+	# Manhattan distance draws the same diamond as a clean 45-degree stair,
+	# one pixel per step the whole way round, and the ring is 4 units deep so
+	# the half-scale cannot drop it.
 	var w := 320
 	var h := 224
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
@@ -695,6 +714,11 @@ func _rug() -> void:
 	var guard := Color(0.105, 0.125, 0.180)
 	var band := Color(0.220, 0.400, 0.440)      # the one accent, already muted
 	var fringe_col := Color(0.400, 0.380, 0.340)
+	# The weave. Same hue, same mean, +/-2.8% — one pair of threads, not a
+	# second colour and not a second pattern.
+	var warp := Color(field.r * 1.028, field.g * 1.028, field.b * 1.028)
+	var weft := Color(field.r * 0.972, field.g * 0.972, field.b * 0.972)
+	var motif := band.darkened(0.20)
 	var cx := w / 2
 	var cy := h / 2
 	# baked drop shadow so the rug sits ON the floor instead of hovering
@@ -717,14 +741,16 @@ func _rug() -> void:
 			elif edge < 17:
 				c = guard
 			else:
-				# Field with a single concentric medallion in two values.
-				var dman: int = int(absf(x - cx) * 0.7) + int(absf(y - cy))
-				if dman < 62 and dman >= 56:
-					c = band.darkened(0.20)
-				elif dman < 18 and dman >= 12:
-					c = band.darkened(0.20)
-				elif dman < 6:
+				# Woven field, then one concentric medallion stepped at 45
+				# degrees: two rings and a small dark heart, nothing else.
+				c = warp if ((((x >> 2) + (y >> 2)) & 1) == 0) else weft
+				var md: int = absi(x - cx) + absi(y - cy)
+				if md < 8:
 					c = guard
+				elif md >= 24 and md < 28:
+					c = motif
+				elif md >= 70 and md < 74:
+					c = motif
 			img.set_pixel(x, y, c)
 	_save(img, "int_rug.png")
 

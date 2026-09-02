@@ -12,7 +12,7 @@ class_name GameTheme
 ##
 ## THE MODAL RULE (LAW 8), which `panel_box`, `glass_box`, `dream_app_panel`
 ## and `ship_button` all now obey:
-##   BASE at 96%, 1px LINE border, corner radius 0–2,
+##   BASE, OPAQUE, 1px LINE border, corner radius 0–2,
 ##   shadow_size 0, no glow, no sheen, no gradient.
 ##   One ACCENT per screen (title + primary action). Body in TEXT.
 ##
@@ -286,12 +286,21 @@ static func spaced_font(spacing: int = 3) -> FontVariation:
 	return _font_cache[key]
 
 # ------------------------------------------------------------- styleboxes ----
-## THE panel. BASE 96%, 1px LINE hairline, radius 2, no shadow, no glow.
+## THE panel. BASE, OPAQUE, 1px LINE hairline, radius 2, no shadow, no glow.
 ## `accent` is accepted and ignored: a panel does not carry a colour, the one
 ## title line inside it does.
+##
+## ROUND 11 — 1.00, NOT 0.96. Four per cent of a lit world is not a subtlety at
+## these values, it is a second layer of text: ui_quest_log.png and
+## ui_dream_app.png both print a world caption ("You walked past the desk
+## again…") straight through the panel and across the panel's own body copy, and
+## the Dream App frame carries a whole prop silhouette behind its price list. A
+## modal is the one surface in this game that is allowed to be a wall. The
+## world's own recession is handled where it belongs — modal_panel.gd dims the
+## pixel stage — instead of by letting the panel leak.
 static func panel_box(accent: Color = CYAN, margin: float = 16.0) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
-	s.bg_color = with_alpha(BASE, 0.96)
+	s.bg_color = with_alpha(BASE, 1.0)
 	s.border_color = with_alpha(LINE, 0.9)
 	s.set_border_width_all(1)
 	s.set_corner_radius_all(2)

@@ -36,17 +36,59 @@ const REGION_ACCENT := {
 ## unlit set dressing loses roughly a fifth of its value and the motivated lights
 ## (LAW 4: <= 6 PointLight2D) are what carve shape out of the room. Deliberately
 ## NOT darker than that: the floor still has to be readable ground (LAW 6).
+##
+## ROUND 12 — THE LUMINANCE REGRESSION. Round 11 deleted about twenty light pools
+## (correctly: they were unmotivated fill, and critique (f) counted them), and the
+## floors went with them. Measured on the bare tile in the QA captures: 35.2 in
+## the API Bazaar, 46.9 in Localhost and the GPU Mines, 48.3 in Production, 35-61
+## across the set — against LAW 6's 64-84. The room stopped being underlit and
+## started being unreadable.
+##
+## The lever is THIS TABLE, not the pools. A pool is a puddle with an edge in one
+## place; the ambient is the exposure of the whole room, and the whole room is
+## what came out dark. Every entry is its round-11 value multiplied by a scalar,
+## so the HUE of each region is exactly what it was — the lean toward BASE, the
+## channel ordering and the relative chroma are all preserved by construction:
+##
+##   x1.25  the eight regions measuring 48-61
+##   x1.32  localhost / gpu_mines / production, measuring 46.9-48.3
+##   x1.45  api_bazaar, the darkest floor in the game at 35.2
+##
+## Channels above 1.0 are deliberate and correct: a CanvasModulate multiplies, so
+## the only way to lift a floor that the tile art already draws at #4C3244 is to
+## push the multiplier past unity. Nothing here is a colour the player sees; it is
+## an exposure.
+##
+## gpu_mines carries one more move on top of its x1.32 — see critique #8 below.
 const REGION_AMBIENT := {
-	"localhost": Color(0.76, 0.74, 0.86),
-	"dependency_district": Color(0.72, 0.82, 0.74),
-	"stackoverflow_ruins": Color(0.84, 0.79, 0.70),
-	"api_bazaar": Color(0.84, 0.72, 0.84),
-	"cloud_district": Color(0.76, 0.82, 0.90),
-	"open_source_wildlands": Color(0.72, 0.84, 0.76),
-	"corporate_enterprise": Color(0.74, 0.79, 0.88),
-	"gpu_mines": Color(0.88, 0.72, 0.66),
-	"production": Color(0.88, 0.70, 0.70),
-	"token_vault": Color(0.86, 0.80, 0.68),
+	"localhost": Color(1.003, 0.977, 1.135),
+	"dependency_district": Color(0.900, 1.025, 0.925),
+	"stackoverflow_ruins": Color(1.050, 0.988, 0.875),
+	# ROUND 12 VERIFICATION: this was x1.45 (1.218, 1.044, 1.218), calibrated
+	# against a QA frame that measured 41.4 — the darkest floor in the game. But
+	# the SAME round rebuilt that floor: the 2px-pitch herringbone became 32px
+	# flagstone authored at ~69 mean luminance. The exposure lift and the material
+	# rebuild were two fixes for one symptom, and shipping both double-counted it:
+	# the recaptured frame measures 76.7, over LAW 6's window rather than under it.
+	# Back to the x1.25 every other region gets, off the same round-11 base
+	# (0.840, 0.720, 0.840). Pure scalar, so the hue is untouched.
+	"api_bazaar": Color(1.050, 0.900, 1.050),
+	"cloud_district": Color(0.950, 1.025, 1.125),
+	"open_source_wildlands": Color(0.900, 1.050, 0.950),
+	"corporate_enterprise": Color(0.925, 0.988, 1.100),
+	# ROUND 12, critique #8: "orange ambient saturates 12% of the frame". The x1.32
+	# exposure lift would have been (1.162, 0.950, 0.871) — a 0.29 spread between
+	# the hottest and coldest channel, i.e. an orange cast on every unlit pixel in
+	# the mines, in a region whose ACCENT, WARM and enemy tells are all already
+	# red-orange. This is that colour lerped 30% toward its own luminance: same
+	# value, 30% less chroma, so the room still reads hot and the floor stops
+	# being a colour.
+	"gpu_mines": Color(1.115, 0.967, 0.911),
+	"production": Color(1.162, 0.924, 0.924),
+	# x1.21, not x1.25: the vault's gold plate already measures 61.7 in the QA
+	# capture — the brightest floor in the game — and the full lift would have put
+	# it at 77, over the top of LAW 6's 64-84 window rather than inside it.
+	"token_vault": Color(1.041, 0.968, 0.823),
 }
 
 ## --- atmosphere ------------------------------------------------------------
@@ -112,7 +154,12 @@ const AMBIENT_LIFE := {
 	"cloud_district": {"hue": Color("#E8F4FF"), "fixtures": 1, "energy": 0.45},
 	"open_source_wildlands": {"hue": Color("#C9A24A"), "fixtures": 2, "energy": 0.45},
 	"corporate_enterprise": {"hue": Color("#93A7C8"), "fixtures": 2, "energy": 0.40},
-	"gpu_mines": {"hue": Color("#FF6B2D"), "fixtures": 2, "energy": 0.55},
+	# ONE fixture in the mines (critique #8, "orange ambient saturates 12% of the
+	# frame"). The room already spends its motivated light on the heat pit —
+	# region_builder's one real PointLight2D, at full 0.9 energy in ember — so a
+	# second and third amber lamp on the walls made three orange sources in a
+	# region that is meant to have two, and the pit is the one worth keeping.
+	"gpu_mines": {"hue": Color("#FF6B2D"), "fixtures": 1, "energy": 0.55},
 	"production": {"hue": Color("#FFB020"), "fixtures": 2, "energy": 0.50},
 	"token_vault": {"hue": Color("#FFD34D"), "fixtures": 2, "energy": 0.50},
 }
@@ -270,11 +317,38 @@ func _purge_adopted() -> void:
 			_adopted.remove_at(i)
 			_adopted_hosts.remove_at(i)
 			continue
-		if is_instance_valid(host) and (host as Node).is_inside_tree():
+		if not _host_is_gone(host as Node):
 			continue
 		_adopted.remove_at(i)
 		_adopted_hosts.remove_at(i)
 		(l as Node).queue_free()
+
+## THE SWEEP COULD NOT SEE THE FREEING IT EXISTS TO CATCH.
+##
+## `_load_region` calls `_current_region_node.queue_free()` and then
+## `call_deferred("_purge_adopted")`. MessageQueue flushes BEFORE SceneTree
+## flushes its delete queue, so when the sweep ran the old region node was still
+## alive AND every descendant of it — the boss that owns a boss_hud, the player
+## that owns an ability_fx layer — was still `is_instance_valid()` and still
+## `is_inside_tree()`. Every adopted layer passed the test, and one frame later
+## its host was gone and the layer was orphaned on World forever. That is the
+## mechanism behind the stale boss card that survived a region change.
+##
+## `queue_free()` flags only the node it is called on, not its children, so
+## asking the host itself is not enough either: the walk up the parent chain is
+## what turns "my region is being torn down" into an answer this sweep can read
+## on the frame it is asked.
+static func _host_is_gone(host: Node) -> bool:
+	if not is_instance_valid(host):
+		return true
+	if not host.is_inside_tree():
+		return true
+	var n: Node = host
+	while n != null:
+		if n.is_queued_for_deletion():
+			return true
+		n = n.get_parent()
+	return false
 
 func _start_opening_sequence() -> void:
 	var intro := preload("res://scenes/ui/opening_sequence.tscn").instantiate()

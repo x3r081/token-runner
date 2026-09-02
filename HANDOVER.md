@@ -73,6 +73,16 @@ obvious in a frame.
 - **Content is data**: `data/*.json` holds quests, dialogue, events, upgrades, achievements. Adding content needs no code.
 - **Regions are built at runtime** by `scripts/world/region_builder.gd` (+ `localhost_builder.gd` for the apartment) — not authored as scenes.
 - Entry point: `scenes/main/main_menu.tscn`.
+- **Pixel-perfect pipeline (since `823a408`)**: the world renders into a fixed
+  **640×360 SubViewport** (`world.tscn` › `PixelStage` › `Viewport`) at camera
+  zoom 0.5, so 32px art at scale 2.0 is exactly one stage pixel and a 20-tile
+  region is exactly one screen wide. `scripts/world/pixel_stage.gd` blits it at
+  `K = floor(min(w/640, h/360))`, centred and letterboxed (K=2 windowed on this
+  Mac, K=3 on a 1080p monitor). `window/stretch/mode` is **disabled** on
+  purpose — any stretch would multiply the stage by a fraction and re-break the
+  grid. HUD, dialogue and modals are positioned **inside the world rect**, not
+  the window. `tools/quality_capture.gd` proves the grid on every capture by
+  asserting all pixel runs through the player sprite are multiples of K.
 
 ### Docs worth reading, in order
 
@@ -164,11 +174,29 @@ Each of these cost a debugging cycle. They will bite you too.
     ("compiled on hope" rendered as "complled"). Aliased + `HINTING_NORMAL`
     at ≥16px reads as crisp pixel text; below that, keep antialiasing.
 
+14. **This Mac cannot open a 1080-tall window** (3840×1080 ultrawide, menu
+    bar), so the game opened at 1649×928 and, under `canvas_items` stretch,
+    rendered everything at 0.859× — 2.75 screen px per art pixel. The pixel
+    grid was broken *in play* for the entire project until the SubViewport
+    pipeline. Two of the four biggest visual defects found in this effort were
+    measurement/pipeline errors, not art errors. Measure before you judge.
+
 ---
 
 ## 5. State as of this handover
 
 Committed on the branch, newest first:
+
+- `823a408` — **restraint pass 4**: the pixel-perfect pipeline above; boss
+  card gating; placeholder quads, bunting and off-grid cables removed.
+- `c56d07a` — **restraint pass 3**: readable floors — one material per region
+  (ten regions had been served by four aliased textures) with a generate-time
+  luminance gate.
+- `a105448` — **restraint pass 2**: the stamped "lit tile" cross, portals in the
+  room's own accent, unified enemy language, legible font.
+- `3ce576a` — **restraint round**: `docs/VISUAL_BIBLE_V2.md` ("Restraint", ten
+  laws), −11k lines of noise. Triggered by the user calling the game "AI slop".
+  Scored by a **cold Fable critic** reading frames only: 3.6 → 4.75 → 4.9 → 5.0.
 
 - `111f1a5` — **round 5**: deep graphics + gameplay pass (47 agents across 3
   workflows). Per-type enemy behaviours with telegraphs, multi-phase bosses,

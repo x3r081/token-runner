@@ -30,6 +30,7 @@ extends CanvasLayer
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 const _ObjectiveWaypoint = preload("res://scripts/ui/objective_waypoint.gd")
+const _Modal = preload("res://scripts/ui/modal_panel.gd")
 
 ## Above the boss layer (3) and the death red-out (2); below guidance (8),
 ## dialogue (10), event popups (15) and the opening sequence (100).
@@ -181,6 +182,13 @@ func _ready() -> void:
 	# red-out (2) — a cinematic may not dim the thing you play from — while
 	# staying below every modal that legitimately outranks it.
 	layer = HUD_LAYER
+	# A FRESH WORLD OPENS AT FULL BRIGHTNESS. The modal world-dim
+	# (modal_panel.gd) is a static hold count, and a panel that died with the
+	# previous scene — main menu, a reload, a run that ended with the map open —
+	# never got to release it. Clearing it here, in the one node that is built
+	# exactly once per world and before any panel can exist, is the whole
+	# guarantee: this layer comes up with the room at 100% or it does not come up.
+	_Modal.clear_world_dim(get_tree())
 	_theme = _GameTheme.create()
 	_build_alert_vignettes()
 	_mount_waypoint()

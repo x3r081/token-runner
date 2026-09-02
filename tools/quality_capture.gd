@@ -5,6 +5,9 @@ extends Node
 
 const OUT := "res://docs/screenshots/qa"
 
+## How long after the last `_quiet()` the shot is taken. See `_settle`.
+const QUIET_BEAT := 0.35
+
 func _ready() -> void:
 	await get_tree().process_frame
 	# This node IS current_scene, so change_scene_to_file() would free it
@@ -253,10 +256,23 @@ func _quiet() -> void:
 		n.visible = false
 	get_tree().paused = false
 
+## THE LAST _quiet() USED TO LAND ON THE SAME FRAME AS THE SHOT.
+##
+## `_quiet()` clears EventManager's active event and unpauses. Other nodes read
+## that state in THEIR `_process`, one frame later: objective_waypoint.gd hides
+## itself while an event is up (`_should_hide`) and only un-hides on its next
+## tick. Clearing the event and shooting immediately therefore captured
+## production and corporate_enterprise — the two regions that fire a scripted
+## event on arrival — with no waypoint chevron and no readout at all, which
+## reads in the frame as "the guidance system is missing in two rooms".
+##
+## So the quiet happens EARLY and the frame is taken LATE, with a beat in
+## between for everything that was hiding behind the popup to come back.
 func _settle(t: float) -> void:
 	_quiet()
-	await get_tree().create_timer(t).timeout
+	await get_tree().create_timer(maxf(t - QUIET_BEAT, t * 0.5)).timeout
 	_quiet()
+	await get_tree().create_timer(QUIET_BEAT).timeout
 
 func _shot(fname: String) -> void:
 	await RenderingServer.frame_post_draw
