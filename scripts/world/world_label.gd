@@ -258,6 +258,8 @@ static func begin(bounds: Rect2) -> void:
 	_claims.clear()
 	_prios.clear()
 	_owners.clear()
+	# The label budget is per ROOM, so the tally starts empty with the room.
+	_shown.clear()
 	_bounds = bounds
 	# The previous region's labels deregister themselves in _exit_tree, but a
 	# region torn down with free() rather than queue_free() can leave a dangling
@@ -365,10 +367,17 @@ static func add(parent: Node2D, pos: Vector2, text: String, accent: Color, opts:
 	# LAW 2 and LAW 4 decide the colour, not the caller. Wayfinding — the caption
 	# that answers "where do I go" — is the region ACCENT, lifted until it clears
 	# a readability floor. Everything else is TEXT_DIM, so a room full of captions
-	# has ONE hue in it and an obvious reading order. An explicit `color` still
-	# wins, because a monitor readout is part of its screen's artwork.
+	# has ONE hue in it and an obvious reading order. An explicit `color` wins
+	# only on PINNED text (see below), because a monitor readout is part of its
+	# screen's artwork and a caption on the floor is not.
 	var text_col: Color = _readable(accent) if prio >= 3 else TEXT_DIM
-	if opts.has("color"):
+	# An explicit colour is honoured ONLY where the text is part of a piece of
+	# ARTWORK — a readout baked onto a monitor face, a creed printed on a poster,
+	# i.e. the two PINNED styles (`tag`, `plaque`). A free-standing caption may
+	# not opt out of LAW 2: that override is how a room ends up with four
+	# differently-hued gags in it, and it is the door every off-palette caption
+	# in the frames came through.
+	if opts.has("color") and not free_standing:
 		text_col = opts["color"]
 
 	var label := _text_node(text, font_size, text_col)
@@ -414,7 +423,45 @@ static func add(parent: Node2D, pos: Vector2, text: String, accent: Color, opts:
 		# Silence beats two captions sharing pixels.
 		node.visible = false
 		node.set_process(false)
+		return node
+	_enforce_budget(node)
 	return node
+
+## LAW 4 puts world labels at FOUR per room. The round-9 frames counted five to
+## seven, and the ones this class draws were only three of them — so the cap is
+## enforced HERE rather than trusted to ten builders' worth of call sites.
+##
+## A fifth caption hides the weakest caption in the room; if the newcomer IS the
+## weakest (ties included), the newcomer is the one that goes quiet. Wayfinding
+## is priority 3 and therefore always survives, which is the entire reason the
+## captions carry a rank.
+const LABEL_BUDGET := 4
+## Every label placed since begin() that is still on screen, weakest-first
+## eviction order. Same static-state contract as _claims: one region at a time.
+static var _shown: Array = []
+
+static func _enforce_budget(node: WorldLabel) -> void:
+	var live: Array = []
+	for o in _shown:
+		if o != null and is_instance_valid(o) and o.visible:
+			live.append(o)
+	live.append(node)
+	while live.size() > LABEL_BUDGET:
+		var worst: WorldLabel = null
+		for o in live:
+			var l := o as WorldLabel
+			if l == null:
+				continue
+			# <= so a TIE drops the later arrival: an established caption keeps
+			# its slot and the newcomer is the one that goes quiet.
+			if worst == null or l._prio <= worst._prio:
+				worst = l
+		if worst == null:
+			break
+		worst.visible = false
+		worst.set_process(false)
+		live.erase(worst)
+	_shown = live
 
 ## One block of world text: aliased glyphs and a 1px black drop shadow at 80%,
 ## offset (1,1). That is the entire treatment (LAW 4).
@@ -437,6 +484,15 @@ static func _text_node(text: String, font_size: int, col: Color) -> Label:
 	lbl.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.8))
 	lbl.add_theme_constant_override("shadow_offset_x", 1)
 	lbl.add_theme_constant_override("shadow_offset_y", 1)
+	# THE HALO (round-9 critique #6: "every one rendered with a blurred dark halo
+	# rather than a 1px offset shadow"). `outline_size` was already 0 — but a
+	# Label draws its shadow TWICE when `shadow_outline_size` is set, once offset
+	# and once as an outline grown around every glyph, and that constant was
+	# inherited from the fallback theme rather than set here. Grown black around
+	# aliased 12px type it reads as a blur. Both are pinned to zero now, plus a
+	# fully transparent outline colour so no theme anywhere can put one back.
+	lbl.add_theme_constant_override("shadow_outline_size", 0)
+	lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.0))
 	# Measured from the font, not from the Label: a Control that is not yet in the
 	# tree has no resolved theme cache, so its own minimum size can come back as
 	# zero. Whichever number is bigger wins, plus a couple of pixels for bearing.

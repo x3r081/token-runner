@@ -615,21 +615,29 @@ func _struct_arch() -> void:
 
 func _floor_tiles() -> void:
 	# Warm plank flooring: 16px boards, a seam, a lit board edge, one staggered
-	# butt joint per variant. Three variants that differ by 4% of VALUE and by
+	# butt joint per variant. Three variants that differ by 2% of VALUE and by
 	# where their joint falls — nothing else. Per LAW 6 the variants must sit
 	# within 6% of each other, or a mixed floor reads as patchwork.
 	#
 	# Deleted: two grain waves, per-plank value jitter, per-pixel noise, a knot
 	# in two of three variants, a scuffed traffic streak, a sun-bleached patch
 	# and a coaster ring. At a 64px stamp every one of those repeated on a grid.
-	var base := Color(0.318, 0.234, 0.166)
+	#
+	# The tone is LAW 6's own #5A3F2A lifted 3%, and it is the one number in this
+	# file the rest of the game is measured against: these boards are the floor
+	# that reads as ground, and the revised LAW 6 was written from them. Two
+	# things were off by a hair. The bare tile measured 57-62 — a step under the
+	# 64-84 window the law states — and the three variants were 4% apart EACH,
+	# which is 8% across the set where LAW 6 allows 6%. Both are corrected here
+	# and nowhere else: the boards themselves are unchanged.
+	var base := Color(0.3648, 0.2554, 0.1703)
 	var joints: Array[int] = [12, 34, 52]
 	for v in 3:
 		var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
-		var k: float = 1.0 - 0.04 * float(v)
+		var k: float = 1.0 - 0.02 * float(v)
 		var body := Color(base.r * k, base.g * k, base.b * k, 1.0)
 		var seam := body.darkened(0.34)
-		var lip := body.lightened(0.14)
+		var lip := body.lightened(0.16)
 		var joint: int = joints[v]
 		for y in 64:
 			var ry := y & 15

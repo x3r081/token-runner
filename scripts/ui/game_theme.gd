@@ -26,12 +26,13 @@ class_name GameTheme
 ##   * BODY (18) and HEADING (26) are ALIASED, via `ui_font()`, which is the
 ##     theme's default font. That is where the project's pixel-text character
 ##     lives and those sizes have the rows to carry it.
-##   * SMALL (16) ANTIALIASES, via `small_font()` / `small_text()`. One-bit
-##     rasterisation at the size the small tier actually reaches through the
-##     canvas stretch drops a glyph feature at random. See `small_font()` for the
-##     argument; the short version is that legible beats pure.
+##   * SMALL (16) is ALIASED TOO, and by the same object: `small_font()` returns
+##     `ui_font()`. It spent one round returning a separate antialiased face, to
+##     rescue small text that the autohinter — added in the same round — had
+##     already rescued. Two rasterisations of one face is two typographic
+##     systems on one screen; see `small_font()`.
 ##
-## Three sizes exist — SMALL 16 / BODY 18 / HEADING 26 — and nothing else.
+## ONE FONT, three sizes — SMALL 16 / BODY 18 / HEADING 26 — and nothing else.
 
 # ---------------------------------------------------------------- palette ----
 # LAW 2. Three hues per scene; everything else desaturates toward grey.
@@ -236,47 +237,38 @@ static func ui_font() -> Font:
 	_font_cache["ui"] = out
 	return out
 
-## The SMALL tier's font: identical to `ui_font()` except that it antialiases.
+## The SMALL tier's font. THERE IS ONLY ONE FONT: this returns `ui_font()`.
 ##
-## This is a concession, made after looking at the frame rather than at the law.
-## LAW 1 says text is aliased, and at BODY (18) and HEADING (26) it is — those
-## sizes have the pixel rows to spare and they carry the project's typographic
-## character. SMALL does not. The UI renders through a `canvas_items` stretch, so
-## a 16px glyph is rasterised at 16 x the content scale — about 13.7px in a
-## windowed 1920x928 frame — and one-bit rasterisation at that size is a coin
-## flip per horizontal feature: the frame that triggered this shows "index" as
-## "indcx", "makes" as "makcs" and "self" as "sclf", every one of them an `e`
-## whose crossbar landed between rows.
+## It briefly returned a second, ANTI-ALIASED rasterisation of the same face,
+## as a concession to legibility: the UI renders through a `canvas_items`
+## stretch, so a 16px glyph lands at about 13.7px in a windowed 1920x928 frame,
+## and one-bit rasterisation at that size was dropping a horizontal feature per
+## word — "index" as "indcx", "self" as "sclf", every one of them an `e` whose
+## crossbar fell between two pixel rows.
 ##
-## Grey antialiasing is not the smooth vector text LAW 1 banned. That text had no
-## hinting and sub-pixel positioning on, so glyphs floated off the grid entirely.
-## This one is hinted and grid-fitted exactly like its aliased sibling; the only
-## difference is that a feature too thin for a whole pixel is allowed to render
-## as a partial one instead of vanishing. Legible small text beats pixel purity.
+## That was the WRONG FIX for the right observation, and the same round shipped
+## the right one four lines up: `force_autohinter`. The dropped crossbars were
+## an unhinted outline being rounded, not a limit of 1-bit rasterisation, and
+## the autohinter pulls the crossbar onto a row BEFORE the glyph is drawn. The
+## captured frames settle it — the HUD's 16px legend prints "[E] interact · [T]
+## model · [H] help" aliased and perfectly clean in all ten region frames, at
+## the identical size and content scale at which the menu's antialiased tip line
+## measured 89 grey levels against the title's 4.
+##
+## So the concession is withdrawn. LAW 1: text is aliased, smooth text on pixel
+## art is the loudest "generated" tell a frame can carry, and a project with two
+## typographic systems on one screen has neither. The function stays — a dozen
+## call sites name it, and `small_text()` is still the one call that sets a
+## control's font AND size together.
 static func small_font() -> Font:
-	if _font_cache.has("small"):
-		return _font_cache["small"]
-	var base: Font = ThemeDB.fallback_font
-	var out: Font = null
-	if base is FontFile:
-		var f: FontFile = (base as FontFile).duplicate()
-		f.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
-		f.hinting = TextServer.HINTING_NORMAL
-		f.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
-		f.multichannel_signed_distance_field = false
-		f.force_autohinter = true
-		out = f
-	else:
-		out = ui_font()
-	_font_cache["small"] = out
-	return out
+	return ui_font()
 
-## Set a control to the SMALL tier — the font AND the size, together.
+## Set a control to the SMALL tier — the size, and the one font, together.
 ##
-## Both, always: a size override alone leaves the control on the theme's aliased
-## default font, which is the combination that produced "sclf". Any screen with a
-## small line calls this instead of `add_theme_font_size_override("font_size",
-## GameTheme.SMALL)`.
+## Now that `small_font()` IS `ui_font()`, this is equivalent to a plain size
+## override on any control that inherits the theme; it stays because it also
+## covers the controls that inherit no theme at all (a bare Label parented to a
+## CanvasLayer), and because one call is harder to get half-right than two.
 static func small_text(c: Control) -> void:
 	if c == null:
 		return
@@ -459,10 +451,8 @@ static func style_button(btn: Button, accent: Color = CYAN, font_size: int = BOD
 	btn.add_theme_stylebox_override("pressed", boxes.pressed)
 	btn.add_theme_stylebox_override("focus", boxes.focus)
 	btn.add_theme_stylebox_override("disabled", boxes.disabled)
-	# A button asking for the small tier gets the small tier's FONT too, without
-	# its screen having to know that the small tier has one. `<= SMALL` rather
-	# than `== SMALL` so the call sites still passing the old 14 are covered.
-	btn.add_theme_font_override("font", small_font() if font_size <= SMALL else ui_font())
+	# One font at every size — the tier only chooses how big it is drawn.
+	btn.add_theme_font_override("font", ui_font())
 	btn.add_theme_color_override("font_color", TEXT)
 	btn.add_theme_color_override("font_hover_color", hot_of(accent))
 	btn.add_theme_color_override("font_pressed_color", WHITE_HOT)

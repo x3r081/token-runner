@@ -18,12 +18,13 @@ extends CanvasLayer
 ## boxes, five text registers and the name printed twice, for one enemy.
 ##
 ## What it is now, per VISUAL_BIBLE_V2 LAW 8:
-##   NAME CARD   ONE line — the boss's name, HEADING size, in the boss accent,
-##               on its own 1px shadow. No plate, no gradient, no incident
-##               number, no sub-line. On screen for 2.5s, then gone.
-##   HEALTH      ONE 4px bar directly under where the name was. No border, no
-##               label, no percentage, no phase chip, no plate. The bar getting
-##               shorter is the readout.
+##   NAME CARD   ONE line — the boss's name, HEADING size, in HOSTILE, on its
+##               own 1px shadow. No plate, no gradient, no incident number, no
+##               sub-line, no rule under it. On screen for 2.5s, then gone.
+##   HEALTH      ONE 4px bar directly under where the name was, in the same
+##               HOSTILE. No border, no label, no percentage, no phase chip, no
+##               plate. The bar getting shorter is the readout, and it stays up
+##               until the boss dies.
 ##   NOTHING     else. No scrim, no edge flare, no glow, no letterboxing. The
 ##               HUD is never dimmed by a cinematic and the world is never
 ##               darkened to make our text legible.
@@ -100,9 +101,34 @@ const PHASE_BANNERS := [
 	"PHASE 4 — the postmortem has been pre-written",
 ]
 
-var accent: Color = Color("#FF4757")
+## THE ONE COLOUR THIS LAYER SPENDS — and it is not the boss's own.
+##
+## VISUAL_BIBLE_V2 LAW 2 gives a scene three hues and reserves HOSTILE #FF4757
+## for enemy tells; LAW 7 says enemies read as hostile by silhouette plus one
+## red tell and do NOT each get a rainbow colour. `setup()` was handed
+## `enemy_base.gd`'s DEATH_ACCENTS entry — magenta for the Merge Conflict, cyan
+## for the Infinite Context, violet for Scope Creep — and painted the name card
+## and the health bar with it. In region_stackoverflow_ruins.png that put a
+## magenta title across a gold room, and in region_token_vault.png a cyan one
+## across a gold vault: a fourth hue, on the single loudest element in the
+## frame, chosen by which enemy happens to be attacking.
+##
+## A boss is an enemy. Every boss card is HOSTILE, in every room, which is both
+## the law and the more useful signal — the colour now means "this is the thing
+## hurting you" instead of "this is boss number six".
+##
+## The same value as `GameTheme.RED`, spelled out because this is a class-level
+## const; if one moves, move both.
+const HOSTILE := Color("#FF4757")
+
+var accent: Color = HOSTILE
 var boss_name: String = "BOSS"
 var boss_sub: String = "severity: yes · owner: unassigned"
+## What the caller asked for, kept because it is honest about the parameter
+## being read, and because the corpse VFX in `enemy_base.gd` still uses that
+## per-enemy colour where a one-shot burst can afford one. Nothing on THIS
+## layer paints with it.
+var requested_tint: Color = HOSTILE
 
 var _root: Control
 var _card: Control
@@ -157,8 +183,13 @@ func _tw() -> Tween:
 	return t
 
 ## Called by EnemyBase before the entrance plays.
+##
+## `tint` is recorded and NOT painted with — see HOSTILE. The signature is
+## unchanged so the call site does not have to know that the boss layer stopped
+## having opinions about colour.
 func setup(enemy_type: String, tint: Color) -> void:
-	accent = tint
+	requested_tint = tint
+	accent = HOSTILE
 	var card: Array = BOSS_CARDS.get(enemy_type, [])
 	if card.size() == 2:
 		boss_name = str(card[0])

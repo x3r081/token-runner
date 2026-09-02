@@ -45,8 +45,8 @@ Every world-space pixel is exactly **2x2 screen pixels** at 1080p.
 
 ## LAW 2 — Three hues per scene
 
-Each region gets exactly: **BASE** (the dark), **ACCENT** (the one neon), **WARM**
-(a complementary glow). Nothing else saturated. Everything not in these three is
+Each region gets exactly: **BASE** (the dark — walls, shadow, out-of-bounds; NOT
+the floor, see LAW 6), **ACCENT** (the one neon), **WARM** (a complementary glow). Nothing else saturated. Everything not in these three is
 desaturated toward grey.
 
 | region | BASE | ACCENT | WARM |
@@ -111,13 +111,36 @@ too bright.
 - Heat haze, code rain, god rays: **off by default.** One region may keep one
   atmosphere shader if it is subtle enough that a viewer would not name it.
 
-## LAW 6 — Floors are readable ground
+## LAW 6 — Floors are readable ground (REVISED after pass 2)
 
-A floor tile is a **clean 32px material** with 3 tones (base, seam, highlight),
-tiling seamlessly, with at most one subtle inset detail on ~10% of tiles. The A/B
-variant differs by **≤ 6%** value. No hash-noise plates, no bevelled-everything,
-no per-plate jitter above 3%. The player must be able to read the ground and
-the walkable path at a glance.
+Pass 2 measured every non-Localhost floor at **32–41/255 luminance — void**.
+The cause was this document: the LAW 2 table's BASE colours (#0A120C…) were
+used as the floor tone. BASE is the *wall shadow and out-of-bounds* colour. The
+floor is a separate, mid-value MATERIAL. Localhost's wood planks are the
+reference: they read as ground because they have **structure** (seams, grain)
+and **three visible tones**, not because they are bright.
+
+Exact targets, sRGB luminance 0–255, measured on the bare tile:
+- floor base tone **64–84**; seam / joint **36–48**; highlight **96–116**
+- A/B variant ≤ 6% value apart; per-tile jitter ≤ 3%
+- **structure is mandatory** at 32px — visible joints, grain, plates, grille,
+  weave. A flat square with a faint seam is not a material.
+- one subtle inset detail on ~10% of tiles; nothing else on the floor
+- the builder must not modulate floors below 0.92, and wall AO is capped at
+  26% within 150px of a wall only
+
+| region | FLOOR material | base tone hex |
+|---|---|---|
+| localhost | wood planks (reference — keep) | #5A3F2A |
+| dependency_district | node_modules sludge slabs, 1px joints | #3E4A36 |
+| stackoverflow_ruins | cracked sandstone, irregular joints | #5C503C |
+| api_bazaar | woven rug / flagstone, 2-tone weave | #4C3244 |
+| cloud_district | steel grating, dotted grille | #404854 |
+| open_source_wildlands | loam and moss, leaf specks | #404C32 |
+| corporate_enterprise | carpet tiles, subtle checker | #383E4E |
+| gpu_mines | scorched metal plate, rivets | #4E3C34 |
+| production | concrete, expansion joints | #46464A |
+| token_vault | gold plate, rivets / engraving | #605028 |
 
 ## LAW 7 — One sprite language
 

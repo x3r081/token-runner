@@ -1629,7 +1629,11 @@ func _spawn_add(type: String, hp_val: int, dmg: int = -1, drop: int = -1) -> Nod
 	var host := get_parent()
 	if host == null or not host.is_inside_tree():
 		return null
-	var scene := preload("res://scenes/combat/enemy.tscn")
+	# NOT preload(): enemy.tscn carries this very script as its ext_resource, so a
+	# compile-time preload here is a load cycle. Whenever enemy_base.gd is compiled
+	# before enemy.tscn is cached, the .tscn resolves its script to null and every
+	# enemy instantiates as a bare CharacterBody2D with no AI, HP or hitbox.
+	var scene: PackedScene = load("res://scenes/combat/enemy.tscn")
 	var e: Node2D = scene.instantiate()
 	e.set("enemy_type", type)
 	e.set("max_hp", hp_val)
@@ -2164,7 +2168,11 @@ func _death_burst() -> void:
 	CombatFx.ring(parent, global_position, col, 4.0, 78.0, 0.36, 7.0, 1.2)
 
 func _split() -> void:
-	var scene := preload("res://scenes/combat/enemy.tscn")
+	# NOT preload(): enemy.tscn carries this very script as its ext_resource, so a
+	# compile-time preload here is a load cycle. Whenever enemy_base.gd is compiled
+	# before enemy.tscn is cached, the .tscn resolves its script to null and every
+	# enemy instantiates as a bare CharacterBody2D with no AI, HP or hitbox.
+	var scene: PackedScene = load("res://scenes/combat/enemy.tscn")
 	var host := get_parent()
 	var spawned: Array[Node2D] = []
 	for i in 2:

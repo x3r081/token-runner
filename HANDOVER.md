@@ -141,6 +141,24 @@ Each of these cost a debugging cycle. They will bite you too.
 9. **`timeout` is not installed** on this macOS box. Use background tasks with
    an `until` poll loop instead.
 
+11. **`hdr_2d=true` means the framebuffer is LINEAR — a screenshot must be
+    converted to sRGB or it is ~2 stops too dark.** For several rounds every
+    QA frame was captured without that conversion, and visual judgements
+    (including "the world is too dark, raise the ambient") were made against a
+    measurement error. `tools/quality_capture.gd` converts now. If you write a
+    new capture tool, copy its method.
+
+12. **A palette table's "BASE" is not the floor.** Writing `#0A120C` as a
+    region's base colour led the tile generator to build floors *to* that
+    value — nine rooms of black void at 32–41/255 luminance. Floors are a
+    separate mid-value MATERIAL with visible structure; VISUAL_BIBLE_V2 LAW 6
+    now carries explicit luminance windows (base 64–84) and a per-region
+    material column. When you spec colours, say what each one is *for*.
+
+13. **Aliased vector text below ~16px is illegible** with hinting off
+    ("compiled on hope" rendered as "complled"). Aliased + `HINTING_NORMAL`
+    at ≥16px reads as crisp pixel text; below that, keep antialiasing.
+
 10. **Only `run_generate.gd` generates art.** A legacy `generate_assets.gd`
     EditorScript used to write much older art into the same output dir and would
     silently clobber the pipeline; it was deleted in `97f44ff`. If it ever comes
@@ -242,13 +260,18 @@ Three things to know rather than fix:
   shutdown-ordering warning, not a fault. Do not chase it.
 - `main` still has none of this work; the branch fast-forwards cleanly.
 
-### The technique that finds the most real bugs
+### The technique that finds the most real bugs — and now judges taste
 
 An **independent critic reading every QA frame cold** — no knowledge of what was
 intended — has out-performed every other check on this project. It is how the
 30%-alpha console, the invisible nameplates, the faded world map and the enemies
 drawing behind props were all caught, none of which any suite could see. Capture
 the frames, then have someone (or some agent) look at them with fresh eyes.
+
+The same cold critic, given `VISUAL_BIBLE_V2.md`'s "Definition of done" as a
+rubric and told nothing about what was attempted, is how the "AI slop" work is
+being scored (3.6 → 4.75 → …). It is the only reviewer that cannot be talked
+into approving its own intentions. Use Fable for that seat; Opus for the build.
 
 ## 8. Ground rules
 

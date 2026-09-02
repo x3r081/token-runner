@@ -9,7 +9,8 @@ extends CanvasLayer
 ##   bottom-left   `→ Talk to Claude · 4m NE` one line, region ACCENT, no panel
 ##   bottom-centre six 28px ability slots     monochrome, key glyph only
 ##   bottom edge   `[E] interact · [T] model · [H] help`   one SMALL line
-##   above the bar one toast at a time        one line, no box, slides up
+##   above the bar one toast at a time        one line, no box, slides up,
+##                                            36px clear of the slots
 ##
 ## WHAT ROUND 6 DELETED, because the round-5 frames were nine plated boxes and a
 ## radar: the resource plate and its four titled columns, the vitals plate with
@@ -82,6 +83,8 @@ var _ability_panels: Array = []
 var _ability_overlays: Array = []
 var _ability_boxes: Array = []
 var _ability_keys: Array = []
+## The top bar's pause glyph. Held because its hover state carries the accent.
+var _pause_btn: Button
 ## Last discrete slot state: 0 ready / 1 recharging / 2 cannot afford.
 var _ability_state: PackedInt32Array = PackedInt32Array()
 var _hp_tween: Tween
@@ -129,13 +132,35 @@ const COOLDOWN_MAX := {
 	"rubber_duck": 4.5, "stack_trace": 1.6, "ctrl_z": 10.0, "dash": 1.1,
 }
 
+# -------------------------------------------------------------- bottom band --
+## The bottom band's lanes, declared together because they share one edge and
+## the whole point is that they may not touch. Offsets are from the bottom of
+## the screen, so they read as negative numbers going up.
+##
+##   ability bar   ABILITY_BAR_TOP .. ABILITY_BAR_BOTTOM   (-64 .. -36)
+##   toast lane    TOAST_CLEAR above the bar's top edge
+##   key legend    the HintBar, below the bar, at the screen edge
+const ABILITY_BAR_TOP := -64.0
+const ABILITY_BAR_BOTTOM := -36.0
+const ABILITY_BAR_HALF_W := 99.0
+
 # ------------------------------------------------------------------- toasts --
 ## One line, bottom-centre, one at a time, no box. The card, the accent stripe,
 ## the category glyph and the body row are gone: a toast is a sentence, and a
 ## sentence does not need a rectangle to be read.
 const TOAST_W := 720.0
 const TOAST_H := 26.0
-const TOAST_BOTTOM := -104.0
+## Clear air between the toast's bottom edge and the top of the ability slots.
+##
+## The lane used to end 14px above the bar, which at the SMALL/BODY sizes this
+## project draws at is one descender: region_open_source_wildlands.png shows
+## "Quest complete — First Sprint — TODO: Everything" resting on the row of key
+## glyphs, reading as one four-line block instead of a sentence and a control
+## strip. 36px is enough that the eye stops treating them as one object.
+const TOAST_CLEAR := 36.0
+## Derived, never typed twice: the card's TOP, so that its BOTTOM lands
+## TOAST_CLEAR above the ability bar. Move the bar and the toast follows.
+const TOAST_BOTTOM := ABILITY_BAR_TOP - TOAST_CLEAR - TOAST_H
 const TOAST_RISE := 14.0
 const TOAST_IN := 0.18
 const TOAST_HOLD := 2.00
@@ -534,9 +559,8 @@ func _on_dialogue_ended(_npc_id: String) -> void:
 ## What survives is what you act on: which key, is it ready, can I afford it.
 const SLOT_SIZE := Vector2(28, 28)
 const SLOT_GAP := 6
-const ABILITY_BAR_TOP := -64.0
-const ABILITY_BAR_BOTTOM := -36.0
-const ABILITY_BAR_HALF_W := 99.0
+# ABILITY_BAR_TOP / _BOTTOM / _HALF_W live up in the "bottom band" block, with
+# the toast lane that has to clear them.
 
 func _setup_ability_bar() -> void:
 	var bar := HBoxContainer.new()
@@ -620,23 +644,33 @@ func _update_ability_bar() -> void:
 		var state: int = 0 if (ready_now and affordable) else (1 if affordable else 2)
 		if state != _ability_state[i]:
 			_ability_state[i] = state
-			var panel: Control = _ability_panels[i]
-			var box: StyleBoxFlat = _ability_boxes[i]
-			var key: Label = _ability_keys[i]
-			# Monochrome, three readings: lit in the region accent when it is
-			# yours to spend, plain when it is coming back, 40% when you are
-			# short (LAW 8).
-			panel.modulate.a = 1.0 if state != 2 else 0.4
-			if state == 0:
-				box.border_color = _GameTheme.with_alpha(_accent, 0.9)
-				key.add_theme_color_override("font_color", _accent)
-			else:
-				box.border_color = _GameTheme.with_alpha(_GameTheme.TEXT_DIM, 0.55)
-				key.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
+			_paint_slot(i, state)
 		var frac := _cooldown_frac(def.id)
 		var ov: ColorRect = _ability_overlays[i]
 		ov.anchor_bottom = frac
 		ov.visible = frac > 0.004
+
+## One slot, in the CURRENT accent. Monochrome, three readings: lit in the
+## region accent when it is yours to spend, plain when it is coming back, 40%
+## when you are short (LAW 8).
+##
+## Split out of `_update_ability_bar` so that a REGION CHANGE can repaint the
+## row without waiting for a state change — see `_paint_accent`.
+func _paint_slot(i: int, state: int) -> void:
+	if i < 0 or i >= _ability_boxes.size():
+		return
+	var panel: Control = _ability_panels[i]
+	var box: StyleBoxFlat = _ability_boxes[i]
+	var key: Label = _ability_keys[i]
+	panel.modulate.a = 1.0 if state != 2 else 0.4
+	# state -1 is "never painted"; it reads as not-yours-yet until the next
+	# update resolves it, which is one frame away.
+	if state == 0:
+		box.border_color = _GameTheme.with_alpha(_accent, 0.9)
+		key.add_theme_color_override("font_color", _accent)
+	else:
+		box.border_color = _GameTheme.with_alpha(_GameTheme.TEXT_DIM, 0.55)
+		key.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
 
 ## The price the player will actually be charged this second. Only Prompt Blast
 ## moves — its cost scales with the active model — so everything else falls
@@ -816,18 +850,45 @@ const REGION_TITLES := {
 	"token_vault": "Token Vault",
 }
 
+## The ONE place the HUD decides what colour a region is: LAW 2's ACCENT
+## column, read out of GameTheme so this layer, the waypoint, the map and the
+## boss card cannot hold three different opinions about the same room.
+func _accent_for(region_id: String) -> Color:
+	return _GameTheme.region_accent(region_id)
+
+## Repaint EVERY accent-bearing element on this layer, right now.
+##
+## This used to be done by invalidating the ability bar's state memo and letting
+## `_process` notice — and `_process` on this layer is deliberately not
+## pause-proof (see `_tw`). So a region change that landed while the tree was
+## paused (an event popup, a flavour popup, the pause menu, the QA capture's own
+## settle) repainted the objective line, which is written straight from the
+## signal handler, and left the six ability slots in the PREVIOUS room's colour
+## until something unpaused. region_corporate_enterprise.png shows the whole
+## row in Wildlands leaf inside the corp-blue office; region_production.png
+## shows it in GPU-mine ember. Painting from the handler removes the window in
+## which the two can disagree.
+func _paint_accent() -> void:
+	next_action.add_theme_color_override("font_color", _accent)
+	if region_rule:
+		region_rule.color = _GameTheme.with_alpha(_accent, 0.9)
+	if is_instance_valid(_waypoint) and _waypoint.has_method("set_accent"):
+		_waypoint.call("set_accent", _accent)
+	if is_instance_valid(_pause_btn):
+		_dress_pause_button(_pause_btn)
+	# Each slot keeps the state it is in and changes only its colour, so nothing
+	# flickers "ready" on arrival. `_ability_state` stays valid — the memo is
+	# about STATE, and the state did not change.
+	for i in _ability_boxes.size():
+		_paint_slot(i, _ability_state[i] if i < _ability_state.size() else -1)
+
 ## Arrival: the name changes and fades up. That is the whole sting. The
 ## overbright name flash and the accent rule wiping out from the centre are
 ## gone — LAW 9, nothing moves at rest.
 func _on_region_changed(region_id: String) -> void:
 	region_label.text = _format_region(region_id)
-	_accent = _GameTheme.region_accent(region_id)
-	next_action.add_theme_color_override("font_color", _accent)
-	if is_instance_valid(_waypoint) and _waypoint.has_method("set_accent"):
-		_waypoint.call("set_accent", _accent)
-	# Force the ability slots to repaint in the new accent on the next update.
-	for i in _ability_state.size():
-		_ability_state[i] = -1
+	_accent = _accent_for(region_id)
+	_paint_accent()
 	var t := _tw().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	t.tween_property(region_label, "modulate:a", 1.0, _GameTheme.T_STD).from(0.0)
 
@@ -846,13 +907,21 @@ func _setup_pause_button() -> void:
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	b.tooltip_text = "Pause (Esc)"
 	b.focus_mode = Control.FOCUS_NONE
-	_GameTheme.style_button(b, _accent, _GameTheme.SMALL)
-	b.add_theme_stylebox_override("normal", _GameTheme.empty_box())
-	b.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
+	_pause_btn = b
+	_dress_pause_button(b)
 	b.pressed.connect(_on_pause_button)
 	# A MOUSE_FILTER_IGNORE parent does not stop its children being hit-tested,
 	# so the button still takes clicks inside the pass-through top bar.
 	$TopBar/HBox.add_child(b)
+
+## The glyph's own styling, in one place because `_paint_accent` re-runs it on
+## every region change: its hover and pressed states carry the accent, and a
+## button that lights up in the last room's colour is the same defect as a
+## whole ability bar that does.
+func _dress_pause_button(b: Button) -> void:
+	_GameTheme.style_button(b, _accent, _GameTheme.SMALL)
+	b.add_theme_stylebox_override("normal", _GameTheme.empty_box())
+	b.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
 
 func _on_pause_button() -> void:
 	var w := get_parent()

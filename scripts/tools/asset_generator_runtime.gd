@@ -983,264 +983,492 @@ func _outline_silhouette(img: Image, color: Color) -> void:
 			if touching:
 				_px(img, x, y, color)
 
-## Per-region floor tiles (LAW 6). A floor tile is a CLEAN material: three
-## tones — base, seam, highlight — on a 32px module (16px for board runs),
-## tiling seamlessly, with at most one small inset detail, and that detail lives
-## only in the "_b" variant. The A and B variants differ by 4% of value.
+## ===================== LAW 6 — FLOORS ARE READABLE GROUND =====================
 ##
-## Everything that used to be here is gone, and it was most of the file: hash
-## noise on every pixel, per-plate value jitter, metaballs, wandering fissures,
-## gold veining, moss fields, aggregate specks, drifting dust, wear fields,
-## hazard stripes, inlaid coins and a "tile_detail" lottery. Stamped three
-## hundred times across a region those are not texture, they are static — and a
-## player cannot read a walkable path through static. The floor's job is to be
-## quiet enough that the player, the objective and the tokens can be loud.
+## Pass 2 measured every non-Localhost floor at 32-41/255 and called the world
+## "nine rooms of black void". The cause was one wrong assumption repeated ten
+## times: LAW 2's BASE colour (#0A120C and its siblings) is the WALL-SHADOW and
+## out-of-bounds tone, and it had been used as the floor tone. A floor is a
+## separate, mid-value MATERIAL. Localhost's planks are the reference, and they
+## read as ground because they have STRUCTURE and three visible tones — not
+## because they are bright.
 ##
-## BRIGHTNESS CONTRACT (unchanged): region_builder draws these with modulate
-## k * tile_mul (1.9-2.5 per region). Each tile is authored at a comfortable
-## working value and scaled by "dim" so the builder's multiply lands the floor
-## back near 0.30 luminance. The materials below keep their old mean value, so
-## no region re-lights.
-func _generate_tileset() -> void:
-	# `base` is the hue of the region's PLAZA tile, and it is also, deliberately,
-	# close to the hue of the field material that region gets from
-	# _generate_floor_structures. A plaza in one colour standing on a field in
-	# another is two floors in one room: the round-6 dependency frame shows a
-	# green plaza dropped into a cold blue-grey deck, with a hard rectangular
-	# join. dependency and opensource were pulled onto their family's hue for
-	# that reason; each keeps its own MATERIAL, which is what tells them apart.
-	var regions := {
-		"localhost": {"base": Color(0.42, 0.33, 0.25), "accent": Color(1.0, 0.72, 0.29), "mat": "planks", "dim": 0.39},
-		"dependency": {"base": Color(0.30, 0.34, 0.31), "accent": Color(0.66, 1.0, 0.24), "mat": "sludge", "dim": 0.38},
-		"stackoverflow": {"base": Color(0.50, 0.47, 0.40), "accent": Color(0.91, 0.77, 0.42), "mat": "ruin", "dim": 0.31},
-		"api_bazaar": {"base": Color(0.40, 0.30, 0.40), "accent": Color(1.0, 0.18, 0.58), "mat": "rug", "dim": 0.38},
-		"cloud": {"base": Color(0.52, 0.57, 0.64), "accent": Color(0.42, 0.78, 1.0), "mat": "grating", "dim": 0.28},
-		"opensource": {"base": Color(0.34, 0.31, 0.24), "accent": Color(0.35, 0.88, 0.49), "mat": "forest", "dim": 0.45},
-		"corporate": {"base": Color(0.40, 0.42, 0.48), "accent": Color(0.30, 0.49, 1.0), "mat": "carpet", "dim": 0.39},
-		"gpu": {"base": Color(0.44, 0.33, 0.29), "accent": Color(1.0, 0.42, 0.18), "mat": "scorched", "dim": 0.37},
-		"production": {"base": Color(0.42, 0.36, 0.36), "accent": Color(1.0, 0.28, 0.34), "mat": "concrete", "dim": 0.33},
-		"vault": {"base": Color(0.46, 0.40, 0.28), "accent": Color(1.0, 0.83, 0.30), "mat": "gold", "dim": 0.35},
-	}
-	for rname in regions:
-		var data: Dictionary = regions[rname]
-		_save_image(_make_floor_tile(rname, data, 0), "tile_%s.png" % rname)
-		_save_image(_make_floor_tile(rname, data, 7), "tile_%s_b.png" % rname)
+## So these numbers are the law, and they are MEASURED on the way out rather
+## than trusted: every floor PNG this file writes goes through
+## _save_floor_tile, which push_error()s if the finished tile's mean luminance
+## leaves the window.
+##
+##   base tone 64-84 · seam/joint 36-48 · highlight 96-116
+##   A/B variant <= 6% apart · per-tile jitter <= 3% · structure mandatory at 32px
+##
+## The second half of the finding was that ten regions shipped FOUR floors:
+## _generate_floor_structures aliased every region onto one of four families,
+## so api_bazaar stood on Localhost's floorboards and dependency, corporate and
+## production all shared one deck — which is most of "one shared square-tile
+## floor tinted per region". Every region now draws its OWN material, and the
+## four family filenames survive as copies of a representative region so no
+## exists()-guarded lookup on the composition side can miss.
+## LAW 6's three windows, and they are windows rather than one ratio on
+## purpose: a floor at the bottom of the base window needs a hi/base ratio of
+## 1.45 to reach 96, and one at the top needs 1.43 or less to stay under 116.
+## So each region's tones are derived from ITS OWN base tone and then clamped
+## into the windows, which is also how the table below stops being decoration
+## and starts being the specification.
+const FLOOR_BASE_MIN := 69.0
+const FLOOR_BASE_MAX := 80.0
+const FLOOR_SEAM_RATIO := 0.58
+const FLOOR_HI_RATIO := 1.42
+const FLOOR_SEAM_MIN := 36.0
+const FLOOR_SEAM_MAX := 48.0
+const FLOOR_HI_MIN := 99.0
+const FLOOR_HI_MAX := 116.0
+## The B variant is the same material 2% down. It is small because
+## region_builder already lifts its alt cell by 6%: the two multiply out to a
+## ~4% A/B step on screen, inside LAW 6's 6% ceiling, and a B tile authored any
+## darker would cancel the builder's step and flatten the floor completely.
+const FLOOR_AB_STEP := 0.98
+const FLOOR_MEAN_MIN := 64.0
+const FLOOR_MEAN_MAX := 84.0
+## A floor is not one of LAW 3's five bright things and not one of LAW 2's three
+## hues, so every material hue is pulled a third of the way to its own grey
+## before anything is drawn. What separates two regions underfoot is the
+## MATERIAL, not the tint — that was the whole mistake being corrected here.
+const FLOOR_DESAT := 0.30
+## LAW 6's jitter ceiling. Grain, aggregate, carpet pile and brushed metal all
+## live inside +/-3% of the base tone and nothing on a floor exceeds it.
+const FLOOR_JITTER := 0.03
 
-## One seamless 64x64 floor texture. `salt` selects the B variant, which is the
-## same material 4% darker plus its one inset detail.
-func _make_floor_tile(_rname: String, data: Dictionary, salt: int) -> Image:
-	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
-	var alt: bool = salt != 0
-	var base: Color = data["base"]
+## region key -> [LAW 6 base tone, LAW 6 material]. Ten regions, ten materials,
+## and the material is the thing a player actually reads.
+const FLOOR_REGIONS := {
+	"localhost": ["#5A3F2A", "planks"],
+	"dependency": ["#3E4A36", "sludge"],
+	"stackoverflow": ["#5C503C", "sandstone"],
+	"api_bazaar": ["#4C3244", "weave"],
+	"cloud": ["#404854", "grating"],
+	"opensource": ["#404C32", "loam"],
+	"corporate": ["#383E4E", "carpet"],
+	"gpu": ["#4E3C34", "scorched"],
+	"production": ["#46464A", "concrete"],
+	"vault": ["#605028", "gold"],
+}
+
+## The three tones of LAW 6 plus the two half-steps every material needs (a
+## shaded flank, a lit crown), and a nine-stop grain ramp that cannot leave the
+## 3% jitter ceiling because it is built from it.
+class FloorTones extends RefCounted:
+	var base: Color
+	var seam: Color
+	var hi: Color
+	var mid: Color
+	var lip: Color
+	var grain: Array[Color] = []
+
+	## k in [-1, 1] -> the base tone +/- FLOOR_JITTER.
+	func g(k: float) -> Color:
+		return grain[clampi(int(round((k + 1.0) * 4.0)), 0, 8)]
+
+## Rec.709 luminance on the 0-255 scale LAW 6 is written in.
+func _luma255(c: Color) -> float:
+	return (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) * 255.0
+
+## The same colour at a given luminance. Hue and chroma ratio survive; only
+## value moves — which is how a whole material can be pinned to a number.
+func _at_luma(c: Color, target: float) -> Color:
+	var l := _luma255(c)
+	if l <= 0.01:
+		var g := clampf(target / 255.0, 0.0, 1.0)
+		return Color(g, g, g, 1.0)
+	var k := target / l
+	return Color(minf(c.r * k, 1.0), minf(c.g * k, 1.0), minf(c.b * k, 1.0), 1.0)
+
+func _floor_tones(hex: String, alt: bool) -> FloorTones:
+	var raw := Color(hex)
+	var grey := _luma255(raw) / 255.0
+	var c := Color(lerpf(raw.r, grey, FLOOR_DESAT), lerpf(raw.g, grey, FLOOR_DESAT),
+		lerpf(raw.b, grey, FLOOR_DESAT), 1.0)
+	# The LAW 6 table's own hex IS the base tone. Three of the ten sit under the
+	# window (api_bazaar at 57, corporate at 62, gpu at 63) and are lifted to its
+	# floor; the rest keep their natural value, which is why sandstone and gold
+	# read as lighter ground than a rug or a carpet tile, as they should.
+	var b := clampf(_luma255(raw), FLOOR_BASE_MIN, FLOOR_BASE_MAX)
 	if alt:
-		base = Color(base.r * 0.96, base.g * 0.96, base.b * 0.96, 1.0)
-	_floor_material(img, String(data.get("mat", "concrete")), base, data["accent"], alt)
-	_dim_tile(img, float(data.get("dim", 1.0)))
+		b *= FLOOR_AB_STEP
+	var sm := clampf(b * FLOOR_SEAM_RATIO, FLOOR_SEAM_MIN, FLOOR_SEAM_MAX)
+	var hl := clampf(b * FLOOR_HI_RATIO, FLOOR_HI_MIN, FLOOR_HI_MAX)
+	var t := FloorTones.new()
+	t.base = _at_luma(c, b)
+	t.seam = _at_luma(c, sm)
+	t.hi = _at_luma(c, hl)
+	t.mid = _at_luma(c, (b + hl) * 0.5)
+	t.lip = _at_luma(c, (b + sm) * 0.5)
+	for i in 9:
+		t.grain.append(_at_luma(c, b * (1.0 + FLOOR_JITTER * ((float(i) / 4.0) - 1.0))))
+	return t
+
+## Per-region floor tiles (LAW 6). Ten materials, each one recognisable at 32px
+## and none of them a tinted copy of another: plank grain, sludge slabs,
+## cracked sandstone, a basket weave, a steel grille, loam, carpet pile,
+## riveted plate, poured concrete and laid gold.
+func _generate_tileset() -> void:
+	for rname: String in FLOOR_REGIONS:
+		_save_floor_tile(_make_floor_tile(rname, false), "tile_%s.png" % rname)
+		_save_floor_tile(_make_floor_tile(rname, true), "tile_%s_b.png" % rname)
+
+## One seamless 64x64 floor texture. `alt` is the B variant: the same material
+## two percent down, with its one small inset detail.
+func _make_floor_tile(rname: String, alt: bool) -> Image:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	var spec: Array = FLOOR_REGIONS.get(rname, ["#46464A", "concrete"])
+	_floor_material(img, String(spec[1]), _floor_tones(String(spec[0]), alt), alt)
 	return img
 
-## Uniform value scale over a finished tile — see the brightness contract on
-## _generate_tileset. Relative contrast is preserved exactly.
+## Uniform value scale over a finished tile. Relative contrast is preserved
+## exactly; only where the material sits on the value axis moves.
 func _dim_tile(img: Image, k: float) -> void:
 	if is_equal_approx(k, 1.0):
 		return
 	for x in img.get_width():
 		for y in img.get_height():
 			var c := img.get_pixel(x, y)
-			_px(img, x, y, Color(c.r * k, c.g * k, c.b * k, c.a))
+			_px(img, x, y, Color(minf(c.r * k, 1.0), minf(c.g * k, 1.0), minf(c.b * k, 1.0), c.a))
 
-## Every region material, in one place, in three tones. Light is from the
-## top-left everywhere, so a seam is followed by a lit lip and never the other
-## way round. `alt` adds the single inset detail and nothing else.
-func _floor_material(img: Image, mat: String, base: Color, accent: Color, alt: bool) -> void:
-	var seam := base.darkened(0.30)
-	var hi := base.lightened(0.12)
+func _floor_mean_luma(img: Image) -> float:
+	var total := 0.0
+	for x in img.get_width():
+		for y in img.get_height():
+			total += _luma255(img.get_pixel(x, y))
+	return total / float(img.get_width() * img.get_height())
+
+## The LAW 6 gate. Every floor this file writes goes through here, so a
+## material that drifts out of the window fails loudly at generation time
+## instead of shipping as another black room.
+func _save_floor_tile(img: Image, filename: String) -> void:
+	var m := _floor_mean_luma(img)
+	if m < FLOOR_MEAN_MIN or m > FLOOR_MEAN_MAX:
+		push_error("LAW 6 floor luminance: %s mean %.1f is outside %.0f-%.0f" % [
+			filename, m, FLOOR_MEAN_MIN, FLOOR_MEAN_MAX])
+	_save_image(img, filename)
+
+## Every region material, in one place. Light is from the top-left everywhere,
+## so a seam is followed by a lit lip and never the other way round, and `alt`
+## adds the single inset detail and nothing else.
+func _floor_material(img: Image, mat: String, t: FloorTones, alt: bool) -> void:
 	match mat:
 		"planks":
-			# LOCALHOST — 16px board run. Seam, lit board edge, field. One butt
-			# joint on one course, so the eye finds the direction of the boards.
-			for y in 64:
-				var ry := y & 15
-				var row := y >> 4
-				var c := base
-				if ry == 0:
-					c = seam
-				elif ry == 1:
-					c = hi
-				for x in 64:
-					var cc := c
-					if row == 2 and ry > 0 and x == 24:
-						cc = seam
-					elif row == 2 and ry > 0 and x == 25:
-						cc = hi
-					_px(img, x, y, cc)
-			if alt:
-				_floor_blot(img, 44, 39, 3, base.darkened(0.16))   # one knot
+			_floor_planks(img, t, alt)
 		"sludge":
-			# DEPENDENCY DISTRICT — settled sludge.
-			#
-			# This used to be a radial basin per 32px cell: dark rim, light core.
-			# Stamped across a plaza it tiled into a grid of polka dots, which is
-			# the loudest thing in the round-6 QA frame of this region — and
-			# "forest" below was the same function with a green base, so two
-			# regions shipped the identical dotted floor.
-			#
-			# What dried ooze actually looks like is FLAT. All that survives is
-			# the strata each drain left behind: one 16px settling line drawn
-			# HORIZONTALLY ONLY, at a third of the contrast a plate seam carries.
-			# With no vertical break there is no cell, and with no cell there is
-			# no dot grid.
-			var settle := base.darkened(0.11)
-			var crest := base.lightened(0.05)
-			for y in 64:
-				var c := base
-				if (y & 15) == 0:
-					c = settle
-				elif (y & 15) == 1:
-					c = crest
-				for x in 64:
-					_px(img, x, y, c)
-			if alt:
-				_floor_square(img, 41, 25, 5, crest, settle)       # a half-sunk package
-		"ruin":
-			# STACKOVERFLOW RUINS — 32px stone flags, mortar joint, lit lip.
-			for y in 64:
-				for x in 64:
-					var mx := x & 31
-					var my := y & 31
-					var c := base
-					if mx == 0 or my == 0:
-						c = seam
-					elif mx == 1 or my == 1:
-						c = hi
-					_px(img, x, y, c)
-			if alt:
-				for i in 7:
-					_px(img, 40 + i, 20 + i / 2, seam)             # one hairline crack
-		"rug":
-			# API BAZAAR — market floor. The kilim used to stamp a full diamond
-			# motif into EVERY 32px cell: two concentric rhombus rings, one of
-			# them in the region accent. Repeated across the plaza that is a
-			# PATTERN, not a ground, and it competed with every stall standing on
-			# it. The field is now 16px trade tile — seam, lit lip, nothing —
-			# and the motif survives as ONE small inlay on the B tile.
-			for y in 64:
-				for x in 64:
-					var mx := x & 15
-					var my := y & 15
-					var c := base
-					if mx == 0 or my == 0:
-						c = seam
-					elif mx == 1 or my == 1:
-						c = hi
-					_px(img, x, y, c)
-			if alt:
-				var ring := base.lerp(accent, 0.22)
-				for dx3 in range(-3, 4):
-					for dy3 in range(-3, 4):
-						if absi(dx3) + absi(dy3) == 3:
-							_px(img, 40 + dx3, 40 + dy3, ring)
+			_floor_sludge(img, t, alt)
+		"sandstone", "ruin":
+			_floor_sandstone(img, t, alt)
+		"weave", "rug":
+			_floor_weave(img, t, alt)
 		"grating":
-			# CLOUD DISTRICT — perforated deck. The rib run was 8px, which at the
-			# 2x this renders at is a 16-screen-pixel stripe field over the entire
-			# floor: corduroy, not ground. Widened to a 16px rib with a cross-tie
-			# every 32, so the deck reads as a surface you could stand on.
-			for y in 64:
-				var r := y & 15
-				var c := base
-				if r == 0:
-					c = seam
-				elif r == 1:
-					c = hi
-				for x in 64:
-					var cc := c
-					if r > 1 and (x & 31) == 0:
-						cc = seam
-					_px(img, x, y, cc)
-		"forest":
-			# OPEN SOURCE WILDLANDS — dark loam, and the whole point of it is that
-			# it is NOT the dependency floor. Soil has no seams: no grid, no
-			# module, no bevel. The material is a flat field plus five specks of
-			# leaf litter, one or two pixels each at under a tenth of a value
-			# step, spaced irregularly so the 64px repeat never resolves into a
-			# constellation.
-			var leaf := base.lightened(0.09)
-			var stick := base.darkened(0.10)
-			for y in 64:
-				for x in 64:
-					_px(img, x, y, base)
-			for sp: Vector2i in [Vector2i(9, 12), Vector2i(37, 6), Vector2i(22, 41),
-					Vector2i(53, 30), Vector2i(44, 55)]:
-				_fill_rect(img, sp.x, sp.y, 2, 1, leaf)
-			_px(img, 31, 20, stick)
-			_px(img, 12, 50, stick)
-			if alt:
-				_fill_rect(img, 17, 22, 3, 1, stick)               # one fallen twig
-				_px(img, 19, 23, stick)
+			_floor_grating(img, t, alt)
+		"loam", "forest":
+			_floor_loam(img, t, alt)
 		"carpet":
-			# CORPORATE ENTERPRISE — contract carpet tile, quarter-turned. The
-			# whole material is a seam and a 3% turn in value. It is meant to be
-			# forgettable; that is what makes the room readable.
-			for y in 64:
-				for x in 64:
-					var turned := (((x >> 5) + (y >> 5)) & 1) == 1
-					var c: Color = base.lightened(0.03) if turned else base
-					if (x & 31) == 0 or (y & 31) == 0:
-						c = seam
-					elif (x & 31) == 1 or (y & 31) == 1:
-						c = hi
-					_px(img, x, y, c)
+			_floor_carpet(img, t, alt)
 		"scorched":
-			# GPU MINES — scorched deck plate. 32px plates, a hard seam, a lit
-			# near bevel, and (on the B tile) one burn where a rig cooked.
-			for y in 64:
-				for x in 64:
-					var mx2 := x & 31
-					var my2 := y & 31
-					var c := base
-					if mx2 == 0 or my2 == 0:
-						c = seam
-					elif mx2 == 1 or my2 == 1:
-						c = hi
-					_px(img, x, y, c)
-			if alt:
-				# r=7 put a 15px scorch in a 64px tile — a repeating dark spot
-				# once it was stamped across an aisle. One small burn is enough.
-				_floor_blot(img, 21, 45, 3, base.darkened(0.18))
+			_floor_scorched(img, t, alt)
 		"gold":
-			# TOKEN VAULT — laid gold plate, and nothing else on it. The B tile
-			# used to inlay an accent line across its FULL width, so every second
-			# tile carried a stripe and the vault floor read as banded rather than
-			# as plate. LAW 6 allows one small inset detail; here that is a rivet
-			# head, which is also the only thing a plate floor would actually
-			# have. The three tones are the whole material: plate, 1px seam, 1px
-			# lit lip. No jitter — every plate in this room was cast the same day.
-			for y in 64:
-				for x in 64:
-					var mx3 := x & 31
-					var my3 := y & 31
-					var c := base
-					if mx3 == 0 or my3 == 0:
-						c = seam
-					elif mx3 == 1 or my3 == 1:
-						c = hi
-					_px(img, x, y, c)
-			if alt:
-				_fill_rect(img, 44, 44, 2, 2, hi)                  # one rivet head
-				_px(img, 45, 45, seam)                             # its shadowed side
+			_floor_gold(img, t, alt)
 		_:
-			# PRODUCTION — poured slab with sawn control joints on a 32px grid.
-			for y in 64:
-				for x in 64:
-					var mx4 := x & 31
-					var my4 := y & 31
-					var c := base
-					if mx4 == 0 or my4 == 0:
-						c = seam
-					elif mx4 == 1 or my4 == 1:
-						c = hi
-					_px(img, x, y, c)
-			if alt:
-				_fill_rect(img, 38, 38, 8, 8, base.darkened(0.09))     # a patch repair
+			_floor_concrete(img, t, alt)
+
+## LOCALHOST — wood planks, and the reference every other material is measured
+## against. 16px board run, recessed seam, lit board edge, longitudinal grain
+## and three staggered butt joints so the boards have a direction.
+func _floor_planks(img: Image, t: FloorTones, alt: bool) -> void:
+	for y in 64:
+		var ry := y & 15
+		var row := y >> 4
+		for x in 64:
+			var c: Color = t.base
+			if ry == 0:
+				c = t.seam
+			elif ry == 1:
+				c = t.hi
+			else:
+				var s := ((x * 7 + row * 23) >> 3) & 3
+				var k := 0.0
+				if (ry + s) % 7 == 3:
+					k = 1.0
+				elif (ry * 3 + s) % 11 == 5:
+					k = -1.0
+				c = t.g(k)
+			_px(img, x, y, c)
+	for j: Vector2i in [Vector2i(41, 0), Vector2i(12, 2), Vector2i(55, 3)]:
+		for jy in range(1, 16):
+			_px(img, j.x, j.y * 16 + jy, t.seam)
+			_px(img, j.x + 1, j.y * 16 + jy, t.hi)
+	if alt:
+		_floor_blot(img, 44, 39, 3, t.lip)
+		_floor_blot(img, 44, 39, 1, t.seam)
+
+## DEPENDENCY DISTRICT — node_modules sludge slabs. 32px slabs with a 1px
+## joint and a lit lip; inside them the ooze that got poured over this floor
+## and set, as a wide soft swell inside the 3% jitter, plus four low spots
+## where it pooled deepest. No cell-sized radial basin: that tiled into polka
+## dots, which is what the round-6 frame was actually showing.
+func _floor_sludge(img: Image, t: FloorTones, alt: bool) -> void:
+	for y in 64:
+		for x in 64:
+			var sx := x & 31
+			var sy := y & 31
+			var c: Color = t.base
+			if sx == 0 or sy == 0:
+				c = t.seam
+			elif sx == 1 or sy == 1:
+				c = t.hi
+			else:
+				var n := sin(float(sx) * PI / 16.0 + 0.6) * sin(float(sy) * PI / 16.0 + 1.9)
+				n += 0.45 * sin(float(sx) * PI / 5.0) * sin(float(sy) * PI / 6.0 + 2.2)
+				c = t.g(clampf(n, -1.0, 1.0))
+			_px(img, x, y, c)
+	for p: Vector2i in [Vector2i(11, 21), Vector2i(26, 8), Vector2i(46, 41), Vector2i(58, 55)]:
+		_floor_blot(img, p.x, p.y, 3, t.lip)
+		_px(img, p.x - 1, p.y - 1, t.hi)
+	if alt:
+		_floor_square(img, 41, 25, 5, t.hi, t.lip)
+
+## The joint layout of the ruins. Two courses of flagstones, deliberately
+## different widths, and a wobble table that walks every joint a pixel either
+## side so no line in this floor is straight — which is the whole difference
+## between "cracked sandstone" and "a grid".
+const RUIN_JOINTS_A: Array[int] = [13, 41]
+const RUIN_JOINTS_B: Array[int] = [6, 30, 52]
+const RUIN_WOBBLE: Array[int] = [0, 0, 1, 1, 1, 0, 0, -1, -1, 0, 1, 1, 0, 0, -1, -1]
+
+## STACKOVERFLOW RUINS — cracked sandstone. Sand grain over the whole field,
+## irregular flags, mortar joints with a lit near lip, and two hairline cracks
+## running across the stones rather than along the joints.
+func _floor_sandstone(img: Image, t: FloorTones, alt: bool) -> void:
+	for y in 64:
+		for x in 64:
+			_px(img, x, y, t.g(float((x * 5 + y * 3) % 7 - 3) / 6.0))
+	for band: int in [0, 32]:
+		var xs: Array[int] = RUIN_JOINTS_A if band == 0 else RUIN_JOINTS_B
+		for x in 64:
+			var w: int = RUIN_WOBBLE[((x >> 2) + band) % 16]
+			_px(img, x, (band + w + 64) % 64, t.seam)
+			_px(img, x, (band + w + 65) % 64, t.hi)
+		for jx: int in xs:
+			for dy in range(2, 32):
+				var w2: int = RUIN_WOBBLE[((dy >> 2) + jx) % 16]
+				_px(img, (jx + w2 + 64) % 64, band + dy, t.seam)
+				_px(img, (jx + w2 + 65) % 64, band + dy, t.hi)
+	for p: Vector2i in [Vector2i(20, 12), Vector2i(21, 13), Vector2i(22, 14),
+			Vector2i(22, 15), Vector2i(23, 16), Vector2i(24, 17),
+			Vector2i(48, 40), Vector2i(49, 41), Vector2i(49, 42),
+			Vector2i(50, 43), Vector2i(51, 44)]:
+		_px(img, p.x, p.y, t.lip)
+	if alt:
+		for i in 9:
+			_px(img, 36 + i, 20 + (i >> 1), t.seam)
+
+## API BAZAAR — the market's woven floor. A basket weave in 16px blocks that
+## alternate warp and weft: four cords per block, each with a lit crown and a
+## shaded flank, and a dark butt end where the block passes under its
+## neighbour. The old kilim stamped a full diamond into every 32px cell, which
+## is a PATTERN competing with every stall standing on it; the motif survives
+## as one small inlay on the B tile.
+func _floor_weave(img: Image, t: FloorTones, alt: bool) -> void:
+	for y in 64:
+		for x in 64:
+			var horiz := (((x >> 4) + (y >> 4)) & 1) == 0
+			var u: int = (y & 15) if horiz else (x & 15)
+			var v: int = (x & 15) if horiz else (y & 15)
+			var c: Color = t.base
+			if u == 0:
+				c = t.seam
+			elif (u & 3) == 1:
+				c = t.hi
+			elif (u & 3) == 3:
+				c = t.lip
+			if v == 0:
+				c = t.seam
+			elif v == 15:
+				c = t.lip
+			_px(img, x, y, c)
+	if alt:
+		for dx in range(-3, 4):
+			for dy in range(-3, 4):
+				if absi(dx) + absi(dy) == 3:
+					_px(img, 40 + dx, 24 + dy, t.hi)
+
+## CLOUD DISTRICT — steel grating. A 16px lattice of load bars lit on their
+## top-left, a pan recessed between them, and one square drain hole per cell
+## with a lit near lip: the dotted grille of LAW 6. The old 8px rib run was a
+## 16-screen-pixel stripe field over the whole floor — corduroy, not ground.
+func _floor_grating(img: Image, t: FloorTones, alt: bool) -> void:
+	for y in 64:
+		for x in 64:
+			var bx := x & 15
+			var by := y & 15
+			var c: Color = t.g(-1.0)
+			if bx < 3 or by < 3:
+				c = t.hi if (bx == 0 or by == 0) else t.g(0.7)
+			_px(img, x, y, c)
+	for gy in range(0, 64, 16):
+		for gx in range(0, 64, 16):
+			for oy in range(6, 12):
+				for ox in range(6, 12):
+					_px(img, gx + ox, gy + oy, t.seam)
+			for i in range(5, 12):
+				_px(img, gx + i, gy + 5, t.lip)
+				_px(img, gx + 5, gy + i, t.lip)
+	if alt:
+		for i in 4:
+			_px(img, 44 + i, 27, t.hi)
+			_px(img, 44 + i, 28, t.lip)
+
+## OPEN SOURCE WILDLANDS — loam and moss, and the point of it is that soil has
+## no module: no grid, no bevel, no seam. The structure is CLODDING, built from
+## a wrapped three-octave field cut where its slope turns over — a hollow
+## between clods takes the seam tone, a lit crown takes the highlight, and the
+## field itself never leaves the 3% jitter. Leaf litter on top, seven specks.
+func _floor_loam(img: Image, t: FloorTones, alt: bool) -> void:
+	var fld := PackedFloat32Array()
+	fld.resize(4096)
+	for y in 64:
+		for x in 64:
+			var u := TAU * float(x) / 64.0
+			var v := TAU * float(y) / 64.0
+			var a := sin(2.0 * u + 1.3) + sin(3.0 * v + 0.2)
+			var b := sin(5.0 * u + 2.1) + sin(4.0 * v + 0.7)
+			var d := sin(7.0 * u + 0.4) * sin(6.0 * v + 2.4)
+			fld[y * 64 + x] = 0.7 * a + 0.45 * b + 0.5 * d
+	for y in 64:
+		for x in 64:
+			var f0 := fld[y * 64 + x]
+			var e := fld[y * 64 + ((x + 1) & 63)] - f0 + fld[((y + 1) & 63) * 64 + x] - f0
+			var c: Color = t.g(clampf(f0 * 0.8, -1.0, 1.0))
+			if e > 0.62:
+				c = t.seam
+			elif e < -0.66:
+				c = t.hi
+			_px(img, x, y, c)
+	for sp: Vector2i in [Vector2i(9, 12), Vector2i(37, 6), Vector2i(22, 41),
+			Vector2i(53, 30), Vector2i(44, 55), Vector2i(17, 58), Vector2i(60, 18)]:
+		_px(img, sp.x, sp.y, t.hi)
+		_px(img, (sp.x + 1) % 64, sp.y, t.mid)
+	for st: Vector2i in [Vector2i(31, 20), Vector2i(12, 50), Vector2i(49, 9)]:
+		_px(img, st.x, st.y, t.seam)
+	if alt:
+		for i in 4:
+			_px(img, 24 + i, 30, t.seam)
+		_px(img, 27, 31, t.seam)
+
+## CORPORATE ENTERPRISE — contract carpet tile, quarter-turned, with the loop
+## pile running with the turn. The whole material is a seam, a lit lip and a
+## 3% checker; it is meant to be forgettable, and that is what makes the room
+## on top of it readable.
+func _floor_carpet(img: Image, t: FloorTones, alt: bool) -> void:
+	for y in 64:
+		for x in 64:
+			var cx := x & 31
+			var cy := y & 31
+			var c: Color = t.base
+			if cx == 0 or cy == 0:
+				c = t.seam
+			elif cx == 1 or cy == 1:
+				c = t.hi
+			else:
+				var turned := (((x >> 5) + (y >> 5)) & 1) == 1
+				var u: int = cx if turned else cy
+				var w: int = cy if turned else cx
+				c = t.g(1.0 if (((u >> 1) + (w >> 2)) & 1) == 0 else -1.0)
+			_px(img, x, y, c)
+	if alt:
+		_floor_blot(img, 46, 46, 3, t.lip)
+
+## GPU MINES — scorched deck plate. 32px plates, a hard seam, a lit near bevel,
+## four rivet heads per plate and a brushed grain running with the roll. The B
+## tile carries one burn where a rig cooked; r=7 put a 15px scorch in a 64px
+## tile, which is a repeating dark spot once it is stamped across an aisle.
+func _floor_scorched(img: Image, t: FloorTones, alt: bool) -> void:
+	for y in 64:
+		for x in 64:
+			var px2 := x & 31
+			var py2 := y & 31
+			var c: Color = t.base
+			if px2 == 0 or py2 == 0:
+				c = t.seam
+			elif px2 == 1 or py2 == 1:
+				c = t.hi
+			else:
+				c = t.g(0.35 if ((x + y * 2) & 15) < 5 else -0.25)
+			_px(img, x, y, c)
+	for sy: int in [0, 32]:
+		for sx: int in [0, 32]:
+			for r: Vector2i in [Vector2i(4, 4), Vector2i(27, 4), Vector2i(4, 27), Vector2i(27, 27)]:
+				_px(img, sx + r.x, sy + r.y, t.hi)
+				_px(img, sx + r.x + 1, sy + r.y, t.mid)
+				_px(img, sx + r.x, sy + r.y + 1, t.mid)
+				_px(img, sx + r.x + 1, sy + r.y + 1, t.lip)
+	if alt:
+		_floor_blot(img, 21, 45, 4, t.lip)
+		_floor_blot(img, 21, 45, 2, t.seam)
+
+## TOKEN VAULT — laid gold plate. 32px plates, a 1px seam and lit lip, four
+## rivet heads and one shallow engraved chevron per plate. The B tile used to
+## inlay an accent line across its full width, so every second tile carried a
+## stripe and the vault floor read as banded rather than as plate.
+func _floor_gold(img: Image, t: FloorTones, alt: bool) -> void:
+	for y in 64:
+		for x in 64:
+			var gx := x & 31
+			var gy := y & 31
+			var c: Color = t.base
+			if gx == 0 or gy == 0:
+				c = t.seam
+			elif gx == 1 or gy == 1:
+				c = t.hi
+			else:
+				c = t.g(0.8 if (gy & 15) == 8 else 0.0)
+			_px(img, x, y, c)
+	for sy: int in [0, 32]:
+		for sx: int in [0, 32]:
+			for r: Vector2i in [Vector2i(5, 5), Vector2i(26, 5), Vector2i(5, 26), Vector2i(26, 26)]:
+				_px(img, sx + r.x, sy + r.y, t.hi)
+				_px(img, sx + r.x + 1, sy + r.y + 1, t.lip)
+			for i in 7:
+				_px(img, sx + 12 + i, sy + 16 - absi(i - 3), t.lip)
+	if alt:
+		for i in 7:
+			_px(img, 12 + i, 22 - absi(i - 3), t.seam)
+
+## PRODUCTION — poured concrete with sawn expansion joints on a 32px grid. A
+## 2px joint (that is what a saw cut looks like), a lit near lip and aggregate
+## speckle inside the jitter ceiling. The B tile carries one patch repair.
+func _floor_concrete(img: Image, t: FloorTones, alt: bool) -> void:
+	for y in 64:
+		for x in 64:
+			var jx := x & 31
+			var jy := y & 31
+			var c: Color = t.base
+			if jx <= 1 or jy <= 1:
+				c = t.seam
+			elif jx == 2 or jy == 2:
+				c = t.hi
+			else:
+				var h: int = (((x * 73856093) ^ (y * 19349663)) >> 5) & 15
+				var k := 0.0
+				if h < 2:
+					k = 1.0
+				elif h > 13:
+					k = -1.0
+				elif h == 7:
+					k = 0.35
+				c = t.g(k)
+			_px(img, x, y, c)
+	if alt:
+		for i in 8:
+			_px(img, 38 + i, 38, t.lip)
+			_px(img, 38, 38 + i, t.lip)
+			_px(img, 45, 38 + i, t.lip)
+			_px(img, 38 + i, 45, t.lip)
 
 ## One soft round mark, wrapped so it never straddles the tile seam. The whole
 ## vocabulary of "inset detail" is this and a rectangle.
@@ -1343,13 +1571,36 @@ const BOSS_TELLS := {
 ## The whole finishing chain, and it is now three passes instead of seven.
 ## Order matters: repaint first (so the ramp owns every body pixel), then the
 ## tell (so nothing can repaint over it), then the outline, then the shadow into
-## whatever is still empty.
+## whatever is still empty — and last, the scrub that guarantees an enemy is a
+## silhouette and not a rectangle.
 func _finish_enemy(img: Image, kind: String, boss: bool) -> void:
 	_enemy_repaint(img, boss)
 	_enemy_tell(img, kind, boss)
 	_underside_ao(img, 3, 0.30)
 	_outline_silhouette(img, OUTLINE_ENEMY)
 	_contact_shadow(img)
+	_clear_offshape(img)
+
+## Anything this faint is not a shadow, it is a film. Below it a pixel is
+## cleared to fully transparent BLACK rather than left as near-black at 2/255.
+const GHOST_ALPHA_FLOOR := 0.06
+
+## CRITIQUE #10 — the ghost box. An enemy has to BE a silhouette: every pixel
+## that is not the creature or its contact shadow must be alpha 0, RGB included,
+## because a 32x32 frame carrying a faint dark film reads on a dark floor as a
+## rectangle stamped under the creature. Two things produced one: the contact
+## shadow's outermost ring, which trails off through alphas of 1-14/255 in a
+## rectangle of iteration, and _draw_legacy_monolith, which filled the entire
+## frame edge to edge with masonry (see its own note). This pass fixes the first
+## and asserts the second: after it, the only non-transparent pixels in an enemy
+## PNG are the body, its outline and the visible core of its shadow.
+func _clear_offshape(img: Image) -> void:
+	for x in img.get_width():
+		for y in img.get_height():
+			var p := img.get_pixel(x, y)
+			if p.a <= 0.0 or p.a >= GHOST_ALPHA_FLOOR:
+				continue
+			_px(img, x, y, Color(0.0, 0.0, 0.0, 0.0))
 
 ## Repaint every opaque pixel into ENEMY_RAMP by luminance. This is a removal,
 ## not an effect: it throws away hue and keeps value order, which is the only
@@ -2090,48 +2341,71 @@ func _draw_hallucination(img: Image, c: Color) -> void:
 		_over_line(img, 3, band_y, 28, band_y, Color(t.r, t.g, t.b, 0.95))
 		_fill_rect(img, 3 if band_y < 16 else 19, band_y + 1, 10, 1, Color(0.96, 0.98, 1.0, 0.55))
 
-## THE LEGACY MONOLITH: a towering brick slab with per-brick value jitter,
-## structural cracks, dithered moss, a crenellated top and COBOL runes that
-## still glow.
+## THE LEGACY MONOLITH: a towering brick slab, cracked through, mossy on its
+## lit shoulder, with COBOL runes that still glow.
+##
+## Its crown, one entry per column of the shaft: where that column's masonry
+## starts. A ruin does not have a flat top, and a monolith is battered — wider
+## at the foot than at the head — so the two end pairs start well down and the
+## middle is eaten away unevenly. This is the whole silhouette in twenty ints.
+const MONOLITH_CROWN: Array[int] = [10, 7, 5, 4, 4, 5, 7, 6, 4, 4, 4, 5, 5, 8, 7, 5, 4, 4, 7, 10]
+
 func _draw_legacy_monolith(img: Image, _c: Color) -> void:
+	# CRITIQUE #10 — this sprite WAS the ghost box. It filled the frame edge to
+	# edge with brick (a 26x27 slab, a full-width plinth under it and a
+	# crenellation strip over it, all of which the outline pass then joined up),
+	# so at 32x32 on a dark floor the creature came with a faint rectangular
+	# background attached. A monolith is a SLAB, not a wallpaper: the masonry now
+	# lives inside a silhouette — a battered shaft with a broken crown standing
+	# on a plinth wider than itself — and every pixel outside it stays alpha 0.
 	var brick := Color(0.50, 0.44, 0.39)
 	var mortar := brick.darkened(0.68)
-	_fill_rect(img, 3, 2, 26, 27, brick)
-	for row in range(2, 30, 5):
-		var off: int = 0 if ((row - 2) / 5) % 2 == 0 else 4
-		# Courses in ONE tone with a lit top edge. The per-brick value jitter was
-		# the confetti that made this read as static at game zoom.
-		for bx in range(off - 5, 29, 8):
-			_fill_rect(img, maxi(bx + 1, 3), row + 1, 7, 4, brick)
-			_fill_rect(img, maxi(bx + 1, 3), row + 1, 7, 1, brick.lightened(0.20))
-			_fill_rect(img, maxi(bx + 1, 3), row + 4, 7, 1, brick.darkened(0.28))
-		_fill_rect(img, 3, row, 26, 1, mortar)
-		for bx2 in range(3 + off, 29, 8):
-			_fill_rect(img, bx2, row, 1, 5, mortar)
+	var left := 6
+	var right := 26                      # exclusive
+	for x in range(left, right):
+		var top: int = MONOLITH_CROWN[x - left]
+		_fill_rect(img, x, top, 1, 27 - top, brick)
+		_px(img, x, top, brick.lightened(0.24))
+	# one chunk gone from the right flank: two parallel edges are a wall, and a
+	# wall is the thing this sprite is not allowed to look like
+	for i in 3:
+		_px(img, right - 1, 15 + i, Color(0.0, 0.0, 0.0, 0.0))
+	_px(img, right - 2, 16, Color(0.0, 0.0, 0.0, 0.0))
+	# the plinth it has been sinking into since 1974
+	_fill_rect(img, 3, 27, 26, 3, brick.darkened(0.30))
+	_fill_rect(img, 3, 27, 26, 1, brick.lightened(0.10))
+	# Courses in ONE tone with a lit top edge, painted only where the shaft
+	# already is. The per-brick value jitter was the confetti that made this read
+	# as static at game zoom.
+	for row in range(8, 27, 5):
+		var off: int = 0 if ((row - 8) / 5) % 2 == 0 else 4
+		for bx in range(left - 8 + off, right, 8):
+			_over_rect(img, bx + 1, row + 1, 7, 1, brick.lightened(0.20))
+			_over_rect(img, bx + 1, row + 4, 7, 1, brick.darkened(0.28))
+		_over_rect(img, left, row, right - left, 1, mortar)
+		for bx2 in range(left + off, right, 8):
+			_over_rect(img, bx2, row, 1, 5, mortar)
 	# structural despair, with a dogleg
 	var crack := Color(0.05, 0.045, 0.04)
-	_thick_line(img, 10, 3, 12, 14, crack)
-	_thick_line(img, 12, 14, 14, 28, crack)
-	_thick_line(img, 22, 5, 20, 16, crack)
-	_thick_line(img, 20, 16, 18, 27, crack)
+	for dx: int in [0, 1]:
+		_over_line(img, 10 + dx, 7, 12 + dx, 16, crack)
+		_over_line(img, 12 + dx, 16, 13 + dx, 26, crack)
+		_over_line(img, 21 + dx, 8, 19 + dx, 17, crack)
+		_over_line(img, 19 + dx, 17, 18 + dx, 26, crack)
 	# glowing COBOL runes
 	var rune := Color(0.42, 0.98, 0.52)
-	_fill_rect(img, 12, 11, 8, 2, rune.darkened(0.30))
-	_fill_rect(img, 13, 17, 6, 2, rune.darkened(0.30))
-	_fill_rect(img, 15, 9, 2, 10, rune)
-	_glow_core(img, 16, 13, rune.lightened(0.30))
-	_fill_rect(img, 7, 22, 2, 5, rune.darkened(0.35))
-	_fill_rect(img, 7, 24, 4, 1, rune.darkened(0.35))
-	# moss clings to the lit shoulder
-	_dither_rect(img, 3, 2, 26, 2, Color(0.23, 0.42, 0.26), Color(0.23, 0.42, 0.26))
-	# crenellations, a lit left edge and a plinth: not a box
-	for cx0 in range(3, 29, 6):
-		_fill_rect(img, cx0, 0, 4, 2, brick.darkened(0.18))
-		_fill_rect(img, cx0, 0, 4, 1, brick.lightened(0.24))
-	_fill_rect(img, 3, 2, 1, 27, brick.lightened(0.30))
-	_fill_rect(img, 28, 2, 1, 27, brick.darkened(0.42))
-	_fill_rect(img, 1, 29, 30, 3, brick.darkened(0.30))
-	_fill_rect(img, 1, 29, 30, 1, brick.lightened(0.10))
+	_over_rect(img, 12, 13, 8, 2, rune.darkened(0.30))
+	_over_rect(img, 13, 19, 6, 2, rune.darkened(0.30))
+	_over_rect(img, 15, 11, 2, 10, rune)
+	_over_px(img, 16, 15, WHITE_HOT)
+	_over_rect(img, 9, 23, 2, 4, rune.darkened(0.35))
+	_over_rect(img, 9, 25, 4, 1, rune.darkened(0.35))
+	# moss clings to the lit shoulder, and only where there is a shoulder
+	_dither_rect(img, left, 4, right - left, 3,
+		Color(0.23, 0.42, 0.26), Color(0.23, 0.42, 0.26), true)
+	# a lit left edge and a shaded right one: the shaft has two faces
+	_over_rect(img, left, 4, 1, 23, brick.lightened(0.30))
+	_over_rect(img, right - 1, 4, 1, 23, brick.darkened(0.42))
 
 ## THE INFINITE CONTEXT: an eye that has read everything you ever typed,
 ## including the deleted parts. The eye is a LENS, not a marble, and it owns the
@@ -2548,97 +2822,67 @@ func _generate_icon() -> void:
 	_fill_rect(img, 50, 44, 2, 2, WHITE_HOT)
 	img.save_png(ProjectSettings.globalize_path("res://assets/textures/icon.png"))
 
-## ========== Round 4: structured floors + set-dressing fidelity ==========
-## VISUAL_BIBLE Round 4 addendum. Rule 1: structure before noise — a floor set
-## with readable construction (plank runs / panel grids / rock strata / pavers)
-## authored DARK (mean luminance ~0.11-0.14, path ~0.17) so props and characters
-## sit a full value step above the ground. Rule 2: the silhouette law — the
-## dress_/furn_ set gets a post-pass so every labeled prop reads without its
-## label. The composition side consumes these exists()-guarded; the filenames
-## are contract.
+## ========== The region ground set + set-dressing fidelity ==========
+## Rule 1: structure before noise — a floor set with readable construction
+## (plank runs, slabs, flags, weave, grille, loam, pile, plate) authored to the
+## LAW 6 window above, so it reads as GROUND and props still sit a clear value
+## step off it. The "author it dark, ~0.11-0.14 mean" instruction that used to
+## live on this line is what produced nine black rooms and is gone. Rule 2: the
+## silhouette law — the dress_/furn_ set gets a post-pass so every labeled prop
+## reads without its label. The composition side consumes these exists()-guarded;
+## the filenames are contract.
 
 func _generate_floor_structures() -> void:
 	# region_builder resolves this set by REGION_TILE_MAP suffix ("gpu",
-	# "cloud", ...), never by family name — so each region gets an alias copy
-	# of its family, or every floor_* lookup misses and the whole set is
-	# authored-but-unreachable (the round-3 lesson, again). The family files
-	# stay as the canonical documented set.
-	var interior_regions: Array[String] = ["localhost", "api_bazaar"]
-	var industrial_regions: Array[String] = ["dependency", "corporate", "production"]
-	var outdoor_regions: Array[String] = ["stackoverflow", "opensource", "gpu"]
-	var ethereal_regions: Array[String] = ["cloud", "vault"]
+	# "cloud", ...), never by family name — so each region needs a floor_<suffix>
+	# pair on disk, or every floor_* lookup misses and the whole set is
+	# authored-but-unreachable (the round-3 lesson, again).
+	#
+	# ROUND 9 — those files used to be ALIASES: ten regions were served by four
+	# shared family textures, so api_bazaar's market stood on Localhost's
+	# floorboards and dependency, corporate and production shared one deck.
+	# That is precisely the "one shared square-tile floor tinted per region"
+	# the critique names. Each region now writes its OWN LAW 6 material, and the
+	# four canonical family filenames survive as copies of a representative
+	# region so nothing that looks them up can miss.
 	for alt: bool in [false, true]:
 		var suffix := "_alt" if alt else "_base"
-		_save_floor(_floor_interior(alt), "interior", interior_regions, suffix)
-		_save_floor(_floor_industrial(alt), "industrial", industrial_regions, suffix)
-		_save_floor(_floor_outdoor(alt), "outdoor", outdoor_regions, suffix)
-		_save_floor(_floor_ethereal(alt), "ethereal", ethereal_regions, suffix)
+		var no_alias: Array[String] = []
+		for rname: String in FLOOR_REGIONS:
+			_save_floor(_make_floor_tile(rname, alt), rname, no_alias, suffix)
+		_save_floor(_floor_interior(alt), "interior", no_alias, suffix)
+		_save_floor(_floor_industrial(alt), "industrial", no_alias, suffix)
+		_save_floor(_floor_outdoor(alt), "outdoor", no_alias, suffix)
+		_save_floor(_floor_ethereal(alt), "ethereal", no_alias, suffix)
 	_save_image(_make_path_tile(), "path_tile.png")
 	_save_image(_make_path_tile_edge(), "path_tile_edge.png")
 
 ## One floor family under its canonical name plus one alias per region that
-## uses it (see _generate_floor_structures for why the aliases must exist).
+## asks for it. Everything written here passes the LAW 6 luminance gate first.
 func _save_floor(img: Image, family: String, regions: Array[String], suffix: String) -> void:
-	_save_image(img, "floor_%s%s.png" % [family, suffix])
+	_save_floor_tile(img, "floor_%s%s.png" % [family, suffix])
 	for rk: String in regions:
-		_save_image(img, "floor_%s%s.png" % [rk, suffix])
+		_save_floor_tile(img, "floor_%s%s.png" % [rk, suffix])
 
-## The four shared floor FAMILIES, rebuilt to LAW 6 alongside the per-region
-## tiles above: three tones, a 32px module (16px for boards), one inset detail
-## in the "_alt" variant only, and 4% of value between the two variants.
-##
-## Removed here, and it was the bulk of these functions: per-pixel hash noise,
-## board staining, brushed-metal streaks, faded hazard chevrons, strata wave
-## fields, moss scatter, pebbles, dithered diagonal sheen, glowing violet
-## seams, circuit traces and every nail head. A floor stamped three hundred
-## times per region cannot afford a single feature it does not need.
+## The four canonical family names, each now a copy of the region whose
+## material defines it. They are kept because the filenames are contract; the
+## per-region files above are what the game actually stands on.
 
-## Plank run in dark warm wood: 16px boards, seam, lit board edge, one butt
-## joint. The alt variant is 4% darker and carries one knot.
+## Plank run in dark warm wood — Localhost's material.
 func _floor_interior(alt: bool) -> Image:
-	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
-	var base := Color(0.34, 0.27, 0.21)
-	if alt:
-		base = Color(base.r * 0.96, base.g * 0.96, base.b * 0.96, 1.0)
-	_floor_material(img, "planks", base, Color(1.0, 0.72, 0.29), alt)
-	_dim_tile(img, 0.42)
-	return img
+	return _make_floor_tile("localhost", alt)
 
-## Server-room deck: 32px machined panels, a recessed seam and a lit near
-## bevel. The alt variant vents one panel.
+## Poured slab with sawn expansion joints — Production's material.
 func _floor_industrial(alt: bool) -> Image:
-	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
-	var base := Color(0.34, 0.36, 0.44)
-	if alt:
-		base = Color(base.r * 0.96, base.g * 0.96, base.b * 0.96, 1.0)
-	_floor_material(img, "concrete", base, Color(1.0, 0.69, 0.125), false)
-	if alt:
-		for i in 4:
-			_fill_rect(img, 40, 40 + i * 3, 16, 1, base.darkened(0.36))
-	_dim_tile(img, 0.38)
-	return img
+	return _make_floor_tile("production", alt)
 
-## Broken ground: 32px stone flags with a mortar joint and a lit lip. The alt
-## variant grows one hairline crack.
+## Cracked sandstone flags — the Ruins' material.
 func _floor_outdoor(alt: bool) -> Image:
-	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
-	var base := Color(0.33, 0.30, 0.24)
-	if alt:
-		base = Color(base.r * 0.96, base.g * 0.96, base.b * 0.96, 1.0)
-	_floor_material(img, "ruin", base, Color(0.91, 0.77, 0.42), alt)
-	_dim_tile(img, 0.42)
-	return img
+	return _make_floor_tile("stackoverflow", alt)
 
-## Glass deck for the cloud/vault mood: 32px panes, seam, lit lip. No glowing
-## seams — LAW 3 is explicit that floors do not glow.
+## Steel grating — the Cloud District's material.
 func _floor_ethereal(alt: bool) -> Image:
-	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
-	var base := Color(0.30, 0.33, 0.48)
-	if alt:
-		base = Color(base.r * 0.96, base.g * 0.96, base.b * 0.96, 1.0)
-	_floor_material(img, "concrete", base, Color(0.545, 0.36, 0.965), false)
-	_dim_tile(img, 0.36)
-	return img
+	return _make_floor_tile("cloud", alt)
 
 ## One running-bond paver pixel. Shared by path_tile and path_tile_edge so an
 ## edge tile placed against a path tile continues the same bond exactly. Three
@@ -2658,13 +2902,16 @@ func _paver_px(x: int, y: int) -> Color:
 ## Walkable path: running-bond pavers, authored a step BRIGHTER than every
 ## region floor so "walk here" reads in a one-second glance at a static frame.
 ## This value relationship is the game's wayfinding and it is deliberately the
-## loudest thing the floor is allowed to do.
+## loudest thing the floor is allowed to do — which means it has to move with
+## the floors. LAW 6 puts a floor at 64-84; the path sits just over it at ~96,
+## the same distance above ground it always was.
+const PATH_DIM := 0.90
 func _make_path_tile() -> Image:
 	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
 	for y in 64:
 		for x in 64:
 			_px(img, x, y, _paver_px(x, y))
-	_dim_tile(img, 0.42)
+	_dim_tile(img, PATH_DIM)
 	return img
 
 ## Path edge: pavers on top, a lit curb row, then a short clean falloff to
@@ -2685,7 +2932,7 @@ func _make_path_tile_edge() -> Image:
 			else:
 				var a := maxf(0.0, 0.80 * (1.0 - float(y - 52) / 11.0))
 				_px(img, x, y, Color(soil.r, soil.g, soil.b, a))
-	_dim_tile(img, 0.42)
+	_dim_tile(img, PATH_DIM)
 	return img
 
 ## ---------- Round 4 rule 2: the silhouette law, applied to the dressing ----------
@@ -3000,6 +3247,13 @@ func _over_px(img: Image, x: int, y: int, c: Color) -> void:
 	if img.get_pixel(x, y).a <= 0.05:
 		return
 	_px(img, x, y, c)
+
+## _fill_rect that respects the silhouette. Course lines, runes and edge
+## lighting all want this: they belong TO a shape and must never widen it.
+func _over_rect(img: Image, x: int, y: int, w: int, h: int, c: Color) -> void:
+	for iy in range(y, y + h):
+		for ix in range(x, x + w):
+			_over_px(img, ix, iy, c)
 
 func _over_line(img: Image, x0: int, y0: int, x1: int, y1: int, c: Color) -> void:
 	var dx: int = absi(x1 - x0)

@@ -16,8 +16,9 @@ extends Control
 ## "over there".
 ##
 ## What it is now: ONE chevron in the region's accent over a dark 1px-equivalent
-## outline, pulsing 0.9 -> 1.0, and one small line of text with a one-pixel
-## shadow. No halo, no trail, no ring, no plate, no overbright.
+## outline, pulsing 0.9 -> 1.0, and one small line of TEXT_DIM with a one-pixel
+## shadow, held clear of the chevron. No halo, no trail, no ring, no plate, no
+## overbright, and only ONE of the two elements is coloured.
 ##
 ## ROUND 7 — THE BEACON CLEARS WHAT IT POINTS AT. Round 6 floated it a flat 52
 ## screen px above the target's ORIGIN, which is fine for a token and wrong for
@@ -39,13 +40,19 @@ extends Control
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 
 ## Screen margins the pinned arrow is clamped inside. The top clears the strip
-## (region name + cycle line end at ~y 96); the bottom clears the toast lane
-## (which starts at view.y-104). Panels that do NOT span the full width — the
-## objective line, the toast — are handled as exclusion rects instead, so the
-## arrow keeps the whole middle of the frame to work with.
+## (region name + cycle line end at ~y 96); the bottom clears the ability bar
+## and the key legend. Panels that do NOT span the full width — the objective
+## line, the toast lane — are handled as exclusion rects instead, so the arrow
+## keeps the whole middle of the frame to work with.
 const MARGIN_X := 96.0
 const MARGIN_TOP := 112.0
 const MARGIN_BOTTOM := 96.0
+## The toast lane, mirrored from hud.gd (TOAST_BOTTOM -126, TOAST_H 26,
+## TOAST_W 720) as a distance UP from the bottom edge. Kept as named constants
+## so the next person to move the lane can grep for one number, not for a 104.
+const TOAST_LANE_TOP := 126.0
+const TOAST_LANE_H := 26.0
+const TOAST_LANE_W := 720.0
 ## Breathing room left around a HUD element when the marker is pushed off it.
 const AVOID_PAD := 14.0
 ## Group scans are cheap but not free; three times a second is invisible to the
@@ -81,6 +88,9 @@ const PLATE_PAD_Y := 2.0
 ## scale, plus PLATE_GAP.
 const CHEVRON_REACH := 24.7
 const RING_REACH := 24.7
+## Clear air between the chevron's outer edge and the nearest edge of the
+## readout. Never below 8: closer than that and the words read as part of the
+## marker rather than as a caption under it.
 const PLATE_GAP := 9.0
 ## The band at the top of the screen that guidance owns and may not leave.
 ## Below it: the strip's cycle line ends at ~96. Above it: boss_hud.gd starts its
@@ -212,9 +222,15 @@ func _build() -> void:
 	_label.clip_text = false
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	# The readout is a HUD label that happens to live out in the world, so it is
+	# dressed like every other one: the aliased font, the SMALL tier, TEXT_DIM,
+	# a 1px shadow, no halo and no plate (LAW 4). It used to be printed in the
+	# region ACCENT, which made "Localhost · 14m" as loud as the chevron it hangs
+	# off — two elements shouting the same thing in the same colour. The CHEVRON
+	# carries the accent; the words are quiet.
 	_label.add_theme_font_override("font", _GameTheme.ui_font())
 	_label.add_theme_font_size_override("font_size", _GameTheme.SMALL)
-	_label.add_theme_color_override("font_color", _accent)
+	_label.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
 	_GameTheme.outline_text(_label)
 	_plate.add_child(_label)
 
@@ -306,8 +322,11 @@ func _refresh_exclusions(view: Vector2) -> void:
 		var r: Rect2 = (qp as Control).get_global_rect()
 		if r.size.x > 1.0 and r.size.y > 1.0:
 			_ex_quest = r
-	# Toast line, bottom-centre (hud.gd ToastLane).
-	_ex_toast = Rect2(view.x * 0.5 - 360.0, view.y - 104.0, 720.0, 26.0)
+	# Toast line, bottom-centre. MUST track hud.gd's TOAST_BOTTOM / TOAST_W /
+	# TOAST_H: the lane moved up to clear the ability slots by 36px, and a
+	# readout parked on the lane's OLD row would now be sitting under the toast.
+	_ex_toast = Rect2(view.x * 0.5 - TOAST_LANE_W * 0.5,
+		view.y - TOAST_LANE_TOP, TOAST_LANE_W, TOAST_LANE_H)
 
 ## Slides a point out of a box along its shortest escape route.
 func _push_out(p: Vector2, r: Rect2) -> Vector2:
@@ -546,13 +565,14 @@ func _npc_clearance(vp: Viewport) -> float:
 		return BEACON_LIFT
 	return (-top - SP_NUDGE) * _zoom_of(vp) + NPC_LABEL_CLEAR
 
-## Repaints the chevron and the readout in the current accent. Called on resolve
-## and on a region change, never per frame.
+## Repaints the CHEVRON in the current accent. Called on resolve and on a region
+## change, never per frame.
+##
+## The readout is deliberately not repainted: it is TEXT_DIM in every room (see
+## `_build`), so one element carries the region's colour instead of two.
 func _apply_accent() -> void:
 	if is_instance_valid(_body):
 		_body.color = _accent
-	if is_instance_valid(_label):
-		_label.add_theme_color_override("font_color", _accent)
 
 ## ONE line, always. Everything the design law requires — where you are headed,
 ## how far, and the physical action — fits on a single line.

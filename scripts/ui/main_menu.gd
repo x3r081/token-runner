@@ -354,11 +354,8 @@ func _dress_panel() -> void:
 	subtitle.add_theme_color_override("font_color", _GameTheme.TEXT)
 	var version: Label = $CenterPanel/VBox/Version
 	version.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
-	# The small tier comes from GameTheme — font AND size — not from the scene
-	# file, so the tagline and the build note cannot drift back to the settings at
-	# which "Ship" printed as "Shlp" and "Before" as "Bcforc".
 	for l: Label in [subtitle, version]:
-		_GameTheme.small_text(l)
+		_small(l)
 	# One ACCENT per screen: the title, and the button you came here to press.
 	_GameTheme.style_button($CenterPanel/VBox/NewGame, _GameTheme.CYAN, _Modal.BODY)
 	for btn: Button in [$CenterPanel/VBox/ContinueBtn, $CenterPanel/VBox/SettingsBtn,
@@ -372,7 +369,23 @@ func _dress_tip() -> void:
 	var tip: Label = $TipLabel
 	tip.text = _Comedy.pick("menu_tip", _Comedy.MENU_TIPS)
 	tip.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
-	_GameTheme.small_text(tip)
+	_small(tip)
+
+## The SMALL tier, as a SIZE and nothing else.
+##
+## Every label on this screen inherits the theme's default font — the aliased,
+## hinted one `_ready` installs on the root — and none of them may override it.
+## The tip line did: it went through a helper that swapped in a separately
+## rasterised, ANTI-ALIASED face, so the captured menu frame carried a title
+## drawn in 4 tones and a tip drawn in 89. Two typographic systems on one
+## screen, and the smooth one is the "generated" tell LAW 1 exists to remove.
+##
+## A size override alone is safe now: the theme's font gained the autohinter
+## this round, which is what the antialiasing had been compensating for — the
+## HUD's own 16px legend renders "[E] interact · [T] model · [H] help" aliased
+## and clean in every captured region frame.
+func _small(l: Label) -> void:
+	l.add_theme_font_size_override("font_size", _GameTheme.SMALL)
 
 func _on_root_resized() -> void:
 	queue_redraw()
