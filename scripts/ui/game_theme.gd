@@ -1,31 +1,75 @@
 extends RefCounted
 class_name GameTheme
-## "Neon Afterhours" UI token set — the single source of truth for panel glass,
-## button states, bar gradients, glow layers, and micro-motion. Every UI script
-## pulls from here so the whole interface reads as one premium neon product
-## instead of ten panels that met once at a hackathon.
+## The one style source for every screen — VISUAL_BIBLE_V2 LAW 8.
+##
+## ROUND 6 IS A SUBTRACTION. Every helper below kept its name and its signature;
+## what changed is what they PRODUCE. A caller that asked for "glass with an
+## accent halo" now gets a flat 96% panel with a hairline border, and a caller
+## that asked for a sheen or a glow layer gets nothing at all. That is the whole
+## design of this file: the fix for "every screen glows" is not to edit twenty
+## screens, it is to make the glow helpers stop glowing. Delete a call site if
+## you like; you do not have to, and nothing breaks if you don't.
+##
+## THE MODAL RULE (LAW 8), which `panel_box`, `glass_box`, `dream_app_panel`
+## and `ship_button` all now obey:
+##   BASE at 96%, 1px LINE border, corner radius 0–2,
+##   shadow_size 0, no glow, no sheen, no gradient.
+##   One ACCENT per screen (title + primary action). Body in TEXT.
+##
+## THE TEXT RULE (LAW 1): aliased. `ui_font()` is the project font with
+## antialiasing, hinting and subpixel positioning switched off, installed as the
+## theme's default font so every screen inherits it. Three sizes exist —
+## SMALL 14 / BODY 18 / HEADING 26 — and nothing else.
 
 # ---------------------------------------------------------------- palette ----
-# Master palette (docs/VISUAL_BIBLE.md). Do not invent colors elsewhere.
+# LAW 2. Three hues per scene; everything else desaturates toward grey.
 const VOID := Color("#05060E")
 const BASE := Color("#0B0E1C")
 const SURFACE := Color("#131A2E")
 const RAISED := Color("#1C2440")
 const LINE := Color("#2A3558")
 const TEXT_DIM := Color("#7C8BB0")
-const TEXT := Color("#C9D6F2")
+const TEXT := Color("#D8DEEA")
 const WHITE_HOT := Color("#F4F9FF")
 const CYAN := Color("#24F0DC")
 const CYAN_HOT := Color("#7DFFF0")
 const MAGENTA := Color("#FF2D95")
 const VIOLET := Color("#8B5CF6")
-const BLUE := Color("#3D9BFF")
+const BLUE := Color("#4D7CFF")
 const ACID := Color("#A8FF3E")
-const AMBER := Color("#FFB020")
+const AMBER := Color("#FFB74A")
 const RED := Color("#FF4757")
 const GOLD := Color("#FFD34D")
 
-# Animation timing (bible): micro / standard / dramatic. TRANS_CUBIC everywhere.
+## LAW 2's per-region ACCENT column, in one place so the HUD, the waypoint and
+## the map cannot disagree about what colour a region is.
+const REGION_ACCENT := {
+	"localhost": Color("#24F0DC"),
+	"dependency_district": Color("#A8FF3E"),
+	"stackoverflow_ruins": Color("#E8C46B"),
+	"api_bazaar": Color("#FF2D95"),
+	"cloud_district": Color("#6BC7FF"),
+	"open_source_wildlands": Color("#58E07C"),
+	"corporate_enterprise": Color("#4D7CFF"),
+	"gpu_mines": Color("#FF6B2D"),
+	"production": Color("#FF4757"),
+	"token_vault": Color("#FFD34D"),
+}
+
+static func region_accent(region_id: String) -> Color:
+	return REGION_ACCENT.get(region_id, CYAN)
+
+# ------------------------------------------------------------- type scale ----
+## LAW 1: three sizes, no others. FONT_* aliases exist because "SMALL" alone
+## reads ambiguously at a distant call site.
+const SMALL := 14
+const BODY := 18
+const HEADING := 26
+const FONT_SMALL := SMALL
+const FONT_BODY := BODY
+const FONT_HEADING := HEADING
+
+# Animation timing (LAW 9: motion is small). TRANS_CUBIC everywhere.
 const T_MICRO := 0.12
 const T_STD := 0.25
 const T_DRAMA := 0.6
@@ -33,22 +77,28 @@ const T_DRAMA := 0.6
 const SHEEN_SHADER := "res://assets/shaders/ui_sheen.gdshader"
 const STARFIELD_SHADER := "res://assets/shaders/starfield.gdshader"
 
-# Shared resource caches — one instance per shader/params/texture combo.
+# Shared resource caches — one instance per shader/params/texture/font combo.
 static var _mat_cache: Dictionary = {}
 static var _tex_cache: Dictionary = {}
 static var _font_cache: Dictionary = {}
 static var _additive_mat: CanvasItemMaterial = null
 
 # ------------------------------------------------------------ core colors ----
-## Emissive "hot" companion of an accent (bar gradients, hover text).
+## Emissive "hot" companion of an accent.
+##
+## Round 6 pulls this back hard: it used to lerp 55% toward WHITE_HOT, which is
+## how a palette of ten colours became a palette of twenty near-whites. At 0.18
+## it is still a step up in value — enough for a hover state or a lit edge — and
+## still recognisably the accent it came from.
 static func hot_of(accent: Color) -> Color:
-	return accent.lerp(WHITE_HOT, 0.55)
+	return accent.lerp(WHITE_HOT, 0.18)
 
 static func with_alpha(c: Color, a: float) -> Color:
 	return Color(c.r, c.g, c.b, a)
 
 # --------------------------------------------------------------- materials ----
-## Shared additive material for overbright glow layers.
+## Shared additive material. Still here for the two transient flashes that earn
+## it (damage, a spend); it is not for decoration.
 static func additive_material() -> CanvasItemMaterial:
 	if _additive_mat == null:
 		_additive_mat = CanvasItemMaterial.new()
@@ -71,7 +121,7 @@ static func shader_material(path: String, params: Dictionary) -> ShaderMaterial:
 	return _mat_cache[key]
 
 # ---------------------------------------------------------------- textures ----
-## 2x2 fully transparent texture — canvas for pure-shader overlays (sheen).
+## 2x2 fully transparent texture.
 static func clear_texture() -> ImageTexture:
 	if not _tex_cache.has("clear"):
 		var img := Image.create(2, 2, false, Image.FORMAT_RGBA8)
@@ -79,42 +129,32 @@ static func clear_texture() -> ImageTexture:
 		_tex_cache["clear"] = ImageTexture.create_from_image(img)
 	return _tex_cache["clear"]
 
-## Horizontal accent->hot gradient with a 1px WHITE_HOT top edge, for bar fills.
+## Bar fill. Flat, two tones — the accent and one darker seat row.
 ##
-## Round 5: the fill is also shaded VERTICALLY now — a hot band just under the
-## white edge falling to a darkened base at the bottom. Flat horizontal gradients
-## read as coloured tape at HUD scale; this reads as a lit tube, which is what
-## the bible's "1px WHITE_HOT top edge" was reaching for. Signature unchanged, so
-## every bar in the game (vitals, boss, Dream App, quest log) inherits it.
+## This used to bake a horizontal accent->hot ramp AND a vertical shade AND a
+## WHITE_HOT top edge into every bar in the game, which is four values and a
+## gradient on a strip that is four pixels tall. A bar reports one number; it
+## gets one colour.
 static func bar_gradient_texture(accent: Color, hot: Color) -> ImageTexture:
 	var key := "bar:%s:%s" % [accent.to_html(), hot.to_html()]
 	if not _tex_cache.has(key):
-		var w := 64
-		var h := 16
-		var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
-		var base_dark := accent.lerp(VOID, 0.42)
-		for x in w:
-			var c := accent.lerp(hot, float(x) / float(w - 1))
-			for y in h:
-				# 0 at the top row, 1 at the bottom row.
-				var v := float(y) / float(h - 1)
-				# Top third: lift toward the hot core. Bottom half: fall into shadow.
-				var shaded := c.lerp(hot, maxf(0.0, 0.55 - v * 1.8))
-				shaded = shaded.lerp(base_dark, clampf((v - 0.45) * 1.55, 0.0, 1.0))
-				img.set_pixel(x, y, shaded)
-		for x in w:
-			img.set_pixel(x, 0, WHITE_HOT)
-			img.set_pixel(x, h - 1, base_dark.lerp(VOID, 0.45))
+		var img := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+		img.fill(accent.lerp(hot, 0.12))
+		var seat := accent.lerp(VOID, 0.45)
+		for x in 4:
+			img.set_pixel(x, 3, seat)
 		_tex_cache[key] = ImageTexture.create_from_image(img)
 	return _tex_cache[key]
 
-## Radial vignette (transparent center, tinted edges) for full-bleed screens.
+## Radial vignette. LAW 5 caps the world vignette at 0.14 with a wide plateau,
+## so the ramp starts late and stays shallow: the edge tint the caller asks for
+## is reached only in the last few percent of the radius.
 static func vignette_texture(edge: Color) -> GradientTexture2D:
 	var key := "vig:%s" % edge.to_html()
 	if not _tex_cache.has(key):
 		var g := Gradient.new()
-		g.offsets = PackedFloat32Array([0.0, 0.55, 1.0])
-		g.colors = PackedColorArray([with_alpha(edge, 0.0), with_alpha(edge, 0.25), edge])
+		g.offsets = PackedFloat32Array([0.0, 0.72, 1.0])
+		g.colors = PackedColorArray([with_alpha(edge, 0.0), with_alpha(edge, 0.10), edge])
 		var t := GradientTexture2D.new()
 		t.gradient = g
 		t.fill = GradientTexture2D.FILL_RADIAL
@@ -126,108 +166,122 @@ static func vignette_texture(edge: Color) -> GradientTexture2D:
 	return _tex_cache[key]
 
 # -------------------------------------------------------------------- fonts ----
-## Letter-spaced variation of the default font, for headings/titles.
+## The project font with every smoothing feature switched off (LAW 1).
+##
+## Smooth vector text laid over 2x pixel art is the single loudest "generated"
+## signal in the QA frames: five pixel sizes in one image, and the text was one
+## of them. `FontFile` carries the three switches that matter, so the default
+## font is duplicated and switched off at the source; a `SystemFont` or an
+## already-derived font has no such switches and is wrapped in a FontVariation
+## so the rest of the theme still has one font object to hang sizes off.
+static func ui_font() -> Font:
+	if _font_cache.has("ui"):
+		return _font_cache["ui"]
+	var base: Font = ThemeDB.fallback_font
+	var out: Font = null
+	if base is FontFile:
+		var f: FontFile = (base as FontFile).duplicate()
+		f.antialiasing = TextServer.FONT_ANTIALIASING_NONE
+		f.hinting = TextServer.HINTING_NONE
+		f.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
+		f.multichannel_signed_distance_field = false
+		f.force_autohinter = false
+		out = f
+	else:
+		var fv := FontVariation.new()
+		fv.base_font = base
+		out = fv
+	_font_cache["ui"] = out
+	return out
+
+## Letter-spaced variation of the aliased UI font, for headings.
 static func spaced_font(spacing: int = 3) -> FontVariation:
 	var key := "sp:%d" % spacing
 	if not _font_cache.has(key):
 		var fv := FontVariation.new()
-		fv.base_font = ThemeDB.fallback_font
+		fv.base_font = ui_font()
 		fv.set_spacing(TextServer.SPACING_GLYPH, spacing)
 		_font_cache[key] = fv
 	return _font_cache[key]
 
 # ------------------------------------------------------------- styleboxes ----
-## Standard neon panel: BASE 92%, 1px LINE border, radius 6, accent outer glow.
+## THE panel. BASE 96%, 1px LINE hairline, radius 2, no shadow, no glow.
+## `accent` is accepted and ignored: a panel does not carry a colour, the one
+## title line inside it does.
 static func panel_box(accent: Color = CYAN, margin: float = 16.0) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
-	# Near-opaque on purpose: at 0.92 a bright world caption or neon prop reads
-	# straight through a panel laid over the live world, and the text on both
-	# sides becomes mud. Panels win against the world they cover.
-	s.bg_color = with_alpha(BASE, 0.975)
-	s.border_color = LINE
+	s.bg_color = with_alpha(BASE, 0.96)
+	s.border_color = with_alpha(LINE, 0.9)
 	s.set_border_width_all(1)
-	s.set_corner_radius_all(6)
+	s.set_corner_radius_all(2)
 	s.set_content_margin_all(margin)
-	s.shadow_color = with_alpha(accent, 0.14)
-	s.shadow_size = 14
+	s.shadow_size = 0
+	# Referenced so the signature stays honest about taking a colour it no
+	# longer paints with.
+	s.shadow_color = with_alpha(accent, 0.0)
 	return s
 
-## HUD "glass" group panel: darker, quieter glow, tighter margins.
-##
-## Round 5: 0.78 alpha over a bright floor (the gold vault slab, the pink bazaar
-## plaza) left HUD text competing with the tiles behind it. 0.88 still reads as
-## glass — the world's light bleeds through the shadow ring — but the numbers on
-## top of it are now legible over ANY background. The drop shadow doubles as a
-## dark halo that separates the panel from whatever it is sitting on.
+## Same rule, tighter margins. There is no "glass" any more — one panel style is
+## the point of LAW 8 — so this is `panel_box` with a different default margin,
+## kept because a dozen call sites name it.
 static func glass_box(accent: Color = CYAN, margin: float = 10.0) -> StyleBoxFlat:
-	var s := StyleBoxFlat.new()
-	s.bg_color = with_alpha(BASE, 0.88)
-	s.border_color = with_alpha(LINE, 0.95)
-	s.set_border_width_all(1)
-	s.set_corner_radius_all(6)
-	s.set_content_margin_all(margin)
-	# Dark, accent-TINTED halo: still reads as the panel's own neon, but it is a
-	# shadow first — that is what buys separation from a bright floor.
-	s.shadow_color = with_alpha(accent.lerp(VOID, 0.70), 0.55)
-	s.shadow_size = 10
-	return s
+	return panel_box(accent, margin)
 
 ## Invisible stylebox (turns a PanelContainer into a pure layout node).
 static func empty_box() -> StyleBoxEmpty:
 	return StyleBoxEmpty.new()
 
-## Small accent chip (speaker names, key hints, tags).
+## Was: a tinted, bordered, rounded chip behind speaker names and key hints.
+## Now: padding. The chips were half the "boxes around boxes" count in the QA
+## frames, and every one of them wrapped text that reads perfectly well on its
+## own. Kept as a function so nothing has to stop calling it.
 static func chip_box(accent: Color = CYAN) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
-	s.bg_color = with_alpha(accent, 0.14)
-	s.border_color = with_alpha(accent, 0.7)
-	s.set_border_width_all(1)
-	s.set_corner_radius_all(4)
-	s.content_margin_left = 10.0
+	s.bg_color = with_alpha(accent, 0.0)
+	s.set_border_width_all(0)
+	s.set_corner_radius_all(0)
+	s.content_margin_left = 0.0
 	s.content_margin_right = 10.0
-	s.content_margin_top = 2.0
-	s.content_margin_bottom = 2.0
+	s.content_margin_top = 0.0
+	s.content_margin_bottom = 0.0
 	return s
 
-## Button state boxes per bible: transparent base / 4% hover / 12% pressed.
+## Button states: a hairline box that fills faintly on hover and press. No
+## shadow, no halo, no scale.
 static func button_boxes(accent: Color = CYAN) -> Dictionary:
 	var normal := StyleBoxFlat.new()
-	normal.bg_color = with_alpha(accent, 0.02)
-	normal.border_color = LINE
+	normal.bg_color = with_alpha(VOID, 0.0)
+	normal.border_color = with_alpha(LINE, 0.9)
 	normal.set_border_width_all(1)
-	normal.set_corner_radius_all(6)
+	normal.set_corner_radius_all(2)
 	normal.content_margin_left = 16.0
 	normal.content_margin_right = 16.0
 	normal.content_margin_top = 9.0
 	normal.content_margin_bottom = 9.0
 	var hover: StyleBoxFlat = normal.duplicate()
-	hover.bg_color = with_alpha(accent, 0.04)
-	hover.border_color = with_alpha(accent, 0.9)
-	hover.shadow_color = with_alpha(accent, 0.28)
-	hover.shadow_size = 6
+	hover.bg_color = with_alpha(accent, 0.07)
+	hover.border_color = with_alpha(accent, 0.85)
 	var pressed: StyleBoxFlat = normal.duplicate()
-	pressed.bg_color = with_alpha(accent, 0.12)
+	pressed.bg_color = with_alpha(accent, 0.14)
 	pressed.border_color = accent
 	var focus := StyleBoxFlat.new()
 	focus.draw_center = false
-	focus.border_color = with_alpha(accent, 0.85)
+	focus.border_color = with_alpha(accent, 0.8)
 	focus.set_border_width_all(1)
-	focus.set_corner_radius_all(6)
+	focus.set_corner_radius_all(2)
 	var disabled: StyleBoxFlat = normal.duplicate()
-	disabled.bg_color = with_alpha(SURFACE, 0.5)
-	disabled.border_color = with_alpha(LINE, 0.5)
+	disabled.border_color = with_alpha(LINE, 0.45)
 	return {"normal": normal, "hover": hover, "pressed": pressed, "focus": focus, "disabled": disabled}
 
-## Bar background: recessed dark slot.
+## Bar background: a dark slot. No border — LAW 8's bars have none.
 static func bar_bg_box() -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
-	s.bg_color = with_alpha(VOID, 0.85)
-	s.border_color = with_alpha(LINE, 0.8)
-	s.set_border_width_all(1)
-	s.set_corner_radius_all(3)
+	s.bg_color = with_alpha(VOID, 0.72)
+	s.set_border_width_all(0)
+	s.set_corner_radius_all(0)
 	return s
 
-## Bar fill: gradient accent -> hot with baked WHITE_HOT top edge.
+## Bar fill: flat accent.
 static func bar_fill_box(accent: Color, hot: Color = Color.TRANSPARENT) -> StyleBoxTexture:
 	if hot.a == 0.0:
 		hot = hot_of(accent)
@@ -236,38 +290,41 @@ static func bar_fill_box(accent: Color, hot: Color = Color.TRANSPARENT) -> Style
 	return s
 
 # ----------------------------------------------------------- apply helpers ----
-## The near-black the whole UI outlines against. Not pure black — pure black on a
-## neon-lit frame reads as a hole; VOID reads as the world's own shadow.
+## The near-black text sits against.
 const OUTLINE_COL := Color(0.02, 0.024, 0.055, 0.92)
 
-## Readability floor for any text that can end up over the world.
+## Readability floor for text over the world — now a 1px DROP SHADOW, not a
+## 3–5px outline (LAW 4's label style: "plain aliased text, 1px #000000@80%
+## drop shadow offset (1,1). No plate.").
 ##
-## A stylebox can be dimmed by an overlay, a bright floor can eat a 92%-alpha
-## panel, but a 3-4px outline survives both — it is the cheapest guarantee in the
-## whole UI that a number stays a number. Additive helper: nothing that already
-## sets its own outline is disturbed unless it calls this.
+## A fat outline is a black halo baked around every glyph; at the sizes this
+## project uses it fused the counters into blobs and was doing the job a plate
+## should never have needed doing. A one-pixel shadow separates text from any
+## floor and leaves the letterform alone. `size` is accepted for compatibility
+## and deliberately does not scale the shadow: one pixel, everywhere.
 static func outline_text(c: Control, size: int = 3, col: Color = OUTLINE_COL) -> void:
 	if c == null:
 		return
-	c.add_theme_color_override("font_outline_color", col)
-	c.add_theme_constant_override("outline_size", size)
+	c.add_theme_constant_override("outline_size", 0)
+	c.add_theme_color_override("font_outline_color", with_alpha(col, 0.0))
+	c.add_theme_color_override("font_shadow_color", with_alpha(col, 0.8 if size > 0 else 0.0))
+	c.add_theme_constant_override("shadow_offset_x", 1)
+	c.add_theme_constant_override("shadow_offset_y", 1)
+	c.add_theme_constant_override("shadow_outline_size", 0)
 
-## Tier tokens for HUD hierarchy. LOUD = vitals + current objective (the two
-## things that decide your next second), MID = resources, QUIET = flavor/status.
-## Callers get one place to change "how loud is this class of information".
+## Tier tokens for hierarchy (LAW 3: five things may be bright).
 const TIER_LOUD := 1.0
-const TIER_MID := 0.88
-const TIER_QUIET := 0.62
+const TIER_MID := 0.85
+const TIER_QUIET := 0.6
 
-## Apply a tier to a label: opacity carries the hierarchy, so the same colour
-## token can serve all three tiers without inventing new palette entries.
 static func tier(c: Control, level: float) -> void:
 	if c == null:
 		return
 	c.modulate = Color(1, 1, 1, level)
 
-## One-shot additive flash over a control (damage, spend, "you can't afford it").
-## Reuses a single child ColorRect per host so repeat hits don't leak nodes.
+## One-shot additive flash over a control. The one additive effect that stayed:
+## it is an EVENT (you were hit, you spent), it lasts a third of a second, and
+## it is the difference between reading a number and feeling it.
 static func flash_over(host: Control, col: Color, strength: float = 0.35,
 		dur: float = 0.30) -> void:
 	if host == null or not host.is_inside_tree():
@@ -289,10 +346,9 @@ static func flash_over(host: Control, col: Color, strength: float = 0.35,
 	t.tween_property(fx, "color:a", 0.0, dur)
 	fx.set_meta("_tw", t)
 
-## Scale punch on a control the layout owns. Containers drive position and size
-## but never touch `scale`, so this is safe on a child of any container.
-## (Typed Control, not CanvasItem: `scale` and `pivot_offset` are not declared on
-## CanvasItem, and a static type error there would kill every caller.)
+## Scale punch. Still here, still pause-proof — but do not put it on TEXT:
+## scaling an aliased glyph off the pixel grid is exactly the smear LAW 1 is
+## about. Reserve it for boxes.
 static func punch(node: Control, amount: float = 1.08, dur: float = 0.22) -> void:
 	if node == null or not node.is_inside_tree():
 		return
@@ -306,93 +362,83 @@ static func punch(node: Control, amount: float = 1.08, dur: float = 0.22) -> voi
 	t.tween_property(node, "scale", Vector2.ONE, dur)
 	node.set_meta("_punch_tw", t)
 
-## Full button treatment: state boxes, font colors, hover scale micro-motion.
-static func style_button(btn: Button, accent: Color = CYAN, font_size: int = 17) -> void:
+## Full button treatment: hairline states, aliased label, and no motion.
+static func style_button(btn: Button, accent: Color = CYAN, font_size: int = BODY) -> void:
 	var boxes := button_boxes(accent)
 	btn.add_theme_stylebox_override("normal", boxes.normal)
 	btn.add_theme_stylebox_override("hover", boxes.hover)
 	btn.add_theme_stylebox_override("pressed", boxes.pressed)
 	btn.add_theme_stylebox_override("focus", boxes.focus)
 	btn.add_theme_stylebox_override("disabled", boxes.disabled)
+	btn.add_theme_font_override("font", ui_font())
 	btn.add_theme_color_override("font_color", TEXT)
 	btn.add_theme_color_override("font_hover_color", hot_of(accent))
 	btn.add_theme_color_override("font_pressed_color", WHITE_HOT)
 	btn.add_theme_color_override("font_focus_color", hot_of(accent))
-	btn.add_theme_color_override("font_disabled_color", with_alpha(TEXT_DIM, 0.55))
+	btn.add_theme_color_override("font_disabled_color", with_alpha(TEXT_DIM, 0.5))
 	btn.add_theme_font_size_override("font_size", font_size)
-	attach_hover_motion(btn)
 
-## Scale 1.02 on hover (bible micro-motion). Pause-proof.
+## Hover scale — REMOVED, and kept as a no-op so no screen has to stop asking.
+## A 1.02 scale on a button resamples its aliased text every frame of the tween;
+## the hover fill in `button_boxes` says the same thing without touching a glyph.
 static func attach_hover_motion(ctrl: Control, amount: float = 1.02) -> void:
-	if ctrl.has_meta("_hover_motion"):
+	if ctrl == null or amount <= 0.0:
 		return
 	ctrl.set_meta("_hover_motion", true)
-	ctrl.pivot_offset = ctrl.size * 0.5
-	ctrl.resized.connect(func() -> void:
-		ctrl.pivot_offset = ctrl.size * 0.5)
-	ctrl.mouse_entered.connect(func() -> void:
-		_hover_scale(ctrl, Vector2.ONE * amount))
-	ctrl.mouse_exited.connect(func() -> void:
-		_hover_scale(ctrl, Vector2.ONE))
 
 static func _hover_scale(ctrl: Control, target: Vector2) -> void:
 	if not is_instance_valid(ctrl) or not ctrl.is_inside_tree():
 		return
-	var old: Variant = ctrl.get_meta("_hover_tw") if ctrl.has_meta("_hover_tw") else null
-	if old is Tween and (old as Tween).is_valid():
-		(old as Tween).kill()
-	var t := ctrl.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	t.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
-	t.tween_property(ctrl, "scale", target, T_MICRO)
-	ctrl.set_meta("_hover_tw", t)
+	ctrl.scale = target
 
-## Progress bar with gradient fill + hot top edge.
+## Progress bar: dark slot, flat accent fill.
 static func style_bar(bar: ProgressBar, accent: Color, hot: Color = Color.TRANSPARENT) -> void:
 	bar.add_theme_stylebox_override("background", bar_bg_box())
 	bar.add_theme_stylebox_override("fill", bar_fill_box(accent, hot))
 
-## Letter-spaced accent heading.
+## Accent heading, aliased, at the one heading size.
 static func style_heading(l: Label, accent: Color = CYAN, font_size: int = -1) -> void:
 	l.add_theme_color_override("font_color", accent)
-	l.add_theme_font_override("font", spaced_font(3))
-	if font_size > 0:
-		l.add_theme_font_size_override("font_size", font_size)
+	l.add_theme_font_override("font", spaced_font(2))
+	l.add_theme_font_size_override("font_size", font_size if font_size > 0 else HEADING)
+	outline_text(l)
 
-## Duplicated overbright glow layer behind a label (HDR bloom picks it up).
-## Call AFTER the label's text/size are final; returns the glow layer.
+## Was: a duplicated overbright copy of a label, additive, behind the original,
+## so HDR bloom made every title in the game a light source. LAW 3 allows five
+## bright things per frame and a menu title is not one of them.
+##
+## The layer is still created and still returned — `pulse()` is tweened on it by
+## five screens — it simply never draws. Nothing to un-wire, nothing to break.
 static func add_glow_layer(label: Label, strength: float = 2.2) -> Label:
 	var glow := label.duplicate() as Label
 	glow.name = "GlowLayer"
-	glow.material = additive_material()
-	glow.modulate = Color(strength, strength, strength, 0.5)
+	glow.visible = false
+	glow.modulate = Color(1, 1, 1, 0.0)
 	glow.show_behind_parent = true
 	label.add_child(glow)
 	glow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# `strength` is dead by design; referenced so the signature does not lie
+	# about being read.
+	glow.set_meta("_requested_strength", strength)
 	return glow
 
-## Slow breathing pulse on a glow layer. Pause-proof, loops forever.
+## Breathing pulse. Harmless on the (invisible) glow layers that call it.
 static func pulse(node: CanvasItem, lo: float = 1.5, hi: float = 2.4, period: float = 2.4) -> void:
+	if node == null or not node.is_inside_tree():
+		return
 	var t := node.create_tween().set_loops().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	t.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
-	t.tween_property(node, "modulate", Color(lo, lo, lo, 0.42), period * 0.5)
-	t.tween_property(node, "modulate", Color(hi, hi, hi, 0.58), period * 0.5)
+	t.tween_property(node, "modulate", Color(lo, lo, lo, node.modulate.a), period * 0.5)
+	t.tween_property(node, "modulate", Color(hi, hi, hi, node.modulate.a), period * 0.5)
 
-## Moving diagonal sheen overlay on a panel (ui_sheen.gdshader, guarded).
+## Moving diagonal sheen — REMOVED. It was a shader crawling over six panels at
+## once, and it is the reason the QA frames read as "surfaces" rather than as
+## information. No-op, so no screen has to stop asking for it.
 static func add_sheen(host: Control, color: Color = Color(1, 1, 1, 0.05), period: float = 7.0) -> void:
-	var mat := shader_material(SHEEN_SHADER, {"sheen_color": color, "period": period})
-	if mat == null:
+	if host == null or period <= 0.0 or color.a < 0.0:
 		return
-	var tr := TextureRect.new()
-	tr.name = "Sheen"
-	tr.texture = clear_texture()
-	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tr.stretch_mode = TextureRect.STRETCH_SCALE
-	tr.material = mat
-	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	host.add_child(tr)
 
-## Full-bleed vignette layer (death/victory/menu backdrops).
+## Full-bleed vignette layer. LAW 5: wide plateau, never dark.
 static func make_vignette(edge: Color) -> TextureRect:
 	var tr := TextureRect.new()
 	tr.name = "Vignette"
@@ -404,35 +450,19 @@ static func make_vignette(edge: Color) -> TextureRect:
 	return tr
 
 # ------------------------------------------------------------ micro-motion ----
-## Panel entrance: fade + scale-up, 0.25s TRANS_CUBIC. Pause-proof.
-## CAUTION: this drives `modulate:a` from 0. Any other tween on the SAME node's
-## alpha (a glow pulse, a stagger) will capture 0 as its own start value and the
-## panel will end up riding the slower curve -- this is what left the Dream App
-## console sitting at ~30% opacity. Start such pulses AFTER the entrance, and
-## pin them with .from().
+## Panel entrance: a fade, and only a fade. The 0.96 scale-up it used to do
+## resampled every glyph on the panel for a quarter of a second.
 static func open_panel(ctrl: Control) -> void:
-	ctrl.pivot_offset = ctrl.size * 0.5
-	# Containers may not have a size yet on the _ready frame; keep the pivot
-	# centered once the layout settles so the scale-in doesn't hinge on a corner.
-	if not ctrl.has_meta("_pivot_hook"):
-		ctrl.set_meta("_pivot_hook", true)
-		ctrl.resized.connect(func() -> void:
-			ctrl.pivot_offset = ctrl.size * 0.5)
+	if ctrl == null:
+		return
+	ctrl.scale = Vector2.ONE
 	ctrl.modulate.a = 0.0
-	ctrl.scale = Vector2.ONE * 0.96
-	var t := ctrl.create_tween().set_parallel().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	var t := ctrl.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	t.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	t.tween_property(ctrl, "modulate:a", 1.0, T_STD)
-	t.tween_property(ctrl, "scale", Vector2.ONE, T_STD)
 
-## Rows fade in one after another (0.06s apart). Modulate only — containers
-## own their children's positions, so we don't fight the layout.
+## Rows fade in one after another. Modulate only — containers own positions.
 static func stagger_rows(container: Node, step: float = 0.06, base_delay: float = 0.05) -> void:
-	# The cascade is BOUNDED: `step` is the ideal per-row delay, but the whole
-	# reveal always finishes inside CASCADE_MAX. An unbounded step * i meant a
-	# 20-row list was still arriving a second later, and a panel captured (or
-	# read) in that window looks like a list fading to nothing over an empty
-	# lower half -- which is exactly how it was reported on the world map.
 	var rows: Array[Control] = []
 	for c in container.get_children():
 		if c is Control and (c as Control).visible:
@@ -448,21 +478,22 @@ static func stagger_rows(container: Node, step: float = 0.06, base_delay: float 
 		var t := ctrl.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		t.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 		t.tween_interval(base_delay + use_step * i)
-		# .from(0.0) pins the start value. Without it a row that another tween
-		# is already driving inherits ITS current alpha and rides the wrong
-		# curve -- the bug class that left the Dream App console at ~30%.
+		# .from(0.0) pins the start value so a row another tween is already
+		# driving cannot inherit ITS alpha and ride the wrong curve.
 		t.tween_property(ctrl, "modulate:a", 1.0, T_STD).from(0.0)
 		i += 1
 
-## Longest a staggered reveal may take from first row to last, whatever the
-## row count. Past this the animation stops reading as polish and starts
-## reading as a rendering fault.
-const CASCADE_MAX := 0.30
+## Longest a staggered reveal may take, whatever the row count.
+const CASCADE_MAX := 0.20
 
 # ------------------------------------------------------------------- theme ----
 static func create(accent: Color = CYAN) -> Theme:
 	var theme := Theme.new()
 	var hot := hot_of(accent)
+	# LAW 1: the aliased font is installed as the DEFAULT, so a screen that
+	# overrides nothing still gets crisp text.
+	theme.default_font = ui_font()
+	theme.default_font_size = BODY
 
 	theme.set_stylebox("panel", "PanelContainer", panel_box(accent))
 	theme.set_stylebox("panel", "Panel", panel_box(accent))
@@ -477,25 +508,30 @@ static func create(accent: Color = CYAN) -> Theme:
 	theme.set_color("font_hover_color", "Button", hot)
 	theme.set_color("font_pressed_color", "Button", WHITE_HOT)
 	theme.set_color("font_focus_color", "Button", hot)
-	theme.set_color("font_disabled_color", "Button", with_alpha(TEXT_DIM, 0.55))
-	theme.set_font_size("font_size", "Button", 17)
+	theme.set_color("font_disabled_color", "Button", with_alpha(TEXT_DIM, 0.5))
+	theme.set_font_size("font_size", "Button", BODY)
 
 	theme.set_stylebox("background", "ProgressBar", bar_bg_box())
 	theme.set_stylebox("fill", "ProgressBar", bar_fill_box(accent, hot))
 
 	theme.set_color("font_color", "Label", TEXT)
-	theme.set_font_size("font_size", "Label", 16)
+	theme.set_font_size("font_size", "Label", BODY)
+	# One pixel of shadow as the default, so any label anywhere survives a lit
+	# floor without a plate under it (LAW 4).
+	theme.set_color("font_shadow_color", "Label", with_alpha(OUTLINE_COL, 0.8))
+	theme.set_constant("shadow_offset_x", "Label", 1)
+	theme.set_constant("shadow_offset_y", "Label", 1)
+	theme.set_constant("outline_size", "Label", 0)
 	theme.set_color("default_color", "RichTextLabel", TEXT)
+	theme.set_font_size("normal_font_size", "RichTextLabel", BODY)
 
-	# Sliders (settings): thin LINE groove, accent progress, WHITE_HOT grabber.
+	# Sliders: thin LINE groove, accent progress.
 	var groove := StyleBoxFlat.new()
 	groove.bg_color = with_alpha(LINE, 0.7)
-	groove.set_corner_radius_all(2)
 	groove.content_margin_top = 2.0
 	groove.content_margin_bottom = 2.0
 	var grabber_area := StyleBoxFlat.new()
-	grabber_area.bg_color = with_alpha(accent, 0.85)
-	grabber_area.set_corner_radius_all(2)
+	grabber_area.bg_color = with_alpha(accent, 0.8)
 	grabber_area.content_margin_top = 2.0
 	grabber_area.content_margin_bottom = 2.0
 	var grabber_hl: StyleBoxFlat = grabber_area.duplicate()
@@ -516,23 +552,19 @@ static func create(accent: Color = CYAN) -> Theme:
 static func hp_bar_fill() -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = RED
-	s.set_corner_radius_all(4)
 	return s
 
 static func focus_bar_fill() -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = CYAN
-	s.set_corner_radius_all(4)
 	return s
 
+## The Dream App console is a modal screen; LAW 8 gives it the modal panel and
+## nothing else. It used to carry a cyan border, an 8px radius and an 18px cyan
+## halo — three separate ways of saying "this is a panel" over the top of a
+## panel.
 static func dream_app_panel() -> StyleBoxFlat:
-	var panel := panel_box(CYAN, 18.0)
-	panel.bg_color = with_alpha(BASE, 0.985)
-	panel.border_color = with_alpha(CYAN, 0.55)
-	panel.set_corner_radius_all(8)
-	panel.shadow_color = with_alpha(CYAN, 0.22)
-	panel.shadow_size = 18
-	return panel
+	return panel_box(CYAN, 18.0)
 
 static func accent_cyan() -> Color:
 	return CYAN
@@ -540,13 +572,14 @@ static func accent_cyan() -> Color:
 static func accent_muted() -> Color:
 	return with_alpha(CYAN, 0.65)
 
+## The one primary action on the Dream App screen: a filled accent edge, no
+## halo. One accent per screen (LAW 8) and this is where it is spent.
 static func ship_button() -> StyleBoxFlat:
 	var btn := StyleBoxFlat.new()
-	btn.bg_color = with_alpha(CYAN, 0.10)
-	btn.border_color = with_alpha(CYAN, 0.9)
+	btn.bg_color = with_alpha(CYAN, 0.12)
+	btn.border_color = with_alpha(CYAN, 0.85)
 	btn.set_border_width_all(1)
-	btn.set_corner_radius_all(6)
+	btn.set_corner_radius_all(2)
 	btn.set_content_margin_all(10)
-	btn.shadow_color = with_alpha(CYAN, 0.30)
-	btn.shadow_size = 8
+	btn.shadow_size = 0
 	return btn

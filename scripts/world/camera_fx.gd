@@ -1,38 +1,48 @@
 extends Node
 ## Camera juice, attached at runtime to the player's Camera2D by world.gd
-## (the player scene itself stays untouched). Trauma shake, look-ahead, a
-## speed-dependent framing and impact punches, per the VISUAL_BIBLE camera
-## standards.
+## (the player scene itself stays untouched). Trauma shake, look-ahead and
+## impact punches, per the VISUAL_BIBLE camera standards.
 ##
 ## Other systems reach it via the "camera_fx" group and must null-check:
 ##   var fx := get_tree().get_first_node_in_group("camera_fx")
 ##   if fx: fx.add_trauma(0.25)
 ## Suggested doses: hit 0.25, explosion 0.4, death 0.6. It saturates at 1.0,
-## like most things in this codebase.
+## like most things in this codebase, and MAX_OFFSET caps the result at 3px.
 ##
-## Round 5 — game feel. The round-4 rig followed the player from behind with a
-## dead-centre frame, which is what made fast movement feel like dragging the
-## world around rather than running through it. Three additions, all of them
-## deliberately small enough to be felt and not seen:
+## Round 6 — the pixel grid comes first. VISUAL_BIBLE_V2 LAW 1: every world
+## pixel is exactly N screen pixels, always. Two things in the round-5 rig broke
+## that continuously, and both are gone:
+##
+##   speed frame  a few percent of zoom-out while moving. A camera zoom of
+##                1/(1 + speed*0.05) is a NON-INTEGER magnification for the
+##                entire time the player is walking, i.e. the pixel grid was
+##                dissolved for most of the game. Deleted outright — the frame
+##                does not need to breathe to say "you are running".
+##   sub-pixel    the composed offset was written at full float precision, so
+##                look-ahead and shake both slid the world by fractions of a
+##                pixel. The offset is rounded to whole world units now, which
+##                with rendering/2d/snap/snap_2d_transforms_to_pixel is what
+##                keeps the grid intact while scrolling.
+##
+## What is left, all additive on top of whatever GameCamera wrote this frame,
+## and none of it accumulating — every frame recomputes from state, so a hitch
+## can never leave the camera parked off-centre:
 ##
 ##   look-ahead   the frame leads the direction of travel, so you see what you
 ##                are running INTO. Written into camera.offset (the same
 ##                channel as the shake) and eased on its own curve, because
 ##                Camera2D's position smoothing does not touch offset.
-##   speed frame  a few percent of zoom-out while moving fast, easing back in
-##                when you stop. Reads as pace; at 5% it is under the threshold
-##                where zoom motion makes anyone queasy.
-##   punch        impacts push the frame IN and let it fall back out. Attack is
+##   punch        impacts push the frame IN and let it fall back out, at HALF
+##                round 5's amplitude (LAW 9: motion is small). Attack is
 ##                near-instant, release is a quarter of a second, and the whole
 ##                thing is a pair of exponentials — no springs, no overshoot,
 ##                nothing that can oscillate on a low frame rate.
-##
-## All three are additive on top of whatever GameCamera wrote this frame, and
-## none of them accumulate: every frame recomputes from state, so a hitch can
-## never leave the camera parked off-centre.
+##   trauma       capped at 3px (LAW 9), down from 6.
 
 const TRAUMA_DECAY := 2.2
-const MAX_OFFSET := 6.0
+## LAW 9 caps shake at 3 world px. Squared trauma still means small hits
+## whisper; the ceiling is simply half what it was.
+const MAX_OFFSET := 3.0
 const SHAKE_SPEED := 11.0
 ## Player walk speed (player.gd SPEED). Used only to normalise "how fast is
 ## fast" — a wrong value here changes the strength of the effect, never its
@@ -46,16 +56,15 @@ const SPEED_REF := 220.0
 const LOOK_DIST := 26.0
 const LOOK_RATE := 5.5            # look-ahead ease, per second
 const SPEED_SMOOTH := 4.5         # how fast the "am I moving" signal reacts
-## Fraction of zoom given back per unit of the smoothed speed signal. That
-## signal saturates at 1.4 (a dash is 3x walk speed), so the widest the frame
-## ever gets is ~6.5%, not 5%.
-const SPEED_ZOOM_OUT := 0.05
 const PUNCH_ATTACK := 30.0        # impact rise
 const PUNCH_RELEASE := 8.5        # impact fall
 ## A chase toward a decaying target never reaches that target — with the rates
-## above it peaks at ~61% of it. The gain buys that back, so punch_zoom(0.07)
-## still means "7% tighter at the peak" for every existing caller.
-const PUNCH_GAIN := 1.65
+## above it peaks at ~61% of it, and 1.65 used to buy that back exactly so
+## punch_zoom(0.07) meant "7% tighter at the peak". Round 6 halves it: every
+## existing caller now lands at half the amplitude it asked for, which is the
+## cheapest possible way to quiet every impact in the game at once without
+## touching a single call site.
+const PUNCH_GAIN := 0.82
 const SETTLE_RATE := 3.6          # region-entry zoom settle
 
 var _trauma := 0.0
@@ -96,9 +105,16 @@ func _process(delta: float) -> void:
 	var d := clampf(delta, 0.0, 0.1)  # a hitch must not teleport the frame
 	_update_framing(d)
 	_update_shake(d)
+	# LAW 1, the last step of every frame: the composed offset (GameCamera's
+	# legacy shake + look-ahead + trauma) is snapped to whole world units, so
+	# scrolling moves the world by whole pixels and the 2x grid never smears.
+	# It has to happen here, after both writers, or the rounding is undone by
+	# whichever one runs second.
+	_cam.offset = _cam.offset.round()
 
-## Look-ahead + speed framing. Both ride off one smoothed "how fast, which way"
-## signal, so they can never disagree about whether the player is moving.
+## Look-ahead and the punch/settle zoom. The smoothed "how fast, which way"
+## signal drives the look-ahead only now — the speed-framing zoom that used to
+## share it is gone (LAW 1).
 func _update_framing(delta: float) -> void:
 	var vel := Vector2.ZERO
 	if is_instance_valid(_body):
@@ -122,7 +138,13 @@ func _update_framing(delta: float) -> void:
 	_settle = lerpf(_settle, 0.0, 1.0 - exp(-SETTLE_RATE * delta))
 
 	# Zoom is a Camera2D magnification, so "wider frame" is a SMALLER number.
-	var zoom_scale := (1.0 + _punch + _settle) / (1.0 + _speed_s * SPEED_ZOOM_OUT)
+	# There is no speed term any more (see the header): at rest and at a walk
+	# this is exactly 1.0, so the camera sits on the scene's authored zoom and
+	# the pixel grid holds. Only a transient impact or a region entry moves it,
+	# and both decay back to exactly 1.0 rather than near it.
+	var zoom_scale := 1.0 + _punch + _settle
+	if absf(zoom_scale - 1.0) < 0.0005:
+		zoom_scale = 1.0
 	if absf(zoom_scale - _applied_zoom) > 0.0005:
 		_applied_zoom = zoom_scale
 		_cam.zoom = _base_zoom * zoom_scale

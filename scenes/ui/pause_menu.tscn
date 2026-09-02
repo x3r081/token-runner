@@ -15,7 +15,7 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0, 0, 0, 0.6)
+color = Color(0.012, 0.016, 0.038, 0.82)
 
 [node name="Panel" type="PanelContainer" parent="."]
 layout_mode = 1
@@ -31,15 +31,17 @@ offset_bottom = 180.0
 
 [node name="VBox" type="VBoxContainer" parent="Panel"]
 layout_mode = 2
+theme_override_constants/separation = 12
 
 [node name="Title" type="Label" parent="Panel/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 26
 text = "Paused"
 horizontal_alignment = 1
 
 [node name="Subtitle" type="Label" parent="Panel/VBox"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 14
 text = "Production is fine."
 horizontal_alignment = 1
 

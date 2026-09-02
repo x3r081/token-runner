@@ -1,3 +1,5 @@
+> **Superseded in part by VISUAL_BIBLE_V2.md (Restraint). Where they conflict, v2 wins.**
+
 # VISUAL BIBLE — "Neon Afterhours" (authoritative art direction)
 
 Every visual change in this overhaul conforms to this document. It is the

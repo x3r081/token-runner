@@ -14,7 +14,7 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.02, 0.03, 0.06, 0.55)
+color = Color(0.012, 0.016, 0.038, 0.3)
 
 [node name="Panel" type="PanelContainer" parent="."]
 layout_mode = 1
@@ -42,13 +42,13 @@ theme_override_constants/separation = 10
 [node name="Title" type="Label" parent="Panel/Margin/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
-text = "◈ DREAM APP"
+text = "DREAM APP"
 horizontal_alignment = 1
 
 [node name="Subtitle" type="Label" parent="Panel/Margin/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 12
-text = "holographic dev console · v0.0.1-alpha"
+theme_override_font_sizes/font_size = 14
+text = "tokens in, features out"
 horizontal_alignment = 1
 
 [node name="HSeparator" type="HSeparator" parent="Panel/Margin/VBox"]
@@ -56,10 +56,12 @@ layout_mode = 2
 
 [node name="Totals" type="Label" parent="Panel/Margin/VBox"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 14
 text = "Stats"
 
 [node name="ShipStatus" type="Label" parent="Panel/Margin/VBox"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 14
 text = "Ship status"
 autowrap_mode = 2
 
@@ -75,8 +77,8 @@ size_flags_horizontal = 3
 [node name="ShipBtn" type="Button" parent="Panel/Margin/VBox"]
 layout_mode = 2
 tooltip_text = "Sure. Why not."
-text = "▶ Deploy To Production"
+text = "Deploy To Production"
 
 [node name="CloseBtn" type="Button" parent="Panel/Margin/VBox"]
 layout_mode = 2
-text = "Close Console"
+text = "Close"

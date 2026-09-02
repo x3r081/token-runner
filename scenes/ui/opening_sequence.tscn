@@ -9,7 +9,7 @@ script = ExtResource("1")
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.02, 0.02, 0.04, 0.85)
+color = Color(0, 0, 0, 0.94)
 
 [node name="Panel" type="PanelContainer" parent="."]
 anchors_preset = 8
@@ -18,9 +18,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -420.0
-offset_top = -260.0
+offset_top = -230.0
 offset_right = 420.0
-offset_bottom = 260.0
+offset_bottom = 230.0
 
 [node name="Margin" type="MarginContainer" parent="Panel"]
 layout_mode = 2
@@ -35,12 +35,12 @@ theme_override_constants/separation = 16
 
 [node name="Title" type="Label" parent="Panel/Margin/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 26
 text = "BOOT SEQUENCE"
 horizontal_alignment = 1
 
 [node name="TerminalText" type="RichTextLabel" parent="Panel/Margin/VBox"]
-custom_minimum_size = Vector2(760, 360)
+custom_minimum_size = Vector2(760, 300)
 layout_mode = 2
 bbcode_enabled = true
 fit_content = true
@@ -49,6 +49,5 @@ scroll_active = false
 [node name="Prompt" type="Label" parent="Panel/Margin/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(0.5, 0.9, 0.8, 0.8)
-text = "▸ Press any key to gain control"
+text = "Press any key to gain control"
 horizontal_alignment = 1

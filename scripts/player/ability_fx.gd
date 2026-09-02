@@ -502,8 +502,16 @@ func dash_burst(dir: Vector2) -> void:
 ## an aberrated streak instead of a grey blur.
 func dash_ghost(dir: Vector2) -> void:
 	var h := host()
-	CombatFx.afterimage(h, sprite, Color(0.4, 2.2, 2.0, 0.55), 0.32, -dir * 3.0, -2)
-	CombatFx.afterimage(h, sprite, Color(2.2, 0.5, 1.4, 0.28), 0.28, -dir * 9.0, -3)
+	# ONE ghost, not a chromatically-offset pair.
+	#
+	# This used to drop a cyan copy at 2.2x overbright and a magenta copy behind
+	# it, i.e. it hand-drew the chromatic aberration that LAW 5 just deleted from
+	# postfx.gdshader, in two hues no region owns, on the one sprite LAW 3 says
+	# is already the brightest thing in the frame. player.gd now drops at most 2
+	# ghosts per dash; each drop being a pair made that 4. It is one dim cool
+	# trail copy, under 1.0 in every channel, so a dash reads as travel rather
+	# than as a filter.
+	CombatFx.afterimage(h, sprite, Color(0.34, 0.62, 0.72, 0.40), 0.30, -dir * 5.0, -2)
 
 func dash_end() -> void:
 	_restore_rim()

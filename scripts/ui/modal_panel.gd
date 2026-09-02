@@ -1,24 +1,35 @@
 extends Control
-## Mixin-style helpers for modal panels that block random events, plus the
-## shared "take over the screen properly" kit every screen-covering modal uses.
+## The one modal rule, in one place (VISUAL_BIBLE_V2 LAW 8).
 ##
-## Round 5 filed the Dream App console, the World Map and the Quest Log as
-## unreadable: all three drew semi-transparently over a fully-lit, animated world
-## with no dim behind them, so world labels, NPC nameplates and sprites punched
-## straight through the panel body and collided with the text on top of it. The
-## rules that came out of that live here so all three modals obey the same ones:
+## Round 6 is a SUBTRACTION round. Every screen used to bring its own panel: its
+## own accent border, its own outer glow, its own sheen quad, its own row
+## cascade, its own three font sizes. Ten screens, ten looks, and the frame read
+## as generated rather than designed.
 ##
-##   * a real SCRIM behind the panel — the world recedes, it does not compete;
-##   * a panel body opaque enough that nothing from the world reads through
-##     (0.92 is not enough: a neon caption still burns through 8%);
-##   * a row reveal whose TOTAL duration is bounded, so a long list never reads
-##     as a list that fades toward invisibility down the page;
-##   * geometry that stays out of the band the HUD's ability bar owns.
+## Now there is exactly one modal look and it lives here:
 ##
-## Panels stay neon-glass: near-opaque body, accent border, accent glow. Opaque
-## is the readability floor, not the art direction.
+##   * body BASE at 96%, 1px LINE border, corner radius 2;
+##   * no glow, no drop shadow, no sheen, no gradient, no per-screen accent
+##     border — the panel is furniture, the content is the design;
+##   * one ACCENT per screen (the title and the primary action), everything else
+##     TEXT / TEXT_DIM;
+##   * three type sizes, ever: SMALL / BODY / HEADING;
+##   * a scrim behind, so the world recedes instead of competing;
+##   * rows appear. They do not cascade, fade, breathe or stagger.
+##
+## Screens call modal_box() and use the size constants. That is the whole
+## contract, and it is why they now look like one product.
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
+
+## The only three type sizes in the UI (LAW 1). Set the SIZE, never the font —
+## every label inherits the theme's aliased default font, which is what keeps
+## text crisp on pixel art. A per-label FontVariation reaches past the theme and
+## lands back on the smooth fallback face; that is how the old headings ended up
+## anti-aliased over a 2x pixel grid.
+const SMALL := 14
+const BODY := 18
+const HEADING := 26
 
 ## The HUD owns the bottom band (hud.gd: AbilityBar y -100..-42, HintBar
 ## y -34..-12, both bottom-anchored). A modal control drawn into it sits on top
@@ -39,8 +50,9 @@ const TOP_PAD := 128.0
 ## Never collapse a modal below this, whatever the viewport is.
 const MIN_HEIGHT := 220.0
 
-## Modal bodies are near-opaque on purpose. See the class docs.
-const BODY_ALPHA := 0.985
+## Modal bodies are near-opaque on purpose: a neon world caption reads straight
+## through anything lighter and collides with the text on top of it.
+const BODY_ALPHA := 0.96
 const SCRIM_ALPHA := 0.86
 const SCRIM_TINT := Color(0.012, 0.016, 0.038, 1.0)
 
@@ -53,20 +65,27 @@ func _unregister_modal() -> void:
 
 # ------------------------------------------------------------ shared kit ----
 
-## Neon-glass body for a screen-covering modal: near-opaque BASE fill, accent
-## border, accent outer glow. Same silhouette as GameTheme.panel_box(), enough
-## fill behind it that a world caption cannot read through.
-## (Accent is required, not defaulted: a default that reaches into another
-## script's constants is one parse error away from taking this whole class down,
-## and a dead class here would silently kill every modal that preloads it.)
-static func modal_box(accent: Color, margin: float) -> StyleBoxFlat:
-	var s := _GameTheme.panel_box(accent, margin)
+## THE panel. Flat BASE body, one hairline LINE border, radius 2, nothing else.
+##
+## `_accent` is kept in the signature (every screen passes one) but deliberately
+## unused: a panel that borrows its border colour from the screen's accent is how
+## eight differently-coloured frames happened. The accent belongs on the title
+## and the primary button, where it means something.
+static func modal_box(_accent: Color, margin: float) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
 	s.bg_color = _GameTheme.with_alpha(_GameTheme.BASE, BODY_ALPHA)
-	s.border_color = _GameTheme.with_alpha(accent, 0.55)
+	s.border_color = _GameTheme.LINE
 	s.set_border_width_all(1)
-	s.set_corner_radius_all(8)
-	s.shadow_color = _GameTheme.with_alpha(accent, 0.22)
-	s.shadow_size = 18
+	s.set_corner_radius_all(2)
+	s.set_content_margin_all(margin)
+	return s
+
+## A 1px horizontal rule in LINE — the only divider the UI owns. Replaces the
+## accent bar-gradient "rules" that used to sit above every choice block.
+static func rule() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = _GameTheme.LINE
+	s.set_corner_radius_all(0)
 	return s
 
 ## Full-screen dim behind a modal.
@@ -82,10 +101,9 @@ static func modal_box(accent: Color, margin: float) -> StyleBoxFlat:
 ## counts them — see ui_manager.gd), so while the console or the map is open the
 ## player is still walking around and enemies are still swinging. A scrim sitting
 ## directly under the panel covers the HUD too, and an 86% dim over the HP bar,
-## the resource readout and the objective panel means the player cannot see they
+## the resource readout and the objective line means the player cannot see they
 ## are being killed. At index 0 the dim lands on the WORLD, the HUD draws over it
-## at full strength, and the modal draws over both. That is the whole hierarchy
-## the round-5 critique asked for, without switching the vitals off.
+## at full strength, and the modal draws over both.
 static func attach_scrim(panel: Control, alpha: float = SCRIM_ALPHA) -> ColorRect:
 	if panel == null or not panel.is_inside_tree():
 		return null
@@ -94,7 +112,7 @@ static func attach_scrim(panel: Control, alpha: float = SCRIM_ALPHA) -> ColorRec
 		return null
 	var scrim := ColorRect.new()
 	scrim.name = "%sScrim" % panel.name
-	scrim.color = _GameTheme.with_alpha(SCRIM_TINT, 0.0)
+	scrim.color = _GameTheme.with_alpha(SCRIM_TINT, alpha)
 	# Below the HUD, so it must not eat clicks aimed at HUD controls; the modal
 	# body itself is opaque and stops anything aimed at the panel.
 	scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -107,9 +125,6 @@ static func attach_scrim(panel: Control, alpha: float = SCRIM_ALPHA) -> ColorRec
 		if is_instance_valid(scrim):
 			scrim.queue_free()
 	panel.tree_exiting.connect(kill, CONNECT_ONE_SHOT)
-	var t := scrim.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	t.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
-	t.tween_property(scrim, "color:a", alpha, _GameTheme.T_STD)
 	return scrim
 
 ## The height a centre-anchored modal is allowed to be on this viewport.
@@ -131,27 +146,16 @@ static func place_centred(panel: Control, want_h: float,
 	panel.offset_top = -h * 0.5 + shift
 	panel.offset_bottom = h * 0.5 + shift
 
-## Bounded row cascade.
+## Rows appear. That is the whole animation.
 ##
-## GameTheme.stagger_rows() delays each row by a FIXED step, so the map's 20 rows
-## were still arriving nearly a second in and the list read as one that dims
-## toward invisibility down the page — the bottom half looked like empty panel.
-## Here the whole cascade is squeezed into `window` seconds however many rows
-## there are, so the last row is up in ~0.3s and every row ends at full alpha.
-static func reveal_rows(container: Node, window: float = 0.20) -> void:
+## This used to be a bounded cascade, which was itself a fix for an unbounded
+## cascade, which was a fix for rows that never reached full alpha. Three rounds
+## of repairing an effect nobody asked for. A list that is simply THERE when the
+## panel opens has none of those failure modes and reads as a shipped menu
+## instead of a loading screen. Signature kept — every modal still calls it.
+static func reveal_rows(container: Node, _window: float = 0.20) -> void:
 	if container == null:
 		return
-	var rows: Array[Control] = []
 	for c in container.get_children():
-		if c is Control and (c as Control).visible:
-			rows.append(c as Control)
-	if rows.is_empty():
-		return
-	var step: float = window / float(rows.size())
-	for i in rows.size():
-		var ctrl: Control = rows[i]
-		ctrl.modulate.a = 0.0
-		var t := ctrl.create_tween().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		t.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
-		t.tween_interval(step * float(i))
-		t.tween_property(ctrl, "modulate:a", 1.0, _GameTheme.T_MICRO)
+		if c is Control:
+			(c as Control).modulate.a = 1.0

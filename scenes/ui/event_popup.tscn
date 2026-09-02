@@ -1,36 +1,6 @@
-[gd_scene load_steps=4 format=3 uid="uid://eventpopup001"]
+[gd_scene load_steps=2 format=3 uid="uid://eventpopup001"]
 
 [ext_resource type="Script" path="res://scripts/ui/event_popup.gd" id="1"]
-
-[sub_resource type="StyleBoxFlat" id="PanelStyle"]
-bg_color = Color(0.05, 0.05, 0.09, 0.98)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.3, 0.9, 0.82, 0.9)
-corner_radius_top_left = 10
-corner_radius_top_right = 10
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
-shadow_color = Color(0, 0, 0, 0.6)
-shadow_size = 18
-
-[sub_resource type="StyleBoxFlat" id="BtnStyle"]
-bg_color = Color(0.12, 0.14, 0.2, 1.0)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.3, 0.9, 0.82, 0.5)
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 6
-content_margin_left = 12
-content_margin_top = 8
-content_margin_right = 12
-content_margin_bottom = 8
 
 [node name="EventPopup" type="CanvasLayer"]
 layer = 15
@@ -42,7 +12,7 @@ visible = false
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0, 0, 0, 0.66)
+color = Color(0.012, 0.016, 0.038, 0.86)
 
 [node name="Panel" type="PanelContainer" parent="."]
 visible = false
@@ -57,51 +27,42 @@ offset_right = 320.0
 offset_bottom = 200.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_styles/panel = SubResource("PanelStyle")
 
 [node name="Margin" type="MarginContainer" parent="Panel"]
 layout_mode = 2
-theme_override_constants/margin_left = 28
-theme_override_constants/margin_top = 24
-theme_override_constants/margin_right = 28
-theme_override_constants/margin_bottom = 24
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 20
 
 [node name="VBox" type="VBoxContainer" parent="Panel/Margin"]
 layout_mode = 2
-theme_override_constants/separation = 14
+theme_override_constants/separation = 12
 
 [node name="Title" type="Label" parent="Panel/Margin/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.35, 0.95, 0.85, 1)
 theme_override_font_sizes/font_size = 26
 text = "INCIDENT"
 horizontal_alignment = 1
 
 [node name="Description" type="Label" parent="Panel/Margin/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.9, 0.92, 0.96, 1)
-theme_override_font_sizes/font_size = 17
+theme_override_font_sizes/font_size = 18
 text = "Something happened."
 autowrap_mode = 3
 
 [node name="Spacer" type="Control" parent="Panel/Margin/VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 6)
+custom_minimum_size = Vector2(0, 4)
 
 [node name="Choice1" type="Button" parent="Panel/Margin/VBox"]
 layout_mode = 2
-theme_override_styles/normal = SubResource("BtnStyle")
-theme_override_font_sizes/font_size = 16
 text = "Choice 1"
 
 [node name="Choice2" type="Button" parent="Panel/Margin/VBox"]
 layout_mode = 2
-theme_override_styles/normal = SubResource("BtnStyle")
-theme_override_font_sizes/font_size = 16
 text = "Choice 2"
 
 [node name="Choice3" type="Button" parent="Panel/Margin/VBox"]
 layout_mode = 2
-theme_override_styles/normal = SubResource("BtnStyle")
-theme_override_font_sizes/font_size = 16
 text = "Choice 3"

@@ -7,13 +7,21 @@ var _breath_t := 0.0
 var _glow_gate := 0.0
 
 const GLOW_RADIUS := 110.0
+## How far the prop lifts when the player is in range. VISUAL_BIBLE_V2 LAW 3:
+## props do not glow. 1.10 is a highlight — enough to say "this one is a lever,
+## not scenery" while the [E] prompt fades in over it — where round 5's 1.35 on
+## a 2.6 rad/s sine was an overbright pulse that pushed a crate into the same
+## brightness band as the player and the objective.
+const HIGHLIGHT := 0.10
 
 func _ready() -> void:
 	super._ready()
 	_breath_t = randf() * TAU  # desync so props don't inhale in unison
 
-## Gentle breathing glow when the player is close: interactable props quietly
-## brighten and dim, and the [E] prompt (player-side) fades in on top of this.
+## A still highlight when the player is close: interactable props step up once
+## and hold, and the [E] prompt (player-side) fades in on top of it. It does NOT
+## breathe — LAW 9 allows a light 6% of flicker and a character 1px of breath,
+## and a room of pulsing furniture is neither.
 func _process(delta: float) -> void:
 	_breath_t += delta
 	var near := false
@@ -25,8 +33,8 @@ func _process(delta: float) -> void:
 		if modulate != Color.WHITE:
 			modulate = Color.WHITE
 		return
-	var b := (0.5 + 0.5 * sin(_breath_t * 2.6)) * _glow_gate
-	modulate = Color(1.0 + b * 0.35, 1.0 + b * 0.3, 1.0 + b * 0.18)
+	var b := HIGHLIGHT * _glow_gate
+	modulate = Color(1.0 + b, 1.0 + b, 1.0 + b)
 
 func _on_interact(_player: Node) -> void:
 	match interact_id:

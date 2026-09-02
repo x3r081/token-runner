@@ -43,7 +43,11 @@ func _run() -> void:
 	await get_tree().process_frame
 	var nspr: Node = n.get_node("Sprite2D")
 	var nspan := _y_span(n, nspr, 40, 0.05)
-	_check("npc_breathes (range=%.2f)" % (nspan.y - nspan.x), (nspan.y - nspan.x) > 1.0)
+	# VISUAL_BIBLE_V2 LAW 9: characters breathe ONE pixel, and LAW 1 quantises it
+	# to the grid — so the span is exactly 1.0, not "some float above 1". The
+	# thing this test guards is "the sprite is not a frozen sticker"; a whole
+	# pixel of travel satisfies that. Anything > 1 here would be off-spec.
+	_check("npc_breathes (range=%.2f)" % (nspan.y - nspan.x), (nspan.y - nspan.x) >= 1.0)
 	n.queue_free()
 
 	# Player: idle breathing moves the sprite while standing still.
@@ -59,7 +63,8 @@ func _run() -> void:
 		p._physics_process(0.05)
 		pmin = minf(pmin, pspr.position.y)
 		pmax = maxf(pmax, pspr.position.y)
-	_check("player_idle_breathes (range=%.2f)" % (pmax - pmin), (pmax - pmin) > 1.0)
+	# Same LAW 9 / LAW 1 quantisation as the NPC above: exactly one whole pixel.
+	_check("player_idle_breathes (range=%.2f)" % (pmax - pmin), (pmax - pmin) >= 1.0)
 	p.queue_free()
 
 ## Returns Vector2(min_y, max_y) of the sprite over N procedural-animation steps.

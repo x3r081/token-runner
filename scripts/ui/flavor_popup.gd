@@ -1,21 +1,26 @@
 extends Control
-## Lightweight, styled popup for environmental comedy props (fridge, plant, bed,
-## router, terminal...). Screen-space (added under the HUD CanvasLayer), pauses
-## the game while you read, and closes on any confirm/cancel/interact key or a
-## click.
+## Lightweight popup for environmental comedy props (fridge, plant, bed, router,
+## terminal...). Screen-space (added under the HUD CanvasLayer), pauses the game
+## while you read, and closes on any confirm/cancel/interact key or a click.
 ##
 ## Public fields (kept stable — regression tests and every prop set these):
 ##   title_text     the object's name, shown in the header
 ##   body_text      the joke, revealed with a typewriter pass
-##   subtitle_text  optional "you have now stared at this four times" chip
-##   sigil_text     optional 1-2 char type sigil for the header plate
-##   accent_color   optional per-category accent (kitchen amber, incident red...)
+##   subtitle_text  optional "you have now stared at this four times" note
+##   sigil_text     optional 1-2 char type sigil (accepted, no longer drawn)
+##   accent_color   the prop's category colour — this screen's ONE accent
 ##
 ## Input is two-stage on purpose: while the text is still typing, the first press
 ## completes it instantly; only a press on finished text closes the popup. You
 ## can never accidentally skip a joke you have not read.
+##
+## Round 6 removed the sigil plate (a chip at a different pixel size from
+## everything around it), the accent bar-gradient rule, the vignette, the moving
+## sheen, the accent-glow panel and the row cascade. A prop joke is one card with
+## a name and a sentence on it.
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
+const _Modal = preload("res://scripts/ui/modal_panel.gd")
 
 ## Typewriter pacing: seconds per character, clamped so a one-liner still has a
 ## beat and a long entry never outlasts the player's patience.
@@ -49,40 +54,45 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 	var backdrop := ColorRect.new()
-	backdrop.color = Color(0, 0, 0, 0.55)
+	backdrop.color = _GameTheme.with_alpha(_Modal.SCRIM_TINT, 0.78)
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(backdrop)
-	backdrop.modulate.a = 0.0
-	var bt := backdrop.create_tween().set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
-	bt.tween_property(backdrop, "modulate:a", 1.0, _GameTheme.T_STD)
-	add_child(_GameTheme.make_vignette(_GameTheme.with_alpha(_GameTheme.VOID, 0.6)))
 
 	var panel := PanelContainer.new()
 	panel.name = "FlavorPanel"
+	panel.theme = _GameTheme.create()
 	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	panel.add_theme_stylebox_override("panel", _GameTheme.panel_box(accent_color, 18.0))
+	panel.add_theme_stylebox_override("panel", _Modal.modal_box(accent_color, 22.0))
 	add_child(panel)
-	_GameTheme.add_sheen(panel, _GameTheme.with_alpha(accent_color, 0.06))
 
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 10)
 	vb.custom_minimum_size = Vector2(500, 0)
 	panel.add_child(vb)
 
-	vb.add_child(_build_header())
+	# The prop's name — the one accent on this screen.
+	var title := Label.new()
+	title.name = "FlavorTitle"
+	title.text = title_text
+	title.add_theme_font_size_override("font_size", _Modal.HEADING)
+	title.add_theme_color_override("font_color", accent_color)
+	vb.add_child(title)
 
-	var rule := Panel.new()
-	rule.custom_minimum_size = Vector2(0, 2)
-	rule.add_theme_stylebox_override("panel", _GameTheme.bar_fill_box(accent_color))
-	rule.modulate.a = 0.55
-	vb.add_child(rule)
+	# Repeat-visit note ("you have looked at this four times now"), when supplied.
+	if not subtitle_text.is_empty():
+		var sub := Label.new()
+		sub.name = "FlavorSubtitle"
+		sub.text = subtitle_text
+		sub.add_theme_font_size_override("font_size", _Modal.SMALL)
+		sub.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
+		vb.add_child(sub)
 
 	_body = Label.new()
 	_body.name = "FlavorBody"
 	_body.text = body_text
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_body.add_theme_font_size_override("font_size", 16)
+	_body.add_theme_font_size_override("font_size", _Modal.BODY)
 	_body.add_theme_color_override("font_color", _GameTheme.TEXT)
 	_body.custom_minimum_size = Vector2(500, 0)
 	vb.add_child(_body)
@@ -91,58 +101,12 @@ func _ready() -> void:
 	_hint.name = "FlavorHint"
 	_hint.text = "[E] reveal the rest"
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_hint.add_theme_font_size_override("font_size", 12)
+	_hint.add_theme_font_size_override("font_size", _Modal.SMALL)
 	_hint.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
 	vb.add_child(_hint)
 
 	_GameTheme.open_panel(panel)
-	_GameTheme.stagger_rows(vb)
 	_start_typing()
-
-## Header: a glowing type-sigil plate, the object's name, and the repeat-visit
-## chip. The sigil is what makes a fridge and an incident pager feel like two
-## different kinds of news at a glance.
-func _build_header() -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-
-	if not sigil_text.is_empty():
-		var plate := PanelContainer.new()
-		plate.name = "Sigil"
-		plate.add_theme_stylebox_override("panel", _GameTheme.chip_box(accent_color))
-		plate.custom_minimum_size = Vector2(38, 38)
-		plate.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		var sg := Label.new()
-		sg.text = sigil_text
-		sg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		sg.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		sg.add_theme_font_size_override("font_size", 18)
-		sg.add_theme_color_override("font_color", _GameTheme.hot_of(accent_color))
-		plate.add_child(sg)
-		row.add_child(plate)
-
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 4)
-	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(col)
-
-	var title := Label.new()
-	title.name = "FlavorTitle"
-	title.text = title_text
-	_GameTheme.style_heading(title, accent_color, 22)
-	col.add_child(title)
-
-	# Repeat-visit note ("you have looked at this four times now"), when supplied.
-	if not subtitle_text.is_empty():
-		var sub := Label.new()
-		sub.name = "FlavorSubtitle"
-		sub.text = subtitle_text
-		sub.add_theme_font_size_override("font_size", 12)
-		sub.add_theme_stylebox_override("normal", _GameTheme.chip_box(_GameTheme.AMBER))
-		sub.add_theme_color_override("font_color", _GameTheme.hot_of(_GameTheme.AMBER))
-		sub.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		col.add_child(sub)
-	return row
 
 # --------------------------------------------------------------- typewriter ----
 

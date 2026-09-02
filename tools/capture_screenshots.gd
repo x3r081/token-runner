@@ -49,6 +49,7 @@ func _shot(name: String) -> void:
 	await RenderingServer.frame_post_draw
 	await get_tree().process_frame
 	var img: Image = get_viewport().get_texture().get_image()
+	_encode(img)
 	if img.get_width() != 1920 or img.get_height() != 1080:
 		img.resize(1920, 1080, Image.INTERPOLATE_LANCZOS)
 	var err := img.save_png(path)
@@ -56,3 +57,14 @@ func _shot(name: String) -> void:
 		print("  Saved ", name, " (", img.get_width(), "x", img.get_height(), ")")
 	else:
 		push_error("Failed: " + name)
+
+## project.godot runs hdr_2d=true, so the 2D framebuffer is LINEAR and
+## Viewport.get_texture().get_image() hands it back BEFORE the compositor's
+## linear->sRGB encode. Saving it raw bakes a ~2.2 gamma crush into the PNG
+## (TEXT #D8DEEA lands at 175, not 216). See tools/quality_capture.gd.
+func _encode(img: Image) -> void:
+	if not get_viewport().use_hdr_2d:
+		return
+	if img.get_format() != Image.FORMAT_RGBA8 and img.get_format() != Image.FORMAT_RGB8:
+		img.convert(Image.FORMAT_RGBA8)
+	img.linear_to_srgb()

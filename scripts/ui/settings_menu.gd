@@ -1,9 +1,14 @@
 extends PanelContainer
-## Settings: every row keeps its real name first and earns its joke second, so
-## the label still tells you what the control does even when it is being rude.
+## Settings. Every row says what the control does; the joke moved to the tooltip,
+## where it costs the layout nothing.
+##
+## Round 6: the labels used to read "Master Volume — <one-line joke>", which
+## doubled the height of a panel with seven rows in it and pushed the whole thing
+## past its own rect. Plain names now, quips on hover.
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 const _Comedy = preload("res://scripts/ui/comedy_lines.gd")
+const _Modal = preload("res://scripts/ui/modal_panel.gd")
 
 const SUBTITLES := [
 	"Everything below actually works. We were as surprised as you.",
@@ -12,45 +17,40 @@ const SUBTITLES := [
 	"Seven options. Shipped. Documented. A personal best.",
 ]
 
-## label node -> settings key. Drives both the "Name — quip" text and tooltips.
+## label node -> settings key. Drives the plain name and the tooltip.
 const LABEL_KEYS := {
-	"MasterLabel": ["master_volume", "Master Volume"],
-	"MusicLabel": ["music_volume", "Music Volume"],
-	"SFXLabel": ["sfx_volume", "SFX Volume"],
-	"CameraShakeLabel": ["camera_shake", "Camera Shake"],
+	"MasterLabel": ["master_volume", "Master volume"],
+	"MusicLabel": ["music_volume", "Music volume"],
+	"SFXLabel": ["sfx_volume", "SFX volume"],
+	"CameraShakeLabel": ["camera_shake", "Camera shake"],
 }
 
 func _ready() -> void:
 	theme = _GameTheme.create()
-	add_theme_stylebox_override("panel", _GameTheme.panel_box(_GameTheme.CYAN, 4.0))
-	# Room for the longer, chattier labels.
-	offset_left = -280.0
-	offset_right = 280.0
+	add_theme_stylebox_override("panel", _Modal.modal_box(_GameTheme.CYAN, 6.0))
+	offset_left = -260.0
+	offset_right = 260.0
 	offset_top = -230.0
 	offset_bottom = 230.0
-	_GameTheme.style_heading($Margin/VBox/Title, _GameTheme.CYAN, 22)
-	_GameTheme.style_button($Margin/VBox/CloseBtn, _GameTheme.CYAN, 15)
+	var title: Label = $Margin/VBox/Title
+	title.add_theme_font_size_override("font_size", _Modal.HEADING)
+	title.add_theme_color_override("font_color", _GameTheme.CYAN)
+	_GameTheme.style_button($Margin/VBox/CloseBtn, _GameTheme.TEXT_DIM, _Modal.SMALL)
 	_build_subtitle()
 	for lbl: Label in [$Margin/VBox/MasterLabel, $Margin/VBox/MusicLabel,
 			$Margin/VBox/SFXLabel, $Margin/VBox/CameraShakeLabel]:
 		lbl.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
-		lbl.add_theme_font_size_override("font_size", 13)
-		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lbl.add_theme_font_size_override("font_size", _Modal.SMALL)
 		var pair: Array = LABEL_KEYS.get(String(lbl.name), [])
 		if pair.size() == 2:
-			var quip: String = SettingsManager.get_setting_label(String(pair[0]))
-			var plain: String = String(pair[1])
-			if quip.is_empty():
-				lbl.text = plain
-			else:
-				lbl.text = "%s — %s" % [plain, quip]
-			lbl.tooltip_text = quip
-	# Checkbox rows say what they toggle, then say something about you.
-	$Margin/VBox/MusicEnabledBtn.text = "Music (off by default — your ears thanked us)"
+			lbl.text = String(pair[1])
+			lbl.tooltip_text = SettingsManager.get_setting_label(String(pair[0]))
+	# Checkbox rows say what they toggle; the opinion is in the tooltip.
+	$Margin/VBox/MusicEnabledBtn.text = "Music"
 	$Margin/VBox/MusicEnabledBtn.tooltip_text = "Turns the ambient track on. It is validated, gentle, and entirely optional."
-	$Margin/VBox/FullscreenBtn.text = "Fullscreen (commit to the bit)"
+	$Margin/VBox/FullscreenBtn.text = "Fullscreen"
 	$Margin/VBox/FullscreenBtn.tooltip_text = SettingsManager.get_setting_label("fullscreen")
-	$Margin/VBox/CameraShakeBtn.text = "Camera shake on hits and deaths"
+	$Margin/VBox/CameraShakeBtn.text = "Shake on hits and deaths"
 	$Margin/VBox/CameraShakeBtn.tooltip_text = SettingsManager.get_setting_label("camera_shake")
 	$Margin/VBox/CloseBtn.text = "Close"
 	$Margin/VBox/CloseBtn.tooltip_text = "Saves automatically. Unlike some software you have shipped."
@@ -76,24 +76,22 @@ func _ready() -> void:
 
 ## Graphics quality had a real effect and no control: at Reduced the atmosphere
 ## collapses to the single multiply-blend floor quad and portals skip their
-## screen-reading lens (and the back-buffer copy that feeds it). Built in code
-## so settings_menu.tscn keeps every node name the rest of the UI relies on.
-## Takes effect on the next region you walk into — said out loud, because a
-## setting that looks broken until you move is a setting people report.
+## screen-reading lens. Built in code so settings_menu.tscn keeps every node name
+## the rest of the UI relies on. Takes effect on the next region you walk into.
 func _build_quality_row() -> void:
 	var vbox: VBoxContainer = $Margin/VBox
 	var lbl := Label.new()
 	lbl.name = "QualityLabel"
-	lbl.text = "Graphics — %s" % SettingsManager.get_setting_label("graphics_quality")
-	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	lbl.add_theme_font_size_override("font_size", 13)
+	lbl.text = "Graphics"
+	lbl.tooltip_text = SettingsManager.get_setting_label("graphics_quality")
+	lbl.add_theme_font_size_override("font_size", _Modal.SMALL)
 	lbl.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
 	vbox.add_child(lbl)
 	vbox.move_child(lbl, vbox.get_child_count() - 2)
 	var opt := OptionButton.new()
 	opt.name = "QualityOption"
-	opt.add_item("Full — every light we own", 1)
-	opt.add_item("Reduced — the fans get a night off", 0)
+	opt.add_item("Full", 1)
+	opt.add_item("Reduced", 0)
 	opt.select(0 if int(SettingsManager.get_setting("graphics_quality")) >= 1 else 1)
 	opt.tooltip_text = "Applies to the next region you enter."
 	opt.item_selected.connect(func(i: int) -> void:
@@ -106,11 +104,11 @@ func _build_quality_row() -> void:
 func _build_subtitle() -> void:
 	var sub := Label.new()
 	sub.name = "Subtitle"
-	sub.text = _Comedy.any(SUBTITLES) + "\nEvery change applies immediately and saves itself."
+	sub.text = _Comedy.any(SUBTITLES)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	sub.add_theme_font_size_override("font_size", 12)
-	sub.add_theme_color_override("font_color", _GameTheme.with_alpha(_GameTheme.TEXT_DIM, 0.85))
+	sub.add_theme_font_size_override("font_size", _Modal.SMALL)
+	sub.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
 	var vbox: VBoxContainer = $Margin/VBox
 	vbox.add_child(sub)
 	vbox.move_child(sub, 1)

@@ -35,8 +35,25 @@ static var _add_mat_cache: CanvasItemMaterial
 ## through the portal's own destination plate).
 const PORTAL_POS := Vector2(ROOM_W * TILE - 90, ROOM_H * TILE * 0.5)
 
+## VISUAL_BIBLE_V2 LAW 2, the localhost row: BASE #0E0C14, ACCENT #24F0DC cyan,
+## WARM #FFB74A amber. Three hues, and the round-6 apartment had eleven — five
+## monitor colours, three LED colours, three poster creeds, six point-of-interest
+## pools, a magenta poster light and an acid-green exit tube. Everything that is
+## not the cyan of a screen or the amber of the one lamp this person owns is now
+## drawn in neutral greys.
+const ACCENT := Color("#24F0DC")
+const WARM := Color("#FFB74A")
+const TEXT_DIM := Color("#7C8BB0")
+
+## LAW 4: at most six PointLight2Ds alive at once. This room used to carry
+## sixteen — one per monitor, one per appliance, one per poster. Reset at the top
+## of build().
+const LIGHT_BUDGET := 6
+static var _lights_used := 0
+
 static func build(parent: Node2D) -> Dictionary:
 	parent.y_sort_enabled = true
+	_lights_used = 0
 	var size := Vector2(ROOM_W * TILE, ROOM_H * TILE)
 	var spawn := Vector2(720, 640)
 	_reserve_labels()
@@ -131,16 +148,22 @@ static func _shader_mat(shader_name: String, params: Dictionary = {}) -> ShaderM
 	_mat_cache[key] = mat
 	return mat
 
+## LAW 3 and LAW 4 in one place: energy clamped to 0.4-0.9, radius floored at a
+## genuinely soft one, position on the pixel grid, and past LIGHT_BUDGET the
+## request returns null. Callers treat a missing light as "the pool carries it".
 static func _add_light(parent: Node2D, pos: Vector2, color: Color, energy: float, scale: float, flicker: bool = false) -> PointLight2D:
+	if _lights_used >= LIGHT_BUDGET:
+		return null
+	_lights_used += 1
 	var light := PointLight2D.new()
 	var tex := _light_tex()
 	light.texture = tex
-	light.energy = energy
+	light.energy = clampf(energy, 0.4, 0.9)
 	light.color = color
 	# Normalize so authored scales mean the same world size whether the 128px
 	# fx_radial_soft cookie exists or the 64px procedural fallback is in play.
-	light.texture_scale = scale * (64.0 / maxf(1.0, float(tex.get_width())))
-	light.position = pos
+	light.texture_scale = maxf(scale, 3.0) * (64.0 / maxf(1.0, float(tex.get_width())))
+	light.position = Vector2(round(pos.x * 0.5) * 2.0, round(pos.y * 0.5) * 2.0)
 	parent.add_child(light)
 	if flicker:
 		_flicker(light)
@@ -224,47 +247,18 @@ static func _screen_tex(col: Color) -> Texture2D:
 	_screen_cache[key] = tex
 	return tex
 
-## Blinking status LED (additive, tween-driven). Green means fine, amber means
-## fine-ish, nobody has checked either in weeks.
-static func _led(parent: Node2D, pos: Vector2, color: Color, phase: float, z: int) -> void:
+## Status LED: ONE static emissive chip (LAW 7), not a tween that blinks a rack
+## of six of them out of phase forever (LAW 9 — nothing moves at rest but the
+## player, the tokens and the waypoint). `phase` is kept and ignored.
+static func _led(parent: Node2D, pos: Vector2, color: Color, _phase: float, z: int) -> void:
 	var led := ColorRect.new()
-	led.size = Vector2(4, 3)
+	led.size = Vector2(3, 2)
 	led.position = pos
-	led.color = color
+	led.color = Color(color.r, color.g, color.b, 0.6)
 	led.material = _additive_mat()
 	led.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	led.z_index = z
 	parent.add_child(led)
-	if not led.is_inside_tree():
-		return
-	var tw := led.create_tween().set_loops()
-	tw.tween_interval(phase)
-	tw.tween_property(led, "modulate:a", 0.2, 0.06)
-	tw.tween_interval(0.22 + phase * 0.5)
-	tw.tween_property(led, "modulate:a", 1.0, 0.06)
-	tw.tween_interval(0.7)
-
-## Tiny specular glint where cable bundles catch the lamplight.
-static func _catch_light(parent: Node2D, pos: Vector2, col: Color) -> void:
-	var dot := _glow_dot()
-	if dot:
-		var s := Sprite2D.new()
-		s.texture = dot
-		s.position = pos
-		s.scale = Vector2(0.5, 0.5)
-		s.material = _additive_mat()
-		s.modulate = Color(col.r, col.g, col.b, 0.55)
-		s.z_index = -79
-		parent.add_child(s)
-	else:
-		var r := ColorRect.new()
-		r.size = Vector2(2, 2)
-		r.position = pos
-		r.color = Color(col.r, col.g, col.b, 0.55)
-		r.material = _additive_mat()
-		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		r.z_index = -79
-		parent.add_child(r)
 
 ## Rotatable filled rectangle centred on `center` (Control rects anchor from the
 ## top-left, which is never what a composition wants).
@@ -343,8 +337,10 @@ static func _reserve_labels() -> void:
 
 # ---------------------------------------------------------- grounding -------
 
-## Ambient occlusion + grime so the apartment stops looking pasted onto the
-## floor. Everything exists()-guarded — the art agents supply the decals.
+## ONE ambient-occlusion strip where the walls meet the floor (LAW 6). The
+## eighteen rotated grime decals that used to be scattered over these boards are
+## gone with the rest of the floor noise: this floor has seen things, and none of
+## them needed to be drawn on it.
 static func _build_grounding(parent: Node2D) -> void:
 	var z := Node2D.new()
 	z.name = "Grounding"
@@ -352,42 +348,25 @@ static func _build_grounding(parent: Node2D) -> void:
 	var w := ROOM_W * TILE
 	var h := ROOM_H * TILE
 	var ao_path := GEN + "decal_ao_edge.png"
-	if ResourceLoader.exists(ao_path):
-		var tex: Texture2D = load(ao_path)
-		# [position, rotation, scale] — the 32px gradient is uniform across, so
-		# stretching along each wall == tiling, minus ~140 sprites.
-		var edges := [
-			[Vector2(w * 0.5, 68.0), 0.0, Vector2(w / 32.0, 1.2)],
-			[Vector2(w * 0.5, h - 16.0), PI, Vector2(w / 32.0, 0.8)],
-			[Vector2(46.0, h * 0.5), -PI * 0.5, Vector2(h / 32.0, 0.9)],
-			[Vector2(w - 46.0, h * 0.5), PI * 0.5, Vector2(h / 32.0, 0.9)],
-		]
-		for e in edges:
-			var s := Sprite2D.new()
-			s.texture = tex
-			s.position = e[0]
-			s.rotation = e[1]
-			s.scale = e[2]
-			s.modulate = Color(1, 1, 1, 0.55)
-			s.z_index = -57
-			z.add_child(s)
-	# Floor grime. This floor has seen things. Mostly pizza.
-	var names: Array = []
-	for i in 3:
-		if ResourceLoader.exists(GEN + "decal_grime_%d.png" % i):
-			names.append(GEN + "decal_grime_%d.png" % i)
-	if names.is_empty():
+	if not ResourceLoader.exists(ao_path):
 		return
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 777
-	for i in 18:
+	var tex: Texture2D = load(ao_path)
+	# [position, rotation, scale] — the 32px gradient is uniform across, so
+	# stretching along each wall == tiling, minus ~140 sprites.
+	var edges := [
+		[Vector2(w * 0.5, 68.0), 0.0, Vector2(w / 32.0, 1.2)],
+		[Vector2(w * 0.5, h - 16.0), PI, Vector2(w / 32.0, 0.8)],
+		[Vector2(46.0, h * 0.5), -PI * 0.5, Vector2(h / 32.0, 0.9)],
+		[Vector2(w - 46.0, h * 0.5), PI * 0.5, Vector2(h / 32.0, 0.9)],
+	]
+	for e in edges:
 		var s := Sprite2D.new()
-		s.texture = load(names[rng.randi() % names.size()])
-		s.position = Vector2(rng.randf_range(90, w - 90), rng.randf_range(110, h - 80))
-		s.rotation = float(rng.randi() % 4) * PI * 0.5
-		s.scale = Vector2.ONE * rng.randf_range(0.8, 1.8)
-		s.modulate = Color(1, 1, 1, rng.randf_range(0.35, 0.68))
-		s.z_index = -95
+		s.texture = tex
+		s.position = e[0]
+		s.rotation = e[1]
+		s.scale = e[2]
+		s.modulate = Color(1, 1, 1, 0.55)
+		s.z_index = -57
 		z.add_child(s)
 
 # -------------------------------------------------------------- floor -------
@@ -399,20 +378,14 @@ static func _cell_hash(x: int, y: int) -> int:
 	v = ((v ^ (v >> 13)) * 1274126177) & 0x7FFFFFFF
 	return (v ^ (v >> 16)) & 0x7FFFFFFF
 
-## Smooth low-frequency wear: coarse 4-tile cells hashed, then bilinearly
-## blended, so the boards darken and lighten in BLOTCHES the size of furniture
-## rather than per plank. Per-tile jitter alone leaves the lattice visible.
-static func _floor_wear(x: int, y: int) -> float:
-	var cx := x >> 2
-	var cy := y >> 2
-	var fx := float(x & 3) / 4.0
-	var fy := float(y & 3) / 4.0
-	var v00 := float(_cell_hash(cx, cy) % 1000) / 1000.0
-	var v10 := float(_cell_hash(cx + 1, cy) % 1000) / 1000.0
-	var v01 := float(_cell_hash(cx, cy + 1) % 1000) / 1000.0
-	var v11 := float(_cell_hash(cx + 1, cy + 1) % 1000) / 1000.0
-	return 0.89 + lerpf(lerpf(v00, v10, fx), lerpf(v01, v11, fx), fy) * 0.20
-
+## The boards, and nothing on top of them.
+##
+## ROUND 7 removed, in order: the wear field (coarse blotches multiplied into
+## every tile), the +/-11% per-tile exposure jitter, one in seventeen tiles
+## darkened for a "coffee stain", eighteen soft stains, fourteen rotated scuff
+## marks, and a full-floor ground_mottle shader pass. Six layers of noise on a
+## floor whose whole job is to be legible ground (LAW 6). What is left is the
+## plank art, A/B alternated by cell hash at a 6% value step.
 static func _build_floor(parent: Node2D) -> void:
 	var floor := Node2D.new()
 	floor.name = "Floor"
@@ -420,80 +393,21 @@ static func _build_floor(parent: Node2D) -> void:
 	for gx in ROOM_W:
 		for gy in ROOM_H:
 			var hv := _cell_hash(gx, gy)
-			# Board variant per 2x1 BLOCK, so planks run in short courses instead
-			# of the old (gx*7 + gy*13) % 3 diagonal, which repeated every three
-			# tiles in a stripe you could count across the room.
+			# Board variant per 2x1 BLOCK, so planks run in short courses.
 			var v := _cell_hash(gx >> 1, gy) % 3
-			if hv % 100 < 16:
-				v = (hv >> 7) % 3
-			# The 1.22 base exposure is measured, not guessed: captured frames put
-			# this floor at ~0.06 luminance, dark enough that the boards read as
-			# one black field.
-			var e := (1.22 + (float(hv % 53) / 53.0 - 0.5) * 0.11) * _floor_wear(gx, gy)
+			var e := 1.22 if (hv % 100) < 62 else 1.29
 			var mod := Color(e, e, e * 0.96)
-			if (hv >> 9) % 17 == 0:
-				mod = mod.darkened(0.18)  # coffee stain / grime
 			_put(floor, "int_floor_%d" % v, Vector2(gx * TILE + TILE / 2, gy * TILE + TILE / 2), -100, 1.0, mod)
-	_floor_blotches(floor)
-	_floor_mottle(floor)
-
-## One full-floor pass of ground_mottle.gdshader (blend_mul) at z -93, under the
-## rug and under every prop: slow, non-repeating darkening far below the 64px
-## plank pitch, plus an off-axis grit octave that fights the lattice directly.
-## Gentler than the regions' — this room is warm, hand-composed and small enough
-## that the eye reads furniture before it reads floor. exists()-guarded.
-static func _floor_mottle(parent: Node2D) -> void:
-	var mat := _shader_mat("ground_mottle", {
-		"amount": 0.22,
-		"darkest": 0.68,
-		"floor_scale": 2.0,
-		"detail_scale": 6.0,
-		"streak": 0.5,
-		"grit": 0.45,
-		"grit_scale": 24.0,
-		"grit_rot": 0.62,
-		"aspect": Vector2(float(ROOM_W) / float(ROOM_H), 1.0),
-		"seed": 7.3,
-		"tint": Vector3(1.0, 0.97, 0.92),
-	})
-	if not mat:
-		return
-	var rect := ColorRect.new()
-	rect.name = "Mottle"
-	rect.material = mat
-	rect.position = Vector2.ZERO
-	rect.size = Vector2(float(ROOM_W * TILE), float(ROOM_H * TILE))
-	rect.z_index = -93
-	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	parent.add_child(rect)
-
-## Big soft stains at non-grid positions and non-grid sizes. Nothing here lines
-## up with a plank edge, which is the point: overlapping ellipses read as a floor
-## with a decade of history and hide the lattice underneath them.
-static func _floor_blotches(parent: Node2D) -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 90210
-	var w := ROOM_W * TILE
-	var h := ROOM_H * TILE
-	for i in 18:
-		var p := Vector2(rng.randf_range(70, w - 70), rng.randf_range(100, h - 50))
-		var width := rng.randf_range(140.0, 420.0)
-		if rng.randf() < 0.74:
-			_floor_patch(parent, p, width, Color(0.02, 0.015, 0.012), rng.randf_range(0.10, 0.24), -97)
-		else:
-			_floor_patch(parent, p, width * 0.66, Color(1.0, 0.82, 0.6), rng.randf_range(0.02, 0.05), -97)
-	# Scuff marks: a chair has been rolled over these boards a great many times.
-	for i in 14:
-		var sp := Vector2(rng.randf_range(140, w - 140), rng.randf_range(150, h - 90))
-		var ang := rng.randf_range(-PI, PI)
-		_rect(parent, sp, Vector2(rng.randf_range(50.0, 160.0), 2.0), Color(0, 0, 0, 0.18), -96, ang)
 
 static func _build_rug(parent: Node2D) -> void:
 	_put(parent, "int_rug", Vector2(560, 600), -90)
 
 ## The worn track this person walks forty times a day: chair -> the middle of the
 ## room -> Claude -> the door. It is a lived-in floor AND the quietest possible
-## answer to "where am I supposed to go" — you follow the path someone wore.
+## answer to "where am I supposed to go" — you follow the path someone wore. It
+## survives the subtraction round for that second reason; what it lost is the
+## bright second pass laid over the dark one (two ellipses per step, eighty
+## sprites) and the two coloured corner washes that tinted a third of the room.
 static func _build_floor_zones(parent: Node2D) -> void:
 	var z := Node2D.new()
 	z.name = "FloorZones"
@@ -506,15 +420,10 @@ static func _build_floor_zones(parent: Node2D) -> void:
 	for i in track.size() - 1:
 		var a: Vector2 = track[i]
 		var b: Vector2 = track[i + 1]
-		for s in 4:
-			var p := a.lerp(b, float(s) / 4.0)
-			_floor_patch(z, p, 128.0, Color(0.03, 0.025, 0.02), 0.2, -96)
-			_floor_patch(z, p, 78.0, Color(1.0, 0.86, 0.66), 0.045, -95)
-	# Kitchen corner: sticky. Bedroom corner: colder, bluer, unvisited.
-	_floor_patch(z, Vector2(200, 300), 420.0, Color(1.0, 0.74, 0.4), 0.06, -95)
-	_floor_patch(z, Vector2(1330, 860), 420.0, Color(0.4, 0.48, 0.9), 0.05, -95)
+		for s in 3:
+			_floor_patch(z, a.lerp(b, float(s) / 3.0), 120.0, Color(0.03, 0.025, 0.02), 0.18, -96)
 	# Under the desk: a dark cave of cables and abandoned socks.
-	_floor_patch(z, Vector2(540, 420), 340.0, Color(0.02, 0.02, 0.04), 0.34, -94)
+	_floor_patch(z, Vector2(540, 420), 340.0, Color(0.02, 0.02, 0.04), 0.30, -94)
 
 # -------------------------------------------------------------- walls -------
 
@@ -576,19 +485,27 @@ static func _build_battlestation(parent: Node2D) -> void:
 	var desk_z := _depth(desk_y, 48)
 	_drop_shadow(z, Vector2(520, desk_y + 42), 230.0, desk_z - 1)
 	_put(z, "furn_desk", Vector2(520, desk_y), desk_z)
-	# Three comedy monitors on the desk
-	# Readouts kept SHORT on purpose: the monitors are 110px apart and a readout
-	# is measured from the real font, so "AI SUBSCRIPTIONS" (151px wide) ran
-	# straight through both its neighbours. Same three jokes, inside the bezels.
-	_add_monitor(z, Vector2(430, 300), Color(0.15, 0.85, 0.95), "TOKENS\n>>> 70", Color(0.2, 0.95, 0.9))
-	_add_monitor(z, Vector2(540, 296), Color(0.95, 0.65, 0.2), "SUBS\n8 active", Color(1.0, 0.7, 0.3))
-	_add_monitor(z, Vector2(650, 300), Color(0.95, 0.35, 0.35), "AI SAVED\n-€713/mo", Color(1.0, 0.45, 0.45))
+	# Three monitors, ONE hue. The round-6 bank was cyan, orange and red side by
+	# side, with two more (red, green) on the second desk: five saturated screens
+	# and five point lights in a room whose palette is two colours. Only the
+	# centre screen carries a readout now — LAW 4 counts these as world labels,
+	# and five of them plus three poster creeds plus twenty-one signs is the wall
+	# of text the brief was looking at.
+	_add_monitor(z, Vector2(430, 300), ACCENT, "", ACCENT)
+	_add_monitor(z, Vector2(540, 296), ACCENT, "TOKENS\n>>> 70", ACCENT)
+	_add_monitor(z, Vector2(650, 300), ACCENT, "", ACCENT)
 	# Gaming chair, slightly askew
 	var chair_z := _depth(470, 44)
 	_drop_shadow(z, Vector2(560, 505), 84.0, chair_z - 1)
-	_put(z, "furn_chair", Vector2(560, 470), chair_z, 1.0, Color(0.9, 0.9, 1.0))
+	_put(z, "furn_chair", Vector2(560, 470), chair_z, 1.0, Color(0.72, 0.72, 0.80))
 
-static func _add_monitor(parent: Node2D, pos: Vector2, screen_col: Color, text: String, text_col: Color, flicker: bool = false) -> void:
+## A monitor: the prop, its emissive screen, the pool it casts on the desk, and
+## a readout only when one was asked for.
+##
+## It no longer creates a PointLight2D of its own. Five monitors meant five
+## lights, which is the entire LAW 4 budget spent on furniture; the bank is lit
+## as ONE source by _build_lighting instead, which is also what it physically is.
+static func _add_monitor(parent: Node2D, pos: Vector2, screen_col: Color, text: String, text_col: Color, _flicker_it: bool = false) -> void:
 	var mz := _depth(pos.y, 42)
 	_put(parent, "furn_monitor", pos, mz)
 	# Emissive screen: scanlined + boosted into bloom by crt_monitor. The color
@@ -596,26 +513,23 @@ static func _add_monitor(parent: Node2D, pos: Vector2, screen_col: Color, text: 
 	# COLOR, so a modulate/ColorRect tint would not survive it.
 	var scr := Sprite2D.new()
 	scr.texture = _screen_tex(screen_col)
-	var crt := _shader_mat("crt_monitor", {"glow_boost": 1.4})
+	var crt := _shader_mat("crt_monitor", {"glow_boost": 1.15})
 	if crt:
 		scr.material = crt
 	scr.position = pos - Vector2(0, 6)
 	scr.scale = Vector2(2.0, 1.85)
 	scr.z_index = mz + 1
 	parent.add_child(scr)
-	# Readout style "tag": outlined text, no plate (a plate would cover the screen
-	# art), pinned to the monitor's own z so it travels with the prop. Without the
-	# outline it washes out against its own bloomed screen.
-	WorldLabel.add(parent, pos - Vector2(34, 24), text, text_col, {
-		"size": 10, "style": "tag", "color": text_col,
-		"z": mz + 2, "claim": false, "fade": false,
-	})
-	# Screen glow spill (cool cyan against the lamp's amber; the bible's duel),
-	# plus the screen's own cast pooled on the desk in front of it — a monitor
-	# that doesn't light the surface it stands on reads as a sticker, not a lamp.
-	# mz + 50 clears both desk slabs (388 and 408) without reaching the chairs.
-	_add_light(parent, pos - Vector2(0, 10), screen_col, 0.95, 1.6, flicker)
-	_light_pool(parent, pos + Vector2(0, 54), 180.0, screen_col, 0.20, mz + 50)
+	if not text.is_empty():
+		# Readout style "tag": no plate (a plate would cover the screen art),
+		# pinned to the monitor's own z so it travels with the prop.
+		WorldLabel.add(parent, pos - Vector2(34, 24), text, text_col, {
+			"size": 10, "style": "tag", "color": text_col,
+			"z": mz + 2, "claim": false, "fade": false,
+		})
+	# The screen's own cast, pooled on the desk in front of it — a monitor that
+	# does not light the surface it stands on reads as a sticker.
+	_light_pool(parent, pos + Vector2(0, 54), 180.0, screen_col, 0.16, mz + 50)
 
 # ------------------------------------------------------------ gpu rig -------
 
@@ -629,9 +543,11 @@ static func _build_gpu_rig(parent: Node2D) -> void:
 	var desk_z := _depth(desk_y, 48)
 	_drop_shadow(z, Vector2(1120, desk_y + 40), 208.0, desk_z - 1)
 	_put(z, "furn_desk", Vector2(1120, desk_y), desk_z, 0.9)
-	# The thermals monitor flickers with its light: 94 degrees is a lifestyle.
-	_add_monitor(z, Vector2(1060, 318), Color(0.95, 0.35, 0.25), "GPU TEMP\n94\u00b0C  \ud83d\udd25", Color(1.0, 0.5, 0.35), true)
-	_add_monitor(z, Vector2(1170, 320), Color(0.4, 0.9, 0.5), "npm audit\n847 vulns\n0 fixed", Color(0.5, 1.0, 0.6))
+	# The rig runs hot, so its two screens are the room's WARM source rather than
+	# a red one and a green one. Neither carries a readout: the joke about 94
+	# degrees belongs behind [E] on the terminal prop, per LAW 10.
+	_add_monitor(z, Vector2(1060, 318), WARM, "", WARM)
+	_add_monitor(z, Vector2(1170, 320), WARM, "", WARM)
 	# stacked GPU crates
 	var box_z := _depth(470, 52)
 	_drop_shadow(z, Vector2(1200, 512), 118.0, box_z - 1)
@@ -652,14 +568,14 @@ static func _build_server_corner(parent: Node2D) -> void:
 	var rack2_z := _depth(220, 84)
 	_drop_shadow(z, Vector2(1380, 296), 104.0, rack2_z - 1)
 	_put(z, "furn_server", Vector2(1380, 220), rack2_z, 1.0, Color(0.9, 0.9, 0.95))
-	# Cooling glow, humming along with the fans.
-	_add_light(z, Vector2(1420, 240), Color(0.3, 0.9, 0.5), 0.7, 3.2, true)
-	# Blinkenlights on both rack faces, out of phase.
-	var led_cols := [Color(0.3, 1.0, 0.5), Color(1.0, 0.75, 0.25), Color(0.35, 0.9, 1.0)]
-	for i in 6:
-		var on_first := i < 3
-		var pos := Vector2(1454.0 if on_first else 1364.0, (152.0 if on_first else 178.0) + float(i % 3) * 20.0)
-		_led(z, pos, led_cols[i % 3], 0.3 + float(i) * 0.23, (rack_z if on_first else rack2_z) + 1)
+	# The racks get a pool, not a light: LAW 3 allows two motivated sources in a
+	# frame and this room has already spent them on the lamp and the screens. The
+	# green third hue goes with it — the racks read as hardware in cyan.
+	_light_pool(z, Vector2(1424, 300), 300.0, ACCENT, 0.12)
+	# One status chip per rack face. Six blinking LEDs in three colours was the
+	# rack advertising itself; a rack has a light on it, singular.
+	_led(z, Vector2(1454, 172), ACCENT, 0.0, rack_z + 1)
+	_led(z, Vector2(1364, 198), ACCENT, 0.0, rack2_z + 1)
 
 # ------------------------------------------------------------- kitchen ------
 
@@ -676,7 +592,9 @@ static func _build_kitchen(parent: Node2D) -> void:
 	# empty energy-drink cans on the floor — proper tins once the generator has
 	# run (one near-white texture, tinted per flavour of regret); the old
 	# ColorRects stay as the fallback so a fresh checkout still has its litter
-	var can_cols: Array[Color] = [Color(0.2, 0.85, 0.35), Color(0.9, 0.3, 0.3), Color(0.3, 0.6, 0.95)]
+	# One can colour, desaturated. Three saturated flavours of regret on the floor
+	# was three more hues than LAW 2 allows the room.
+	var can_cols: Array[Color] = [Color(0.46, 0.48, 0.44), Color(0.50, 0.46, 0.42), Color(0.44, 0.47, 0.50)]
 	for i in 5:
 		var cpos := Vector2(185 + i * 22, 308 + (i % 2) * 14)
 		var col: Color = can_cols[i % 3]
@@ -744,12 +662,9 @@ static func _build_clutter(parent: Node2D) -> void:
 	_cable(z, [Vector2(520, 400), Vector2(700, 430), Vector2(950, 380), Vector2(1300, 300)], Color(0.1, 0.1, 0.12))
 	_cable(z, [Vector2(1120, 430), Vector2(1250, 380), Vector2(1400, 320)], Color(0.12, 0.11, 0.13))
 	_cable(z, [Vector2(300, 300), Vector2(360, 420), Vector2(430, 470)], Color(0.09, 0.09, 0.11))
-	# Catch-lights where the bundles pass under a lamp or screen — cheap
-	# specular sells "vinyl-wrapped cable" better than any extra geometry.
-	_catch_light(z, Vector2(700, 430), Color(0.2, 0.9, 0.85))
-	_catch_light(z, Vector2(950, 380), Color(1.0, 0.75, 0.4))
-	_catch_light(z, Vector2(1250, 380), Color(0.95, 0.4, 0.3))
-	_catch_light(z, Vector2(360, 420), Color(1.0, 0.72, 0.4))
+	# The four additive catch-lights that used to sit on the cable bends are gone.
+	# A specular dot on a cable is not one of LAW 3's five bright things, and four
+	# of them in three different hues is the rainbow the law exists to stop.
 	# The strip every one of those cables was always heading for: six sockets,
 	# more wall-warts than sockets, one confidently red LED. It lies mid-room so
 	# the player literally steps over the infrastructure, and two more looms
@@ -758,18 +673,23 @@ static func _build_clutter(parent: Node2D) -> void:
 	if _put(z, "int_power_strip", Vector2(706, 436), -76):
 		_cable(z, [Vector2(1120, 430), Vector2(960, 466), Vector2(812, 452), Vector2(716, 438)], Color(0.11, 0.10, 0.13))
 		_cable(z, [Vector2(696, 436), Vector2(602, 452), Vector2(508, 438), Vector2(452, 458)], Color(0.10, 0.11, 0.14))
-		_catch_light(z, Vector2(960, 466), Color(1.0, 0.62, 0.35))
-		_catch_light(z, Vector2(602, 452), Color(0.22, 0.9, 0.85))
 	# Sticky notes along both desk fronts. Estimates. All of them say TODO.
 	_put(z, "int_sticky_strip", Vector2(476, 349), _depth(340.0, 48.0) + 1)
 	_put(z, "int_sticky_strip", Vector2(1086, 372), _depth(360.0, 48.0) + 1, 0.8)
 	# Wall posters (side walls) for depth + jokes
-	_poster(z, Vector2(30, 420), Color(0.2, 0.3, 0.5), "IT\nWORKS\nLOCALLY", Color(0.4, 0.65, 1.0))
-	_poster(z, Vector2(30, 620), Color(0.4, 0.2, 0.3), "MOVE\nFAST", Color(1.0, 0.35, 0.5))
+	# Two of the three posters lose their text. Printed matter is artwork, and
+	# three more blocks of glowing world type in a room capped at four labels is
+	# exactly the "no quiet" the brief named. The creeds still exist — they are
+	# the poster art, and the jokes live behind [E].
+	_poster(z, Vector2(30, 420), Color(0.2, 0.3, 0.5), "", ACCENT)
+	_poster(z, Vector2(30, 620), Color(0.4, 0.2, 0.3), "", WARM)
 	# SHIP OR DIE used to hang at y=500 — i.e. directly behind the portal's vortex,
 	# where its own ideology was permanently eclipsed by the way out. Moved up the
 	# right wall into clear air between the server racks and the doorway glow.
-	_poster(z, Vector2(ROOM_W * TILE - 62, 300), Color(0.25, 0.4, 0.35), "SHIP\nOR\nDIE", Color(0.3, 1.0, 0.6))
+	# Its text goes too. LAW 4 caps the flat at four world labels and the three
+	# wayfinding signs plus the one monitor readout are exactly four; a fifth
+	# block of type is a fifth block of type however good the joke is.
+	_poster(z, Vector2(ROOM_W * TILE - 62, 300), Color(0.25, 0.4, 0.35), "", TEXT_DIM)
 
 static func _couch(parent: Node2D, pos: Vector2) -> void:
 	var z := _depth(pos.y, 34)
@@ -912,121 +832,113 @@ static func _cable(parent: Node2D, points: Array, color: Color, sag: float = 9.0
 		var after: Vector2 = points[i + 2]
 		_cable_tie(parent, corner, (after - before).angle())
 
+## A poster on the wall. The additive halo that used to radiate its ideology
+## behind the frame is gone: LAW 3 says signs do not glow, and a poster is a
+## sign. `glow_col` is kept in the signature (callers pass one) and is now simply
+## the text colour when there is text.
 static func _poster(parent: Node2D, pos: Vector2, color: Color, text: String, glow_col: Color = Color(0.5, 0.7, 1.0)) -> void:
-	# Additive halo behind the frame: the poster's ideology, radiating gently.
-	var halo := ColorRect.new()
-	halo.size = Vector2(52, 68)
-	halo.position = pos - Vector2(4, 4)
-	halo.color = Color(glow_col.r, glow_col.g, glow_col.b, 0.16)
-	halo.material = _additive_mat()
-	halo.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	halo.z_index = -53
-	parent.add_child(halo)
 	# Printed poster art (generated, bright greyscale) tinted toward the creed's
 	# accent; the flat ColorRect remains the ungenerated-checkout fallback.
 	if not _put(parent, "int_poster", pos + Vector2(22, 30), -52, 1.0,
-			Color(minf(color.r + 0.45, 1.0), minf(color.g + 0.45, 1.0), minf(color.b + 0.45, 1.0))):
+			Color(minf(color.r + 0.30, 0.66), minf(color.g + 0.30, 0.66), minf(color.b + 0.30, 0.66))):
 		var frame := ColorRect.new()
 		frame.size = Vector2(44, 60)
 		frame.position = pos
 		frame.color = color
 		frame.z_index = -52
 		parent.add_child(frame)
+	if text.is_empty():
+		return
 	# Printed matter: no plate (the frame IS the plate), no float, no fade, and
 	# the poster's own z so it stays flat on the wall.
 	WorldLabel.add(parent, pos + Vector2(5, 6), text, glow_col, {
-		"size": 10, "style": "plaque", "color": Color(0.95, 0.95, 1.0), "z": -51,
+		"size": 10, "style": "plaque", "color": glow_col, "z": -51,
 	})
 
 # ------------------------------------------------------------ lighting ------
 
-## Hero lighting pass. This room is the player's first three seconds with the
-## game, so it gets the full treatment: warm amber key from the one lamp this
-## person owns, cool cyan monitor spill fighting it across the desk, a pool of
-## 3AM city light under the window, and small accents everywhere something hums.
+## Hero lighting. FOUR sources, and they are all things you can point at in the
+## picture: the one lamp this person owns, the monitor bank, the city through the
+## window, and the exit neon. Claude's key light is the fifth, in _build_poi_pools.
+##
+## ROUND 7 removed eleven more: a light per monitor (five), the fridge, the bed,
+## the server racks, the SHIP OR DIE poster, the doorway wash and the portal
+## spill. LAW 3 allows at most two motivated sources per frame plus the player,
+## the objective and the tokens; sixteen lights in one apartment is why the
+## captured frame has no dark anywhere and therefore nothing to look at. What
+## every removed light leaves behind is its POOL — the puddle was always the part
+## doing the work.
 static func _build_lighting(parent: Node2D) -> void:
 	var z := Node2D.new()
 	z.name = "Lighting"
 	parent.add_child(z)
-	# Warm amber key, breathing slightly (cheap bulb, obviously). The pool is what
-	# makes it read as a lamp lighting a floor rather than a bright dot.
-	_add_light(z, Vector2(300, 250), Color(1.0, 0.72, 0.4), 0.9, 5.0, true)
-	_light_pool(z, Vector2(300, 320), 520.0, Color(1.0, 0.74, 0.42), 0.2)
-	# Cool cyan spill unifying the battlestation's three screens.
-	_add_light(z, Vector2(545, 335), Color(0.14, 0.94, 0.86), 0.55, 3.2)
-	_light_pool(z, Vector2(545, 404), 400.0, Color(0.2, 0.9, 0.86), 0.18)
-	# City light through the big window, washing the boards under the glass —
-	# sized to the hero window's full span so the skyline reads as a SOURCE.
-	_add_light(z, Vector2(545, 170), Color(0.48, 0.64, 1.0), 0.85, 4.2)
+	# 1. Warm amber key, breathing slightly (cheap bulb, obviously).
+	_add_light(z, Vector2(300, 250), WARM, 0.9, 5.0, true)
+	_light_pool(z, Vector2(300, 320), 520.0, WARM, 0.18)
+	# 2. The monitor bank, lit as ONE source across all three screens.
+	_add_light(z, Vector2(545, 335), ACCENT, 0.6, 3.4)
+	_light_pool(z, Vector2(545, 404), 400.0, ACCENT, 0.15)
+	# 3. City light through the big window.
+	_add_light(z, Vector2(545, 170), Color(0.48, 0.60, 0.88), 0.7, 4.2)
 	var pool := Sprite2D.new()
 	pool.texture = _light_tex()
 	pool.material = _additive_mat()
 	pool.position = Vector2(545, 322)
 	var ptw := maxf(1.0, float(pool.texture.get_width()))
 	pool.scale = Vector2(500.0 / ptw, 230.0 / ptw)
-	pool.modulate = Color(0.52, 0.68, 1.0, 0.30)
+	pool.modulate = Color(0.50, 0.62, 0.92, 0.22)
 	pool.z_index = -87
 	z.add_child(pool)
-	# Kitchen counter warmth: the fridge glow of a balanced diet.
-	_add_light(z, Vector2(175, 205), Color(1.0, 0.7, 0.35), 0.6, 2.4)
-	_light_pool(z, Vector2(180, 288), 300.0, Color(1.0, 0.72, 0.36), 0.2)
-	# The unslept bed, lit cool and judgmental.
-	_add_light(z, Vector2(1320, 795), Color(0.55, 0.62, 0.95), 0.35, 2.8)
-	_light_pool(z, Vector2(1320, 872), 340.0, Color(0.55, 0.62, 0.95), 0.16)
-	# The GPU rig's own thermal glow, pooling under the second desk.
-	_light_pool(z, Vector2(1120, 430), 360.0, Color(1.0, 0.5, 0.32), 0.16)
-	# Warm lamplight pooled AROUND both work zones. The round-3 frames put the
-	# desks as silhouettes on a silhouette floor; furniture only reads at this
-	# exposure when there is light behind and beside it, not just on top of it.
-	_light_pool(z, Vector2(545, 468), 540.0, Color(1.0, 0.74, 0.44), 0.15)
-	_light_pool(z, Vector2(1118, 498), 460.0, Color(1.0, 0.68, 0.40), 0.13)
-	# The server corner exhales green onto the boards.
-	_light_pool(z, Vector2(1424, 300), 300.0, Color(0.32, 0.95, 0.55), 0.16)
-	# SHIP OR DIE poster insists, in magenta (follows the poster up the wall).
-	_add_light(z, Vector2(1548, 328), Color("#FF2D95"), 0.4, 1.9)
-	_light_pool(z, Vector2(1520, 358), 240.0, Color("#FF2D95"), 0.16)
-	# Exit-door neon: acid green, aimed at the Dependency District.
+	# Everything else in the room gets a puddle and no light.
+	_light_pool(z, Vector2(180, 288), 300.0, WARM, 0.16)          # kitchen counter
+	_light_pool(z, Vector2(1320, 872), 340.0, Color(0.42, 0.48, 0.66), 0.12)  # the unslept bed
+	_light_pool(z, Vector2(1120, 430), 360.0, WARM, 0.13)         # the rig's thermals
+	_light_pool(z, Vector2(545, 468), 540.0, WARM, 0.12)          # around the desk
+	_light_pool(z, Vector2(1118, 498), 460.0, WARM, 0.11)         # around the rig
+	# 4. Exit-door neon, in the region ACCENT rather than a fourth hue. It is the
+	# one piece of signage in the flat allowed to emit, because it is the answer
+	# to "where do I go".
 	var tube := Sprite2D.new()
-	tube.texture = _neon_tex(Color("#A8FF3E"))
-	var nmat := _shader_mat("neon_flicker", {"seed": 7.7, "base_boost": 1.6})
+	tube.texture = _neon_tex(ACCENT)
+	var nmat := _shader_mat("neon_flicker", {"seed": 7.7, "base_boost": 1.2})
 	if nmat:
 		tube.material = nmat
 	tube.position = Vector2(1402, 368)
 	tube.scale = Vector2(2.2, 1.5)
 	# A ceiling fixture, so it belongs with the world text rather than with the
-	# furniture — at z 399 the bed and the boxes were drawing over the one light
-	# that says "the door is this way".
+	# furniture — at z 399 the bed and the boxes drew over the one light that
+	# says "the door is this way".
 	tube.z_index = WorldLabel.Z_PLATE - 1
 	z.add_child(tube)
-	_add_light(z, Vector2(1402, 374), Color("#A8FF3E"), 0.55, 2.0)
-	# The doorway itself throws light across the last third of the room, so the
-	# way out is the brightest thing on the right-hand side of the frame.
-	_light_pool(z, Vector2(1490, 520), 460.0, Color("#A8FF3E"), 0.2)
+	_add_light(z, Vector2(1402, 374), ACCENT, 0.55, 3.0)
+	_light_pool(z, Vector2(1490, 520), 460.0, ACCENT, 0.15)
 
-## A warm puddle under everything worth walking to. The player complaint was not
-## "which key do I press", it was "I don't know WHERE" — lit things read as
-## destinations from across the room, unlit things read as furniture.
+## Claude, standing in the one honest spotlight in the apartment, plus a quiet
+## puddle on each of the two things the opening actually asks you to touch.
+##
+## The twelve-rect ring of dashes around Claude's feet is gone (it read as a
+## summoning circle, not as lighting), and so are four of the six coloured
+## point-of-interest pools — a blue one, a cyan one, an orange one, a green one,
+## a violet one and a red one, six hues in a three-hue room, all at the same
+## value, which is the definition of no reading order. The waypoint chevron and
+## the [E] prompt are the real affordance; these two are the confirmation.
 static func _build_poi_pools(parent: Node2D) -> void:
 	var z := Node2D.new()
 	z.name = "PoiPools"
 	parent.add_child(z)
-	# Claude, standing in the one honest spotlight in the apartment.
-	_add_light(z, Vector2(820, 552), Color(1.0, 0.87, 0.62), 0.55, 2.0)
-	_light_pool(z, Vector2(820, 586), 240.0, Color(1.0, 0.85, 0.58), 0.32)
-	for i in 12:
-		var a := TAU * float(i) / 12.0
-		_rect(z, Vector2(820, 584) + Vector2(cos(a) * 64.0, sin(a) * 40.0), Vector2(9, 3), Color(1.0, 0.86, 0.6, 0.16), -92, a)
-	# The things you can actually DO, each with its own colour of invitation.
-	_light_pool(z, Vector2(430, 384), 150.0, Color(0.4, 0.8, 1.0), 0.24)     # client email
-	_light_pool(z, Vector2(650, 384), 150.0, Color(0.3, 0.95, 0.9), 0.24)    # dream app terminal
-	_light_pool(z, Vector2(760, 404), 150.0, Color(1.0, 0.6, 0.3), 0.24)     # deploy button
-	_light_pool(z, Vector2(1160, 644), 170.0, Color(0.35, 0.95, 0.45), 0.26) # 'free' tokens ad
-	_light_pool(z, Vector2(300, 584), 170.0, Color(0.62, 0.5, 0.98), 0.26)   # agent terminal
-	_light_pool(z, Vector2(1120, 674), 170.0, Color(1.0, 0.33, 0.28), 0.26)  # the outage
+	_add_light(z, Vector2(820, 552), Color(1.0, 0.87, 0.62), 0.55, 3.0)
+	_light_pool(z, Vector2(820, 586), 240.0, Color(1.0, 0.85, 0.58), 0.26)
+	_light_pool(z, Vector2(650, 384), 150.0, ACCENT, 0.18)   # dream app terminal
+	_light_pool(z, Vector2(760, 404), 150.0, WARM, 0.18)     # deploy button
 
-## Foreground/mid-ground framing. A ceiling beam and skirting board at the very
-## edges of the room turn a top-down field into a space you are looking INTO —
-## and neither sits anywhere the player can stand.
+## Foreground framing: a ceiling beam at the top edge and a skirting board at the
+## bottom, neither of them anywhere the player can stand.
+##
+## ROUND 7 removed the two drooping ceiling cables with their mount plates and
+## warm speculars, the four in-world corner vignettes and the two side jambs.
+## The corner vignettes were the post-processing vignette drawn a second time in
+## world space, and the jambs narrowed a room that is already framed by its own
+## walls. Depth comes from the lighting (LAW 3).
 static func _build_framing(parent: Node2D) -> void:
 	var z := Node2D.new()
 	z.name = "Framing"
@@ -1034,71 +946,41 @@ static func _build_framing(parent: Node2D) -> void:
 	var w := ROOM_W * TILE
 	var h := ROOM_H * TILE
 	_rect(z, Vector2(w * 0.5, 26.0), Vector2(w + 40.0, 26.0), Color(0.02, 0.02, 0.04, 0.94), 500)
-	_rect(z, Vector2(w * 0.5, 39.0), Vector2(w + 40.0, 2.0), Color(1.0, 0.78, 0.45, 0.14), 501)
+	_rect(z, Vector2(w * 0.5, 39.0), Vector2(w + 40.0, 2.0), Color(WARM.r, WARM.g, WARM.b, 0.10), 501)
 	for i in 5:
 		var bx := 180.0 + float(i) * (w - 360.0) / 4.0
 		_rect(z, Vector2(bx, 34.0), Vector2(12, 40), Color(0.02, 0.02, 0.04, 0.9), 500)
-	# Slack cable looping down out of the ceiling. This flat has opinions about
-	# cable management, and they are all wrong. Same treatment as the floor runs —
-	# smoothed curve, warm specular along the lit edge, a mount plate at each end
-	# — because at 3px of flat black with bare ends these read as scratches on
-	# the lens rather than as something hanging off a ceiling. (The plates sit
-	# where the cable ends, NOT on the joists above: the beams land on 180/490/
-	# 800/1110/1420 and only one of the four ends is near one. A surface-mounted
-	# clip between joists is what a flat like this actually has, and claiming
-	# otherwise in a comment is how the next agent moves the wrong thing.)
-	# No contact shadow: they are in mid-air, with nothing under them to cast on.
-	for i in 2:
-		var x0 := 420.0 + float(i) * 640.0
-		var head := Vector2(x0 - 110.0, 38.0)
-		var tail := Vector2(x0 + 70.0, 44.0)
-		var drop := _cable_path([head, Vector2(x0 - 30.0, 92.0 + float(i) * 22.0), tail], 4.0)
-		_cable_line(z, drop, 3.0, Color(0.02, 0.02, 0.03, 0.9), 502)
-		# 1.4, not 1.0, for the reason spelled out in _cable: at this zoom a
-		# 1-unit rim is a sub-pixel and does not survive the capture.
-		_cable_line(z, drop, 1.4, Color(0.40, 0.34, 0.26, 0.5), 503, Vector2(-1.0, -1.0))
-		for e: Vector2 in [head, tail]:
-			_rect(z, e, Vector2(11.0, 5.0), Color(0.015, 0.015, 0.03, 0.95), 503)
-			_rect(z, e - Vector2(0.0, 2.0), Vector2(11.0, 1.0), Color(1.0, 0.80, 0.50, 0.22), 504)
-	# In-world vignette: darkness pooled into the corners IN FRONT of the
-	# furniture, so the flat closes in around the desk instead of ending at a
-	# wall. Four sprites; the single cheapest "this is a photograph" trick there
-	# is at this resolution.
-	for c: Vector2 in [Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 1)]:
-		_floor_patch(z, Vector2(c.x * w, 70.0 + c.y * (h - 70.0)), 560.0, Color(0.008, 0.008, 0.02), 0.38, 520)
-	# Door jambs down both sides: the flat is looked INTO, through its own frame.
-	for k: float in [0.0, 1.0]:
-		_rect(z, Vector2(k * w + (1.0 - k * 2.0) * 9.0, h * 0.5), Vector2(30.0, h), Color(0.012, 0.012, 0.026, 0.8), 540)
 	# Skirting board along the near edge of the room.
 	_rect(z, Vector2(w * 0.5, h - 6.0), Vector2(w + 40.0, 24.0), Color(0.015, 0.015, 0.03, 0.92), 600)
-	_rect(z, Vector2(w * 0.5, h - 18.0), Vector2(w + 40.0, 2.0), Color(1.0, 0.8, 0.5, 0.1), 601)
 
 # ---------------------------------------------------------- atmosphere ------
 
-## Particles (3 emitters, well under the bible's 12): dust motes for the light
-## shafts, steam for the coffee machine, exhaust shimmer for the server corner.
+## TWO emitters (LAW 4): the ambient dust layer, and one at the set-piece — the
+## coffee machine, which is the load-bearing appliance in this person's life.
+## The server-exhaust plume is gone with the racks' light; dust drops from 26
+## particles to 16 and from warm white to TEXT_DIM at 25%, because dust is not
+## one of the five things allowed to be bright.
 static func _build_atmosphere(parent: Node2D) -> void:
 	var dot := _glow_dot()
-	# Foreground dust motes — invisible until they drift through a light.
 	var dust := CPUParticles2D.new()
 	dust.name = "DustMotes"
 	dust.position = Vector2(ROOM_W * TILE * 0.5, ROOM_H * TILE * 0.5)
 	dust.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
 	dust.emission_rect_extents = Vector2(ROOM_W * TILE * 0.5 - 60, ROOM_H * TILE * 0.5 - 60)
 	dust.z_index = 350
-	dust.amount = 26
-	dust.lifetime = 8.0
+	dust.amount = 16
+	dust.lifetime = 9.0
 	dust.gravity = Vector2(0, -4)
 	dust.initial_velocity_min = 2.0
 	dust.initial_velocity_max = 8.0
 	dust.spread = 180.0
 	dust.scale_amount_min = 1.2
 	dust.scale_amount_max = 2.2
-	dust.color = Color(1.0, 0.9, 0.75, 0.16)
+	dust.color = Color(TEXT_DIM.r, TEXT_DIM.g, TEXT_DIM.b, 0.25)
 	if dot:
 		dust.texture = dot
 	parent.add_child(dust)
-	# Coffee steam. Load-bearing appliance, gets its own emitter.
+	# Coffee steam. Load-bearing appliance, gets the region's one set-piece emitter.
 	var steam := CPUParticles2D.new()
 	steam.name = "CoffeeSteam"
 	steam.position = Vector2(230, 198)
@@ -1112,82 +994,40 @@ static func _build_atmosphere(parent: Node2D) -> void:
 	steam.initial_velocity_max = 18.0
 	steam.scale_amount_min = 1.6
 	steam.scale_amount_max = 3.0
-	steam.color = Color(0.95, 0.97, 1.0, 0.3)
+	steam.color = Color(0.85, 0.87, 0.90, 0.22)
 	if dot:
 		steam.texture = dot
 	parent.add_child(steam)
-	# Server exhaust shimmer: the racks exhale so their owner doesn't have to.
-	var vent := CPUParticles2D.new()
-	vent.name = "ServerExhaust"
-	vent.position = Vector2(1425, 130)
-	vent.z_index = 300
-	vent.amount = 9
-	vent.lifetime = 1.6
-	vent.direction = Vector2(0, -1)
-	vent.spread = 20.0
-	vent.gravity = Vector2(0, -12)
-	vent.initial_velocity_min = 14.0
-	vent.initial_velocity_max = 26.0
-	vent.scale_amount_min = 1.4
-	vent.scale_amount_max = 2.6
-	vent.color = Color(0.5, 1.0, 0.6, 0.18)
-	if dot:
-		vent.texture = dot
-	parent.add_child(vent)
 
 # -------------------------------------------------------------- signs -------
 
-## Signs are placed in priority order: the ones that answer "what do I do and
-## where" go down FIRST at priority 3 and get the good spot; furniture stories
-## follow at 2; flavour gags settle around them at 1 and yield (or hide) when the
-## room runs out of clear wall.
+## THREE signs. LAW 4 allows four, LAW 10 says the jokes leave ambient signage,
+## and this apartment used to carry twenty-one of them: six wayfinding, seven
+## furniture stories, four flavour gags, plus five monitor readouts and three
+## poster creeds. The captured localhost frame is that list, drawn all at once,
+## and it is the single clearest picture of what the brief meant by slop.
+##
+## What survives is what answers "what do I do next, and where":
+##   1. EXIT, up the wall by the door where an exit sign actually lives,
+##   2. the one line that points at the person you must talk to first,
+##   3. the terminal the whole first quest is about.
+##
+## Every removed string is still in the game — SERVER RACK (do NOT reboot),
+## FRIDGE (energy drinks only), COFFEE: MISSION CRITICAL, PLANT status:
+## deprecated, node_modules (trash), BED, DNS, COUCH, PIZZA ARCHAEOLOGY, WINDOW,
+## RIG — every one of those props already carries a generic_interactable with a
+## flavour popup behind [E]. They are listed in this round's contracts so the
+## reactive-comedy owner can fold the sign text into the popup bodies.
 static func _build_signs(parent: Node2D) -> void:
 	var z := Node2D.new()
 	z.name = "Signs"
 	parent.add_child(z)
-	# 1. Wayfinding. EXIT used to sit on the portal's own destination plate \u2014
-	# it is now mounted well clear of the doorway, up the wall where an exit sign
-	# actually lives, and it is the only headline-weight sign on this side.
-	_sign(z, Vector2(1276, 356), "EXIT \u2192", Color(0.5, 0.95, 0.8), 3, "headline")
-	# The opening caption, and the one the QA frame caught being drawn through the
-	# player's chest.
-	#
-	# The trap: a WorldLabel anchor is the plate's TOP-LEFT, not its centre. This
-	# sign was authored at (636,598), which measures out — checked against the
-	# capture, where the accent bar lands at world x 636 to the pixel — as a
-	# ~190x36 plate occupying 636..826 x 598..634, straight across the player,
-	# who occupies 674..766 x 556..666 at the (720,640) spawn. And because a
-	# headline is _bolted, world_label's player-clearance pass has no slide
-	# available and fades it to nothing instead: the one caption that answers
-	# "what do I do next" was being DELETED at the exact moment it was needed.
-	# Silence, not merely clutter.
-	#
-	# It now sits on Claude's FAR side, clear of the spawn footprint, the walk
-	# lane, Claude's silhouette and his bark column (all reserved in
-	# _reserve_labels; every margin >= 14 units against the 6-unit collider
-	# grow), so it takes its home slot and stays lit while the player reads it.
-	# The arrow turns round to keep pointing at its subject: Claude is the next
-	# thing to the left, about thirty units from the plate edge, under his own
-	# name plate and his own quest marker. Further right it would still be clear,
-	# and would stop reading as HIS caption.
-	_sign(z, Vector2(886, 520), "\u2190 talk to Claude first", Color(1.0, 0.85, 0.55), 3, "headline")
-	_sign(z, Vector2(1090, 585), "'FREE' TOKENS \u2192", Color(0.4, 0.95, 0.5), 3)
-	_sign(z, Vector2(250, 525), "\u2190 deploy an AI agent\n(what could go wrong)", Color(0.7, 0.6, 0.95), 3)
-	_sign(z, Vector2(1050, 690), "/checkout is DOWN \u2192", Color(1.0, 0.4, 0.35), 3)
-	_sign(z, Vector2(600, 424), "\u2191 Dream App terminal\n\u2191 Deploy button (be brave)", Color(0.3, 0.95, 0.9), 3)
-	# 2. Furniture that has a story.
-	_sign(z, Vector2(1360, 120), "SERVER RACK\n(do NOT reboot)", Color(0.5, 1.0, 0.6), 2)
-	_sign(z, Vector2(70, 150), "FRIDGE\n(energy drinks only)", Color(0.6, 0.9, 1.0), 2)
-	_sign(z, Vector2(200, 200), "COFFEE: MISSION CRITICAL", Color(1.0, 0.78, 0.4), 2)
-	_sign(z, Vector2(90, 760), "PLANT\nstatus: deprecated", Color(0.6, 0.8, 0.5), 2)
-	_sign(z, Vector2(150, 900), "node_modules\n(trash)", Color(0.7, 0.6, 0.5), 2)
-	_sign(z, Vector2(1236, 936), "BED\n'sleep? during a hackathon?'", Color(0.7, 0.75, 0.95), 2)
-	_sign(z, Vector2(880, 120), "DNS\nProbably not the problem.", Color(0.55, 0.85, 1.0), 2)
-	# 3. Flavour. Dry, true, and placed last so they yield to everything above.
-	_sign(z, Vector2(660, 916), "COUCH\nslept on: 0 nights\nsat on: 0 nights", Color(0.66, 0.62, 0.8))
-	_sign(z, Vector2(846, 848), "PIZZA ARCHAEOLOGY\nstrata: Tuesday, Tuesday, Sunday", Color(0.85, 0.66, 0.4))
-	_sign(z, Vector2(470, 172), "WINDOW\nOutside: still there. Allegedly.", Color(0.5, 0.7, 1.0))
-	_sign(z, Vector2(1024, 250), "RIG\n\"it's a business expense\"", Color(1.0, 0.55, 0.35))
+	_sign(z, Vector2(1276, 356), "EXIT \u2192", ACCENT, 3, "headline")
+	# On Claude's FAR side, clear of the spawn footprint, the walk lane, his
+	# silhouette and his bark column (all reserved in _reserve_labels). The arrow
+	# points back at him: he is the next thing to the left.
+	_sign(z, Vector2(886, 520), "\u2190 talk to Claude first", ACCENT, 3, "headline")
+	_sign(z, Vector2(600, 424), "\u2191 Dream App terminal", ACCENT, 3)
 
 static func _sign(parent: Node2D, pos: Vector2, text: String, color: Color, prio: int = 1, style: String = "plate") -> void:
 	WorldLabel.add(parent, pos, text, color, {"size": 12, "style": style, "priority": prio})
@@ -1212,13 +1052,16 @@ static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 	parent.add_child(props)
 
 	var token_scene := preload("res://scenes/world/token_pickup.tscn")
+	# EIGHT, placed on the worn track the player is already being invited to walk
+	# (LAW 4: 6-10, intentional; LAW 1: even integers). Fourteen coins spread over
+	# the whole flat is a carpet, not a reward — and six of them used to sit in
+	# the corners nobody walks through, doing nothing but bobbing and glowing.
 	var token_types := ["common", "common", "cached", "common", "cached"]
 	var token_positions := [
-		Vector2(420, 640), Vector2(560, 700), Vector2(700, 760),
-		Vector2(840, 640), Vector2(980, 700), Vector2(1120, 620),
-		Vector2(500, 560), Vector2(760, 520), Vector2(1040, 500),
-		Vector2(640, 860), Vector2(900, 900), Vector2(1180, 800),
-		Vector2(380, 720), Vector2(1000, 860),
+		Vector2(560, 700), Vector2(660, 660), Vector2(700, 760),
+		Vector2(900, 620), Vector2(1030, 580),
+		Vector2(1160, 540), Vector2(1300, 520),
+		Vector2(500, 560),
 	]
 	for i in token_positions.size():
 		var t = token_scene.instantiate()
@@ -1288,8 +1131,9 @@ static func _populate_gameplay(parent: Node2D, spawn: Vector2) -> void:
 		p.portal_label = "Dependency District"
 		p.position = PORTAL_POS
 		portals.add_child(p)
-		# Arcane spill so the way out reads as a light source across the room.
-		_add_light(props, p.position + Vector2(0, -8), Color("#8B5CF6"), 1.0, 3.2)
+		# No spill light here. region_portal.gd lights its own gate, and a 1.0-energy
+		# violet wash from the builder on top of it is both a fourth hue and the
+		# "portal filling a third of the screen" the brief called out.
 
 static func _add_interact(parent: Node2D, scene: PackedScene, id: String, pos: Vector2, text: String) -> Node:
 	var node = scene.instantiate()
@@ -1304,13 +1148,29 @@ static func _add_interact(parent: Node2D, scene: PackedScene, id: String, pos: V
 static func _dim(interactable: Node) -> void:
 	var rect := interactable.get_node_or_null("ColorRect")
 	if rect:
-		rect.color = Color(0.42, 0.82, 0.88, 0.30)
+		rect.color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.18)
+		rect.offset_left = -6.0
+		rect.offset_top = -6.0
+		rect.offset_right = 6.0
+		rect.offset_bottom = 6.0
+
+## Storyline triggers used to be colour-coded green / violet / red — three extra
+## saturated hues on three 14px markers, in a room LAW 2 gives three colours
+## total. They are all ACCENT now, one step brighter than the flavour props, so
+## the difference the coding was carrying (this one MATTERS) survives as value
+## rather than as hue. `color` is kept in the signature; callers still pass one.
+static func _tint(interactable: Node, _color: Color) -> void:
+	var rect := interactable.get_node_or_null("ColorRect")
+	if rect:
+		# The scene ships this rect at 32x32 and 0.55 alpha. At the room's
+		# corrected exposure that is a flat 43px block of pure ACCENT lying on
+		# the boards — the loudest thing in the frame after the player, and it
+		# reads as untextured placeholder art rather than as an affordance.
+		# Same 14px footprint as the flavour markers, one clear value step
+		# above them, which is exactly the distinction the old green/violet/red
+		# colour-coding was carrying.
+		rect.color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.34)
 		rect.offset_left = -7.0
 		rect.offset_top = -7.0
 		rect.offset_right = 7.0
 		rect.offset_bottom = 7.0
-
-static func _tint(interactable: Node, color: Color) -> void:
-	var rect := interactable.get_node_or_null("ColorRect")
-	if rect:
-		rect.color = Color(color.r, color.g, color.b, 0.85)

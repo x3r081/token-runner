@@ -1,38 +1,6 @@
-[gd_scene load_steps=4 format=3 uid="uid://death001"]
+[gd_scene load_steps=2 format=3 uid="uid://death001"]
 
 [ext_resource type="Script" path="res://scripts/ui/death_screen.gd" id="1"]
-
-[sub_resource type="StyleBoxFlat" id="PanelStyle"]
-bg_color = Color(0.12, 0.03, 0.04, 0.99)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.85, 0.3, 0.28, 0.9)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-content_margin_left = 30
-content_margin_top = 24
-content_margin_right = 30
-content_margin_bottom = 20
-
-[sub_resource type="StyleBoxFlat" id="BtnStyle"]
-bg_color = Color(0.2, 0.08, 0.09, 1.0)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.85, 0.35, 0.32, 0.5)
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 6
-content_margin_left = 10
-content_margin_top = 8
-content_margin_right = 10
-content_margin_bottom = 8
 
 [node name="DeathScreen" type="Control"]
 layout_mode = 3
@@ -46,7 +14,7 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.12, 0, 0, 0.72)
+color = Color(0, 0, 0, 0.92)
 
 [node name="Panel" type="PanelContainer" parent="."]
 layout_mode = 1
@@ -59,33 +27,28 @@ offset_left = -270.0
 offset_top = -160.0
 offset_right = 270.0
 offset_bottom = 160.0
-theme_override_styles/panel = SubResource("PanelStyle")
 
 [node name="VBox" type="VBoxContainer" parent="Panel"]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 14
 
 [node name="Title" type="Label" parent="Panel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.95, 0.4, 0.38, 1)
-theme_override_font_sizes/font_size = 34
+theme_override_font_sizes/font_size = 26
 text = "You Died"
 horizontal_alignment = 1
 
 [node name="Message" type="Label" parent="Panel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.92, 0.88, 0.88, 1)
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 18
 text = "Rate limited by reality."
 horizontal_alignment = 1
 autowrap_mode = 2
 
 [node name="Respawn" type="Button" parent="Panel/VBox"]
 layout_mode = 2
-theme_override_styles/normal = SubResource("BtnStyle")
 text = "Respawn"
 
 [node name="Menu" type="Button" parent="Panel/VBox"]
 layout_mode = 2
-theme_override_styles/normal = SubResource("BtnStyle")
 text = "Main Menu"

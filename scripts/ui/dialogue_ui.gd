@@ -3,24 +3,20 @@ extends CanvasLayer
 ## unambiguously mean "advance", and always carries the key that does it, so the
 ## joke never costs the player a moment of "wait, how do I continue".
 ##
-## Round 5 — readability. This is the surface the player READS most, so it is the
-## one place in the UI that gives up glass for opacity:
+## Round 6 stripped the costume off the most-read surface in the game. Gone: the
+## cyan accent chip around the speaker's name, the "YOU" chip mirroring it, the
+## accent bar-gradient rule across the panel, the accent quote-rule down the left
+## of the speech, the filled RAISED "cards" behind the choices, the panel's cyan
+## border and its outer glow, and the choice cascade. What is left: a name, a
+## line, and up to three bordered rows.
 ##
-## 1. The body is OPAQUE. At the shared 92% panel alpha, world captions (COUCH,
-##    PIZZA ARCHAEOLOGY, node_modules) showed straight through the speaker chip
-##    and the dialogue line. The neon now lives in the border and the outer glow,
-##    where it costs nothing to read.
-## 2. The panel reads as two halves: what THEY said (accent quote-rule, no fill)
-##    and what YOU can say (a "YOU" chip that mirrors the speaker chip, an accent
-##    rule across the panel, then filled, raised choice cards). A player glancing
-##    for a second can tell speech from options without reading either.
-## 3. Measure and rhythm: body copy is inset from the right edge so a line is
-##    ~80 characters instead of the panel's full width, line spacing is opened
-##    up, and every block is separated by a real gap — the choice hint used to
-##    sit welded to the first button.
+## The panel is still anchored to the BOTTOM edge and grows UPWARD (a prior fix).
+## Do not re-anchor it: with `fit_content` on the text, a top-anchored panel puts
+## long NPC briefings under the ability bar.
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 const _Comedy = preload("res://scripts/ui/comedy_lines.gd")
+const _Modal = preload("res://scripts/ui/modal_panel.gd")
 
 ## Body copy is inset from the panel's right edge, in panel units — NOT a
 ## character count, despite the coincidence of the number. The panel is 900 units
@@ -61,102 +57,80 @@ func _ready() -> void:
 
 	panel.theme = _GameTheme.create()
 	panel.add_theme_stylebox_override("panel", _dialogue_panel_box())
-	# Speaker name as an accent chip, hugging its text.
-	speaker_label.add_theme_stylebox_override("normal", _GameTheme.chip_box(_GameTheme.CYAN))
-	speaker_label.add_theme_color_override("font_color", _GameTheme.hot_of(_GameTheme.CYAN))
-	speaker_label.add_theme_font_override("font", _GameTheme.spaced_font(2))
+	# The speaker is a name, not a badge: ACCENT, small, on the panel itself.
+	speaker_label.add_theme_color_override("font_color", _GameTheme.CYAN)
+	speaker_label.add_theme_font_size_override("font_size", _Modal.SMALL)
 	speaker_label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	# Air between chip / speech / hint / choices / advance. The scene's default 4px
-	# is what made the hint look welded to the first choice button.
 	var vbox: VBoxContainer = $Panel/Margin/VBox
 	vbox.add_theme_constant_override("separation", 12)
 	_style_speech()
-	choices_box.add_theme_constant_override("separation", 8)
-	_GameTheme.style_button(continue_btn, _GameTheme.CYAN, 15)
+	choices_box.add_theme_constant_override("separation", 6)
+	_GameTheme.style_button(continue_btn, _GameTheme.TEXT_DIM, _Modal.SMALL)
 	_build_choice_hint()
 
-## Opaque body, neon edge. Everything the shared panel_box does for glow is kept;
-## only the transparency — which the world was reading through — is dropped.
+## Opaque body, one hairline border, nothing else. Fully opaque rather than the
+## modal kit's 96%: this panel sits over the LIVE world with no scrim, and at 92%
+## world captions (COUCH, PIZZA ARCHAEOLOGY, node_modules) used to read straight
+## through the dialogue line.
 func _dialogue_panel_box() -> StyleBoxFlat:
-	var s := _GameTheme.panel_box(_GameTheme.CYAN, 18.0)
+	var s := _Modal.modal_box(_GameTheme.CYAN, 18.0)
 	s.bg_color = _GameTheme.BASE
-	s.border_color = _GameTheme.with_alpha(_GameTheme.CYAN, 0.45)
-	s.set_corner_radius_all(8)
-	s.shadow_color = _GameTheme.with_alpha(_GameTheme.CYAN, 0.20)
-	s.shadow_size = 20
 	return s
 
-## "This is what they said": an accent quote-rule down the left, a comfortable
-## measure, and open line spacing. No fill — the fill belongs to your options.
+## What they said: body copy at a comfortable measure with open line spacing. No
+## fill, no accent rule — the accent is the name above it.
 func _style_speech() -> void:
-	var quote := StyleBoxFlat.new()
-	quote.draw_center = false
-	quote.border_color = _GameTheme.with_alpha(_GameTheme.CYAN, 0.38)
-	quote.border_width_left = 2
-	quote.content_margin_left = 14.0
-	quote.content_margin_right = TEXT_RIGHT_INSET
-	quote.content_margin_top = 4.0
-	quote.content_margin_bottom = 10.0
-	text_label.add_theme_stylebox_override("normal", quote)
+	var inset := StyleBoxFlat.new()
+	inset.draw_center = false
+	inset.content_margin_left = 2.0
+	inset.content_margin_right = TEXT_RIGHT_INSET
+	inset.content_margin_top = 2.0
+	inset.content_margin_bottom = 8.0
+	text_label.add_theme_stylebox_override("normal", inset)
 	text_label.add_theme_color_override("default_color", _GameTheme.TEXT)
-	text_label.add_theme_font_size_override("normal_font_size", 18)
+	text_label.add_theme_font_size_override("normal_font_size", _Modal.BODY)
 	text_label.add_theme_constant_override("line_separation", 6)
 	# Shape the WHOLE line, then clip the reveal to it. Godot's default
 	# (VC_CHARS_BEFORE_SHAPING) drops the not-yet-revealed characters before
 	# wrapping, so with `fit_content` the label's height grows line by line as the
 	# typewriter runs. The panel is bottom-anchored and grows upward, which turns
-	# that into the speaker chip and the sentence you are reading crawling up the
-	# screen mid-word. Harmless at the old ~100-character measure (nothing in
-	# data/dialogue/npcs.json reached four lines); at this measure the long NPC
-	# briefings do. Shaping first pins the box at its final height on frame one.
+	# that into the speaker name and the sentence you are reading crawling up the
+	# screen mid-word. Shaping first pins the box at its final height on frame one.
 	text_label.visible_characters_behavior = TextServer.VC_CHARS_AFTER_SHAPING
 	# A two-line floor: the panel stops resizing under every short reply, without
 	# reserving the dead band the old 80px minimum left above the button.
 	text_label.custom_minimum_size = Vector2(0, 66)
 
-## The choice header: an accent rule across the panel, a "YOU" chip mirroring the
-## speaker chip, and a one-line nudge. The chip carries the information (these are
-## YOUR lines now); the nudge carries the joke and never names a "correct" option.
+## The choice header: a 1px LINE rule and a one-line nudge in TEXT_DIM. The rule
+## used to be a 2px accent bar-gradient and the nudge used to sit next to a "YOU"
+## chip; between them they made the options look like a second panel.
 func _build_choice_hint() -> void:
 	var vbox: VBoxContainer = $Panel/Margin/VBox
 
 	_choice_rule = Panel.new()
 	_choice_rule.name = "ChoiceRule"
-	_choice_rule.custom_minimum_size = Vector2(0, 2)
-	_choice_rule.add_theme_stylebox_override("panel", _GameTheme.bar_fill_box(_GameTheme.CYAN))
-	_choice_rule.modulate.a = 0.5
+	_choice_rule.custom_minimum_size = Vector2(0, 1)
+	_choice_rule.add_theme_stylebox_override("panel", _Modal.rule())
 	_choice_rule.visible = false
 	vbox.add_child(_choice_rule)
 	vbox.move_child(_choice_rule, choices_box.get_index())
 
 	_choice_header = HBoxContainer.new()
 	_choice_header.name = "ChoiceHeader"
-	_choice_header.add_theme_constant_override("separation", 12)
 	_choice_header.visible = false
 	vbox.add_child(_choice_header)
 	vbox.move_child(_choice_header, choices_box.get_index())
 
-	var you := Label.new()
-	you.name = "YouChip"
-	you.text = "YOU"
-	you.add_theme_stylebox_override("normal", _GameTheme.chip_box(_GameTheme.CYAN))
-	you.add_theme_color_override("font_color", _GameTheme.hot_of(_GameTheme.CYAN))
-	you.add_theme_font_override("font", _GameTheme.spaced_font(2))
-	you.add_theme_font_size_override("font_size", 13)
-	you.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_choice_header.add_child(you)
-
 	_choice_hint = Label.new()
 	_choice_hint.name = "ChoiceHint"
 	_choice_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_choice_hint.add_theme_font_size_override("font_size", 13)
+	_choice_hint.add_theme_font_size_override("font_size", _Modal.SMALL)
 	_choice_hint.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
 	_choice_hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_choice_hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_choice_header.add_child(_choice_hint)
 
-## One switch for the whole "your turn" block, so the rule, the chip and the
-## nudge can never disagree about whether a choice is on screen.
+## One switch for the whole "your turn" block, so the rule and the nudge can
+## never disagree about whether a choice is on screen.
 func _set_choice_header_visible(v: bool) -> void:
 	if is_instance_valid(_choice_rule):
 		_choice_rule.visible = v
@@ -213,42 +187,27 @@ func _on_choices(choices: Array) -> void:
 			AudioManager.play_sfx("choice_select")
 			DialogueManager.select_choice(idx))
 		choices_box.add_child(btn)
-	_GameTheme.stagger_rows(choices_box, 0.05, 0.0)
 	# [E] deliberately does nothing while options are up — you have to pick one —
 	# so without focus here a keyboard/controller player has no way to answer at
-	# all. The ring is also the cheapest possible "these are the buttons": one
-	# glance, and your next physical action is arrow keys + Enter, or a click.
-	# Same guarantee event_popup.gd already gives its choices.
+	# all. The ring is also the cheapest possible "these are the buttons".
 	if choices_box.get_child_count() > 0:
 		var first := choices_box.get_child(0) as Button
 		if first != null:
 			first.grab_focus()
 
-## "This is what you can say": filled, raised cards with generous hit padding, so
-## the options never read as more of the paragraph above them.
+## What you can say: plain bordered rows with generous hit padding. They read as
+## options because they have edges and the speech does not — not because they are
+## filled, raised and lit.
 func _style_choice_button(btn: Button) -> void:
-	_GameTheme.style_button(btn, _GameTheme.CYAN, 16)
+	_GameTheme.style_button(btn, _GameTheme.CYAN, _Modal.BODY)
 	var boxes := _GameTheme.button_boxes(_GameTheme.CYAN)
-	# The body behind these is now OPAQUE BASE, which changes the maths: a
-	# translucent wash (SURFACE at 60%, or accent at 10%) composites to within ~3%
-	# luminance of BASE and the "card" is not a card at all — just the 1px border,
-	# which is exactly what it looked like before. RAISED is the palette's own
-	# step above BASE (docs/VISUAL_BIBLE.md master palette), so the base card is
-	# opaque RAISED and each state lifts from THERE toward the accent. Opaque on
-	# opaque: what the eye gets is what the code says.
-	var card: Color = _GameTheme.RAISED
-	var normal: StyleBoxFlat = boxes["normal"]
-	normal.bg_color = card
-	var hover: StyleBoxFlat = boxes["hover"]
-	hover.bg_color = card.lerp(_GameTheme.CYAN, 0.12)
-	var pressed: StyleBoxFlat = boxes["pressed"]
-	pressed.bg_color = card.lerp(_GameTheme.CYAN, 0.24)
 	for state: String in ["normal", "hover", "pressed"]:
 		var box: StyleBoxFlat = boxes[state]
-		box.content_margin_left = 18.0
-		box.content_margin_right = 18.0
-		box.content_margin_top = 11.0
-		box.content_margin_bottom = 11.0
+		box.set_corner_radius_all(2)
+		box.content_margin_left = 16.0
+		box.content_margin_right = 16.0
+		box.content_margin_top = 9.0
+		box.content_margin_bottom = 9.0
 		btn.add_theme_stylebox_override(state, box)
 
 func _on_continue() -> void:

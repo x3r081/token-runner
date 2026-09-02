@@ -1,12 +1,16 @@
 extends Control
-## Death is the game's most-repeated screen, so it carries the densest comedy:
-## a large no-repeat cause-of-death pool plus a roast assembled from THIS run
-## (deaths, debt, upgrades bought, tokens hoarded, model chosen). Underneath the
-## jokes it still answers the only question that matters at 3AM: what happens
+## Death is the game's most-repeated screen, so it carries the densest comedy: a
+## no-repeat cause-of-death line plus a roast assembled from THIS run. Underneath
+## the jokes it still answers the only question that matters at 3AM: what happens
 ## if I press Respawn, and do I lose anything?
+##
+## Round 6: black background, one RED title, the roast, one button. Gone are the
+## red vignette closing in, the title's duplicated glow layer and its pulse, the
+## red-tinted panel with its red border and red glow, and the staggered rows.
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 const _Comedy = preload("res://scripts/ui/comedy_lines.gd")
+const _Modal = preload("res://scripts/ui/modal_panel.gd")
 
 var _roast_label: Label
 var _hint_label: Label
@@ -16,9 +20,9 @@ func _ready() -> void:
 	# A cause-of-death line, never repeated until the whole pool is spent.
 	$Panel/VBox/Message.text = _Comedy.pick("death", _Comedy.DEATH)
 	$Panel/VBox/Title.text = "You Died"
-	$Panel/VBox/Respawn.text = "Respawn  [Ctrl+Z / Enter]"
+	$Panel/VBox/Respawn.text = "Respawn  [Ctrl+Z]"
 	$Panel/VBox/Respawn.tooltip_text = "Undo, but for your entire body."
-	$Panel/VBox/Menu.text = "Give Up (Main Menu)"
+	$Panel/VBox/Menu.text = "Main Menu"
 	$Panel/VBox/Menu.tooltip_text = "Sometimes called 'work-life balance'. Progress is saved."
 	_build_extra_rows()
 	GameManager.player_died.connect(_set_message)
@@ -38,7 +42,7 @@ func _build_extra_rows() -> void:
 	_roast_label.text = _build_roast()
 	_roast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_roast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_roast_label.add_theme_font_size_override("font_size", 14)
+	_roast_label.add_theme_font_size_override("font_size", _Modal.SMALL)
 	vbox.add_child(_roast_label)
 	vbox.move_child(_roast_label, 2)
 
@@ -47,12 +51,12 @@ func _build_extra_rows() -> void:
 	_hint_label.text = _build_hint()
 	_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hint_label.add_theme_font_size_override("font_size", 13)
+	_hint_label.add_theme_font_size_override("font_size", _Modal.SMALL)
 	vbox.add_child(_hint_label)
 	vbox.move_child(_hint_label, 3)
 
 ## The roast is built from the run's real numbers — the sting is the accuracy.
-## Deaths always lead; then the two most damning facts currently true.
+## Deaths always lead; then the single most damning fact currently true.
 func _build_roast() -> String:
 	var lines: Array[String] = [_Comedy.death_count_roast(GameManager.death_count)]
 	var extras: Array[String] = []
@@ -66,65 +70,56 @@ func _build_roast() -> String:
 		ridiculous = int(ArchitectureManager.ridiculousness)
 
 	if tiers == 0:
-		extras.append("Dream App upgrades bought: zero. You died with the roadmap fully intact.")
+		extras.append("Upgrades bought: zero. You died with the roadmap fully intact.")
 	elif tiers >= 10:
 		extras.append("%d upgrades deep and it still ended like this. Features are not armour." % tiers)
 	if debt >= 40.0:
 		extras.append(_Comedy.debt_roast(debt))
 	if tokens >= 400:
-		extras.append("You are also hoarding %d tokens. They will look excellent in the postmortem." % tokens)
+		extras.append("Also hoarding %d tokens. They will look excellent in the postmortem." % tokens)
 	elif tokens <= 25:
-		extras.append("Token balance: %d. You managed to die broke AND wrong." % tokens)
+		extras.append("Token balance: %d. You died broke AND wrong." % tokens)
 	if will <= 30:
 		extras.append("Will to live: %d. Treat that as a production metric." % will)
 	if ridiculous >= 6:
 		extras.append("Architecture Ridiculousness %d. The diagram will outlive you." % ridiculous)
 	extras.append(_Comedy.model_roast(String(ModelManager.current().get("id", "fast"))))
 
-	for i in mini(2, extras.size()):
-		lines.append(extras[i])
+	# One extra, not two: the death screen is read at 3AM, mid-defeat, and it is
+	# read every time. Two roasts and it stops being a punchline.
+	if not extras.is_empty():
+		lines.append(extras[0])
 	return "\n".join(lines)
 
-## Plain facts, no joke in the load-bearing half: respawning costs you nothing
-## except the stability hit you already took.
+## Plain facts, no joke in the load-bearing half: respawning costs you nothing.
 func _build_hint() -> String:
 	var region: String = GameManager.current_region.replace("_", " ").capitalize()
-	return "Respawn puts you back at the safe spawn in %s with 3 seconds of invincibility, and sends the enemies home.\nTokens, upgrades and quests are untouched — only your stability took the hit." % region
+	return "You respawn at the safe spawn in %s with 3 seconds of invincibility. Tokens, upgrades and quests are untouched." % region
 
-## Full RED treatment: vignette closing in, overbright pulsing title, staggered
-## rows. Death should feel like a production incident, because it is one.
+## Black, one accent, no effects. A production incident is not a light show.
 func _dress() -> void:
 	var dim: ColorRect = $Dim
-	dim.color = Color(0.08, 0.0, 0.01, 0.78)
-	dim.modulate.a = 0.0
-	var dt := dim.create_tween().set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
-	dt.tween_property(dim, "modulate:a", 1.0, _GameTheme.T_STD)
-	var vig := _GameTheme.make_vignette(_GameTheme.with_alpha(Color(0.35, 0.02, 0.05), 0.9))
-	add_child(vig)
-	move_child(vig, $Panel.get_index())
+	dim.modulate.a = 1.0
 	var panel: PanelContainer = $Panel
 	# The scene's panel rect predates the roast/hint rows; widen it so nothing
 	# has to fight the container for space.
-	panel.offset_left = -360.0
-	panel.offset_right = 360.0
-	panel.offset_top = -230.0
-	panel.offset_bottom = 230.0
-	panel.add_theme_stylebox_override("panel", _GameTheme.panel_box(_GameTheme.RED, 26.0))
+	panel.offset_left = -340.0
+	panel.offset_right = 340.0
+	panel.offset_top = -200.0
+	panel.offset_bottom = 200.0
+	panel.theme = _GameTheme.create()
+	panel.add_theme_stylebox_override("panel", _Modal.modal_box(_GameTheme.RED, 26.0))
 	var title: Label = $Panel/VBox/Title
 	title.add_theme_color_override("font_color", _GameTheme.RED)
-	title.add_theme_font_override("font", _GameTheme.spaced_font(6))
-	title.add_theme_font_size_override("font_size", 38)
-	var glow := _GameTheme.add_glow_layer(title, 2.3)
-	_GameTheme.pulse(glow, 1.4, 2.3, 2.0)
 	$Panel/VBox/Message.add_theme_color_override("font_color", _GameTheme.TEXT)
 	if is_instance_valid(_roast_label):
-		_roast_label.add_theme_color_override("font_color", _GameTheme.with_alpha(_GameTheme.AMBER, 0.85))
+		_roast_label.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
 	if is_instance_valid(_hint_label):
 		_hint_label.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
-	_GameTheme.style_button($Panel/VBox/Respawn, _GameTheme.RED, 16)
-	_GameTheme.style_button($Panel/VBox/Menu, _GameTheme.RED, 14)
+	# The one button that matters gets the accent; leaving is a quiet option.
+	_GameTheme.style_button($Panel/VBox/Respawn, _GameTheme.RED, _Modal.BODY)
+	_GameTheme.style_button($Panel/VBox/Menu, _GameTheme.TEXT_DIM, _Modal.SMALL)
 	_GameTheme.open_panel(panel)
-	_GameTheme.stagger_rows($Panel/VBox)
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_accept"):

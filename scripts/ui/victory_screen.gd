@@ -2,9 +2,15 @@ extends Control
 ## The ship screen is the payoff, so the roast is the reward. It reads back the
 ## architecture you actually shipped, the corners you actually cut, and the
 ## postmortem that has, statistically, already been written.
+##
+## Round 6: black background, one GOLD title, the report, one button. Gone are
+## the gold vignette, the gold-bordered panel with its gold glow, the moving gold
+## sheen, the title's glow layer and pulse, the staggered rows — and a third of
+## the report, which used to run to twenty lines of bullet points.
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
 const _Comedy = preload("res://scripts/ui/comedy_lines.gd")
+const _Modal = preload("res://scripts/ui/modal_panel.gd")
 
 var _hint_label: Label
 
@@ -13,16 +19,9 @@ func _ready() -> void:
 	var results := GameManager.get_ship_results()
 	var rid := int(results.get("architecture_ridiculousness", 0))
 	$Panel/VBox/Title.text = "YOU SHIPPED IT"
-	$Panel/VBox/Ranking.text = "Final Ranking: %s" % results.ranking
-	$Panel/VBox/Score.text = "Score: %d   ·   %s" % [results.score, _Comedy.ridiculousness_quip(rid)]
-	$Panel/VBox/Details.text = """Features: %d
-Stability: %d
-Security: %d
-Technical Debt: %d
-Architecture Ridiculousness: %d
-Quests Completed: %d
-Deaths: %d
-Play Time: %s""" % [
+	$Panel/VBox/Ranking.text = str(results.ranking)
+	$Panel/VBox/Score.text = "Score %d · %s" % [results.score, _Comedy.ridiculousness_quip(rid)]
+	$Panel/VBox/Details.text = "Features %d · Stability %d · Security %d · Debt %d · Ridiculousness %d\nQuests %d · Deaths %d · Time %s" % [
 		results.features, results.stability,
 		DreamAppManager.get_totals().security,
 		results.technical_debt,
@@ -34,7 +33,7 @@ Play Time: %s""" % [
 	$Panel/VBox/Flavor.text = _build_report(results)
 	$Panel/VBox/ContinueBtn.text = "Continue in Post-Game"
 	$Panel/VBox/ContinueBtn.tooltip_text = "The app is live. Its bugs are now everyone's problem, including yours."
-	$Panel/VBox/MenuBtn.text = "Return to Main Menu"
+	$Panel/VBox/MenuBtn.text = "Main Menu"
 	$Panel/VBox/MenuBtn.tooltip_text = "Roll credits. Nobody stays for the credits."
 	_build_hint_row()
 	$Panel/VBox/ContinueBtn.pressed.connect(_on_continue)
@@ -46,10 +45,10 @@ Play Time: %s""" % [
 func _build_hint_row() -> void:
 	_hint_label = Label.new()
 	_hint_label.name = "PostGameHint"
-	_hint_label.text = "Post-game keeps the world open — regions, quests and upgrades all stay available, and your score above is already recorded. Nothing here is lost by continuing."
+	_hint_label.text = "Post-game keeps the world open. Your score is already recorded."
 	_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hint_label.add_theme_font_size_override("font_size", 12)
+	_hint_label.add_theme_font_size_override("font_size", _Modal.SMALL)
 	var vbox: VBoxContainer = $Panel/VBox
 	vbox.add_child(_hint_label)
 	vbox.move_child(_hint_label, 5)
@@ -57,18 +56,17 @@ func _build_hint_row() -> void:
 # ------------------------------------------------------------- the report ----
 func _build_report(results: Dictionary) -> String:
 	var roast: Array = GameManager.get_ship_roast()
-	# Cap the bullet list so the panel never has to argue with its own layout.
-	var shown: Array = roast.slice(0, mini(6, roast.size()))
+	# Three bullets, not six: the report is a punchline, not a changelog.
+	var shown: Array = roast.slice(0, mini(3, roast.size()))
 	var parts: Array[String] = []
 	parts.append(_get_flavor(results.ranking))
 	parts.append("")
 	parts.append("AS SHIPPED   %s" % _architecture_line())
 	parts.append("CORNERS CUT   %s" % _corners_line(results))
 	parts.append("")
-	parts.append("THE ROAST")
 	parts.append("  • %s" % "\n  • ".join(shown))
 	parts.append("")
-	parts.append("THE POSTMORTEM  (pre-written, to save everyone a meeting)")
+	parts.append("THE POSTMORTEM")
 	for line: String in _postmortem():
 		parts.append("  %s" % line)
 	return "\n".join(parts)
@@ -105,7 +103,7 @@ func _corners_line(results: Dictionary) -> String:
 	if DreamAppManager.get_branch_tier("security") == 0:
 		cut.append("no security work at all")
 	if DreamAppManager.get_branch_tier("observability") == 0:
-		cut.append("zero observability (you'll hear about outages from users)")
+		cut.append("zero observability")
 	if DreamAppManager.get_branch_tier("database") == 0:
 		cut.append("the database is exactly as you found it")
 	if float(results.get("technical_debt", 0)) >= 60.0:
@@ -136,9 +134,9 @@ func _postmortem() -> Array[String]:
 	if DreamAppManager.get_branch_tier("observability") == 0:
 		pool.append("\"Time to detection: four hours. Detection method: a customer, publicly.\"")
 	if ResourceManager.get_value("technical_debt") >= 60.0:
-		pool.append("\"A contributing factor was known technical debt in the affected component.\"  It was all of them.")
+		pool.append("\"A contributing factor was known technical debt.\"  It was all of them.")
 	if GameManager.death_count >= 5:
-		pool.append("\"On-call experienced elevated load during the incident window.\"  On-call was you. %d times." % GameManager.death_count)
+		pool.append("\"On-call experienced elevated load.\"  On-call was you. %d times." % GameManager.death_count)
 	if pool.is_empty():
 		pool.append("\"No customer impact was observed.\"  Nobody was looking, but still.")
 	var out: Array[String] = []
@@ -147,42 +145,30 @@ func _postmortem() -> Array[String]:
 	out.append("Action items: 3.  Completed: 0.  Reopened next quarter: 3.")
 	return out
 
-## GOLD everything: you shipped, you get the currency color.
+## One GOLD title on black. You shipped; you get the currency colour, once.
 func _dress() -> void:
 	var bg: ColorRect = $BG
-	bg.color = Color(0.03, 0.025, 0.01, 0.97)
-	bg.modulate.a = 0.0
-	var bt := bg.create_tween().set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
-	bt.tween_property(bg, "modulate:a", 1.0, _GameTheme.T_DRAMA)
-	var vig := _GameTheme.make_vignette(_GameTheme.with_alpha(Color(0.2, 0.13, 0.0), 0.9))
-	add_child(vig)
-	move_child(vig, $Panel.get_index())
+	bg.modulate.a = 1.0
 	var panel: PanelContainer = $Panel
 	# The report grew; give it room rather than making the container fight for it.
-	panel.offset_left = -480.0
-	panel.offset_right = 480.0
-	panel.offset_top = -410.0
-	panel.offset_bottom = 410.0
-	panel.add_theme_stylebox_override("panel", _GameTheme.panel_box(_GameTheme.GOLD, 30.0))
-	_GameTheme.add_sheen(panel, _GameTheme.with_alpha(_GameTheme.GOLD, 0.07), 5.0)
+	panel.offset_left = -460.0
+	panel.offset_right = 460.0
+	panel.offset_top = -360.0
+	panel.offset_bottom = 360.0
+	panel.theme = _GameTheme.create()
+	panel.add_theme_stylebox_override("panel", _Modal.modal_box(_GameTheme.GOLD, 30.0))
 	var title: Label = $Panel/VBox/Title
 	title.add_theme_color_override("font_color", _GameTheme.GOLD)
-	title.add_theme_font_override("font", _GameTheme.spaced_font(7))
-	title.add_theme_font_size_override("font_size", 40)
-	var glow := _GameTheme.add_glow_layer(title, 2.4)
-	_GameTheme.pulse(glow, 1.5, 2.4, 2.6)
-	$Panel/VBox/Ranking.add_theme_color_override("font_color", _GameTheme.hot_of(_GameTheme.GOLD))
-	$Panel/VBox/Score.add_theme_color_override("font_color", _GameTheme.TEXT)
+	$Panel/VBox/Ranking.add_theme_color_override("font_color", _GameTheme.TEXT)
+	$Panel/VBox/Score.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
 	$Panel/VBox/Details.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
 	var flavor: Label = $Panel/VBox/Flavor
 	flavor.add_theme_color_override("font_color", _GameTheme.TEXT)
-	flavor.add_theme_font_size_override("font_size", 13)
 	if is_instance_valid(_hint_label):
 		_hint_label.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
-	_GameTheme.style_button($Panel/VBox/ContinueBtn, _GameTheme.GOLD, 16)
-	_GameTheme.style_button($Panel/VBox/MenuBtn, _GameTheme.GOLD, 14)
+	_GameTheme.style_button($Panel/VBox/ContinueBtn, _GameTheme.GOLD, _Modal.BODY)
+	_GameTheme.style_button($Panel/VBox/MenuBtn, _GameTheme.TEXT_DIM, _Modal.SMALL)
 	_GameTheme.open_panel(panel)
-	_GameTheme.stagger_rows($Panel/VBox)
 
 func _format_time(seconds: float) -> String:
 	var m := int(seconds) / 60

@@ -9,11 +9,25 @@ class_name TokenPickup
 @onready var particles: CPUParticles2D = $Particles
 @onready var glow: PointLight2D = $Glow
 
+## VISUAL_BIBLE_V2 LAW 2: GOLD is reserved for tokens and currency, and nothing
+## else in the game is allowed to use it. Round 5 gave four token types four
+## different hues — cyan, teal, blue, amber — which is four of the eight hues
+## the QA frames were carrying. One colour means "this is money", full stop.
+const GOLD := Color("#FFD34D")
+## Compute is the one pickup that is NOT money, so it keeps a second, cool
+## colour — deliberately a desaturated glass grey-blue (LAW 2's corporate
+## #93A7C8 family), not another neon.
+const COMPUTE := Color("#9FB4D0")
+## LAW 1: art is 32px, drawn at 2x. Exactly 2.0, and it never animates — the
+## coin-spin X pinch that used to run here put the token on a different pixel
+## grid from the floor it was sitting on, every frame.
+const ART_SCALE := Vector2(2.0, 2.0)
+## LAW 9: tokens bob 2px. Rounded, so the token lands on whole pixels.
+const BOB_PX := 2.0
+
 var collected := false
 var _bob_time := 0.0
 var _base_y: float
-var _glow_hue := 0.0
-var _sparkle: CPUParticles2D
 
 func _ready() -> void:
 	add_to_group("token")
@@ -25,67 +39,34 @@ func _ready() -> void:
 		sprite.texture = load(tex_path)
 	else:
 		sprite.texture = load("res://assets/textures/generated/token_common.png")
-	sprite.scale = Vector2(2.5, 2.5)
+	sprite.scale = ART_SCALE
 	body_entered.connect(_on_body_entered)
 	match token_type:
 		"premium", "golden", "frontier":
 			amount = randi_range(amount, amount * 3)
-			glow.color = Color(1.0, 0.85, 0.3)
 		"compute":
 			amount = randi_range(3, 8)
-			glow.color = Color(0.4, 0.7, 1.0)
-		"cached":
-			glow.color = Color(0.5, 0.95, 0.85)
-		_:
-			glow.color = Color(0.35, 0.9, 0.8)
+	glow.color = COMPUTE if token_type == "compute" else GOLD
+	# LAW 9: nothing moves at rest except the 2px bob. A steady pool, sized to
+	# the coin — a token is one of the five things LAW 3 lets be bright, and
+	# being bright is enough; it does not also have to pulse.
+	glow.energy = 0.40
 	glow.texture = _make_glow_texture()
-	_setup_sparkle()
 
-## Idle sparkle so tokens read as treasure from across the room. Only emits
-## while the player is near (25 tokens x always-on emitters would blow the
-## particle budget for nothing off-screen).
-func _setup_sparkle() -> void:
-	_sparkle = CPUParticles2D.new()
-	_sparkle.emitting = false
-	_sparkle.amount = 5
-	_sparkle.lifetime = 0.9
-	_sparkle.spread = 180.0
-	_sparkle.gravity = Vector2(0, -30)
-	_sparkle.initial_velocity_min = 4.0
-	_sparkle.initial_velocity_max = 14.0
-	_sparkle.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
-	_sparkle.emission_sphere_radius = 9.0
-	_sparkle.color = Color(glow.color.r * 1.9, glow.color.g * 1.8, glow.color.b * 1.5, 0.8)
-	var spark := FxLib.spark()
-	if spark:
-		_sparkle.texture = spark
-		_sparkle.material = FxLib.additive_material()
-		_sparkle.scale_amount_min = 0.5
-		_sparkle.scale_amount_max = 1.1
-	else:
-		_sparkle.scale_amount_min = 1.0
-		_sparkle.scale_amount_max = 2.0
-	add_child(_sparkle)
-
+## The whole idle animation: a 2px bob, on whole pixels. Round 5 also spun the
+## sprite (rotation breaks the pixel grid — LAW 1), pinched its X scale to fake
+## a coin spin (same), breathed its alpha, breathed the light, and ran a
+## five-particle sparkle emitter on every token within 460px. With 25 tokens per
+## region that was 25 emitters and 25 pulsing lights in one room; LAW 4 cuts the
+## map to 6-10 tokens and this file stops paying for the ones that remain.
 func _process(delta: float) -> void:
 	if collected:
 		return
-	_bob_time += delta * 3.0
-	_glow_hue += delta * 0.5
-	position.y = _base_y + sin(_bob_time) * 6.0
-	sprite.rotation = sin(_bob_time * 0.5) * 0.15
-	# Coin-spin illusion: the sprite pinches on X as it "turns" to catch light.
-	sprite.scale.x = 2.5 * (0.7 + 0.3 * absf(cos(_bob_time * 0.8)))
-	sprite.modulate = Color(1, 1, 1, 0.85 + sin(_bob_time * 2.0) * 0.15)
-	glow.energy = 0.5 + sin(_bob_time * 2.0) * 0.2
+	_bob_time += delta * 2.4
+	position.y = _base_y + roundf(sin(_bob_time) * BOB_PX)
 	var player := get_tree().get_first_node_in_group("player")
 	if player:
-		var dist := global_position.distance_to(player.global_position)
-		if _sparkle:
-			var want := dist < 460.0
-			if _sparkle.emitting != want:
-				_sparkle.emitting = want
-		if dist < magnet_radius:
+		if global_position.distance_to(player.global_position) < magnet_radius:
 			global_position = global_position.move_toward(player.global_position, 280 * delta)
 
 func _on_body_entered(body: Node2D) -> void:
@@ -102,20 +83,19 @@ func _on_body_entered(body: Node2D) -> void:
 	_spawn_float_text()
 	AudioManager.play_sfx("token_collect" if token_type == "common" else "pickup_rare")
 	particles.emitting = true
-	if _sparkle:
-		_sparkle.emitting = false
-	# Pickup: scale-pop, ring flash + glow-dot burst, light flare, then a 0.15s
-	# magnet flight into the (moving) player. Same total time as the old fade,
-	# and the token is already counted above — visuals only from here down.
+	# Pickup: scale-pop, one ring flash, light flare, then a 0.15s magnet flight
+	# into the (moving) player. The token is already counted above — visuals
+	# only from here down, and a transient VFX tween is allowed to scale freely
+	# (LAW 1 binds STATIC art to the grid, not a 0.2s pop). The glow-dot burst
+	# is gone: a flash and a flare already say "collected" twice.
 	var host := get_parent()
 	if host:
-		FxLib.flash(host, global_position, glow.color, 0.3, 2.1, 0.22)
-		FxLib.burst(host, global_position, Color(glow.color.r * 2.0, glow.color.g * 1.9, glow.color.b * 1.6), 10, 150.0, FxLib.glow_dot(), Vector2(0, -60))
+		FxLib.flash(host, global_position, glow.color, 0.3, 1.7, 0.20)
 	var flare := create_tween()
-	flare.tween_property(glow, "energy", 1.7, 0.07)
+	flare.tween_property(glow, "energy", 1.1, 0.07)
 	flare.tween_property(glow, "energy", 0.0, 0.2)
 	var tween := create_tween()
-	tween.tween_property(sprite, "scale", Vector2(3.4, 3.4), 0.08).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(sprite, "scale", Vector2(2.6, 2.6), 0.08).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_method(_fly_step.bind(body, global_position), 0.0, 1.0, 0.15)
 	tween.tween_callback(queue_free)
 
@@ -123,14 +103,14 @@ func _on_body_entered(body: Node2D) -> void:
 func _fly_step(t: float, body: Node2D, from: Vector2) -> void:
 	if is_instance_valid(body):
 		global_position = from.lerp(body.global_position, t * t)
-	sprite.scale = Vector2(3.4, 3.4).lerp(Vector2(0.9, 0.9), t)
+	sprite.scale = Vector2(2.6, 2.6).lerp(Vector2(0.9, 0.9), t)
 	sprite.modulate.a = 1.0 - t * 0.7
 
 func _spawn_float_text() -> void:
 	var label := Label.new()
 	label.text = "+%d" % amount
 	label.add_theme_font_size_override("font_size", 18)
-	label.modulate = Color(0.3, 0.95, 0.85)
+	label.modulate = glow.color
 	label.z_index = 100
 	get_tree().current_scene.add_child(label)
 	label.global_position = global_position + Vector2(-10, -20)

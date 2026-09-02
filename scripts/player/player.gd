@@ -160,7 +160,7 @@ func _ready() -> void:
 		global_position = GameManager.player_position
 	_setup_sprite_frames()
 	# Captured AFTER the frame setup, which is what decides the sheet scale
-	# (2.2 for the full sheet, 2.8 for the legacy fallback). The footstep squash
+	# (2.0 either way now — see LAW 1 in _setup_sprite_frames). The footstep squash
 	# multiplies this, so reading it too early would shrink the player.
 	_spr_base_scale = sprite.scale
 	_setup_shadow()
@@ -174,32 +174,34 @@ func _ready() -> void:
 ## The player carries a soft warm light (the world is dark on purpose) and kicks
 ## up dust while moving. Missing art degrades to generated textures, never errors.
 func _setup_fx() -> void:
-	_light = FxLib.point_light(self, Color(1.0, 0.93, 0.82), 0.55, 3.4, Vector2(0, -12))
-	# A desk lamp at 3am is never perfectly steady. Engine-side loop, no cost.
-	var lamp := _light.create_tween().set_loops()
-	lamp.tween_property(_light, "energy", 0.62, 1.7).set_trans(Tween.TRANS_SINE)
-	lamp.tween_property(_light, "energy", 0.50, 2.3).set_trans(Tween.TRANS_SINE)
+	# LAW 4 names the energy: 0.45, and steady. The looping 0.50<->0.62 lamp
+	# tween is gone with the rest of round 5's idle motion — LAW 9 allows a
+	# light 6% of flicker and that was 11%, on the one light that is on screen
+	# in literally every frame of the game.
+	_light = FxLib.point_light(self, Color(1.0, 0.93, 0.82), 0.45, 3.4, Vector2(0, -12))
 	_dust = CPUParticles2D.new()
 	_dust.emitting = false
-	_dust.amount = 12
-	_dust.lifetime = 0.42
+	# Halved, and dimmer: this is a footfall, not a dust storm. It reads at
+	# TEXT_DIM against the floor rather than as its own pale cloud.
+	_dust.amount = 6
+	_dust.lifetime = 0.38
 	_dust.local_coords = false  # puffs stay where the foot fell
 	_dust.spread = 180.0
 	_dust.direction = Vector2.UP
 	_dust.gravity = Vector2(0, -22)
 	_dust.initial_velocity_min = 6.0
-	_dust.initial_velocity_max = 18.0
-	_dust.color = Color(0.62, 0.58, 0.72, 0.4)
+	_dust.initial_velocity_max = 16.0
+	_dust.color = Color(0.49, 0.55, 0.69, 0.26)
 	_dust.position = Vector2(0, 6)
 	_dust.z_index = -1
 	var dot := FxLib.glow_dot()
 	if dot:
 		_dust.texture = dot
-		_dust.scale_amount_min = 0.35
-		_dust.scale_amount_max = 0.7
+		_dust.scale_amount_min = 0.3
+		_dust.scale_amount_max = 0.6
 	else:
-		_dust.scale_amount_min = 1.4
-		_dust.scale_amount_max = 2.6
+		_dust.scale_amount_min = 1.2
+		_dust.scale_amount_max = 2.2
 	add_child(_dust)
 	_fx = AbilityFx.new()
 	_fx.name = "AbilityFx"
@@ -303,7 +305,12 @@ func _setup_sprite_frames() -> void:
 			frames.set_animation_loop(anim_name, true)
 	sprite.sprite_frames = frames
 	sprite.play("idle_down")
-	sprite.scale = Vector2(2.2, 2.2)
+	# VISUAL_BIBLE_V2 LAW 1: one pixel grid. The 64px sheet is drawn at exactly
+	# 2.0, so one art pixel is the same size as one tile pixel (32px art at 2.0)
+	# and the same size as an NPC's and a token's. 2.2 put the player on a grid
+	# 10% off from everything else he was standing on — five pixel sizes in one
+	# frame is the first thing the QA critique names.
+	sprite.scale = Vector2(2.0, 2.0)
 
 func _setup_legacy_frames() -> void:
 	var frame_map := {
@@ -321,7 +328,11 @@ func _setup_legacy_frames() -> void:
 				frames.add_frame(anim, tex)
 	sprite.sprite_frames = frames
 	sprite.play("idle_down")
-	sprite.scale = Vector2(2.8, 2.8)
+	# The legacy fallback art is 32px, so it takes the same 2.0 as every other
+	# 32px sprite in the game. (It was 2.8 to roughly match the 64px sheet's
+	# on-screen size; matching SIZE at the cost of the grid is the trade LAW 1
+	# exists to refuse.)
+	sprite.scale = Vector2(2.0, 2.0)
 
 func _physics_process(delta: float) -> void:
 	z_index = int(global_position.y)
@@ -362,10 +373,13 @@ func _physics_process(delta: float) -> void:
 	if _dash_timer > 0.0:
 		_dash_timer -= delta
 		velocity = _dash_dir * DASH_SPEED
-		# Chromatic afterimages trailing the dash (5-6 over its duration).
+		# LAW 9: two afterimages over the dash, not six. One drops on the frame
+		# the dash starts (_ghost_t is zeroed in _start_dash) and one at the
+		# halfway point — enough to read as a smear, few enough that a dash
+		# through a doorway does not leave a queue of copies of you behind.
 		_ghost_t -= delta
 		if _ghost_t <= 0.0:
-			_ghost_t += DASH_DURATION / 5.0
+			_ghost_t += DASH_DURATION * 0.5
 			_spawn_dash_ghost()
 		_play_facing_anim("dash")
 		_set_dust(true)
@@ -415,13 +429,17 @@ func _physics_process(delta: float) -> void:
 		_sprint = maxf(0.0, _sprint - delta * 3.0)
 		_stride_t = STRIDE_PERIOD * 0.7  # next step lands as movement resumes
 		_step_squash = maxf(0.0, _step_squash - delta * 7.0)
-		_set_dust(_move_vel.length_squared() > 900.0)
+		# No dust at rest, and none through most of the coast-down either:
+		# 60px/s is under a third of walk speed, i.e. the last frames of a stop.
+		_set_dust(_move_vel.length_squared() > 3600.0)
 		if not sprite.animation in ["phone_idle", "laptop_idle", "coffee_idle", "panic_idle"]:
 			if _pose_t <= 0.0:
 				_play_facing_anim("idle")
-			# Subtle breathing so the player doesn't look frozen while idle.
+			# LAW 9: characters breathe ONE pixel. Rounded to 0 or 1, so the
+			# idle player sits on the same grid as the floor he is standing on
+			# instead of hovering a pixel and a half above it.
 			_idle_breath_t += delta
-			sprite.position.y = _spr_base_y + sin(_idle_breath_t * 2.6) * 1.6
+			sprite.position.y = _spr_base_y + roundf(0.5 + 0.5 * sin(_idle_breath_t * 2.0))
 		else:
 			sprite.position.y = _spr_base_y
 		_apply_step_scale()
@@ -480,8 +498,10 @@ func _tick_stride(delta: float) -> void:
 		_sprint_fx_t = 0.36
 		_fx.stride_wake(_move_vel, _sprint)
 
-## Landing squash, applied on top of whatever sheet scale the player ended up
-## with (2.2 normally, 2.8 on the legacy fallback sheet).
+## Landing squash, applied on top of the sheet scale the player ended up with
+## (2.0 either way — LAW 1). Transient, so it is allowed to be fractional; the
+## grid rule binds art at REST, and _apply_step_scale returns to exactly
+## _spr_base_scale the moment the contact is over.
 func _apply_step_scale() -> void:
 	if not is_instance_valid(sprite):
 		return
@@ -871,9 +891,11 @@ func _grant_flow() -> void:
 	if _fx:
 		_fx.perfect_dodge(FLOW_DURATION, FLOW_DAMAGE, refresh)
 
-## A fading snapshot of the current sprite frame, tinted overbright cyan so the
-## dash leaves a neon smear through the dark. The FX rig upgrades this to a pair
-## of chromatically-offset ghosts; the legacy single ghost is the fallback.
+## A fading snapshot of the current sprite frame. The FX rig owns the real
+## version; this is the fallback for a stripped scene. Tinted a plain cool grey
+## rather than round 5's overbright cyan — an afterimage is the shape you stood
+## in a moment ago, and it must not be brighter than the character casting it
+## (LAW 3).
 func _spawn_dash_ghost() -> void:
 	if _fx:
 		_fx.dash_ghost(_dash_dir)
@@ -890,7 +912,7 @@ func _spawn_dash_ghost() -> void:
 	ghost.texture = tex
 	ghost.flip_h = sprite.flip_h
 	ghost.material = FxLib.additive_material()
-	ghost.modulate = Color(0.31, 2.1, 1.9, 0.5)  # overbright CYAN echo
+	ghost.modulate = Color(0.62, 0.72, 0.84, 0.40)
 	ghost.z_index = z_index - 1
 	parent.add_child(ghost)
 	ghost.global_position = sprite.global_position

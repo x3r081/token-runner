@@ -1,18 +1,22 @@
 extends CanvasLayer
-## Boot terminal intro — first 5 minutes hook.
+## Boot terminal intro — the first five seconds, and no more of them than that.
+##
+## Round 6: the code-rain shader behind the boot text and the breathing "press any
+## key" prompt are gone (the display already draws a blinking cursor), the panel
+## is the standard modal box, and three of the nine boot lines went with them.
+## The intro must ALWAYS hand control back — see the hard caps below.
 
 const _GameTheme = preload("res://scripts/ui/game_theme.gd")
+const _Modal = preload("res://scripts/ui/modal_panel.gd")
 
 signal sequence_finished
 
 const LINES := [
-	"> TOKEN RUNNER v0.0.1-alpha-ship-before-reset",
-	"> Initializing vibe-coding environment...",
-	"> WARNING: Token balance critically low",
-	"> WARNING: Dream App completion: 0.003%",
-	"> WARNING: Client email unread (3 days)",
+	"> TOKEN RUNNER v0.0.1-alpha",
+	"> WARNING: token balance critically low",
+	"> WARNING: Dream App completion 0.003%",
 	"> Loading Localhost apartment... OK",
-	"> Claude.exe already running in background",
+	"> Claude.exe already running",
 	">",
 	"> Press any key to pretend you're in control",
 ]
@@ -44,24 +48,16 @@ func _ready() -> void:
 	_char_index = 1
 	label.text = _build_display()
 
-## Terminal noir: styled glass, faint code rain behind the boot text, and a
-## breathing "press any key" prompt. Sets the tone before the first frame of play.
+## One panel, one accent on the title, and the terminal text. Nothing behind it.
 func _dress() -> void:
-	panel.add_theme_stylebox_override("panel", _GameTheme.panel_box(_GameTheme.CYAN, 22.0))
+	panel.add_theme_stylebox_override("panel", _Modal.modal_box(_GameTheme.CYAN, 24.0))
 	var title: Label = $Panel/Margin/VBox/Title
-	_GameTheme.style_heading(title, _GameTheme.CYAN, 22)
-	if ResourceLoader.exists("res://assets/shaders/code_rain.gdshader"):
-		var rain := ColorRect.new()
-		rain.color = Color(0, 0, 0, 0)
-		rain.material = _GameTheme.shader_material("res://assets/shaders/code_rain.gdshader",
-			{"tint": _GameTheme.with_alpha(_GameTheme.CYAN, 1.0), "columns": 56.0, "speed": 0.7, "alpha_max": 0.10})
-		rain.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		rain.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		$Dimmer.add_child(rain)
-	prompt.add_theme_color_override("font_color", _GameTheme.hot_of(_GameTheme.CYAN))
-	var pt := prompt.create_tween().set_loops().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	pt.tween_property(prompt, "modulate:a", 0.45, 0.8)
-	pt.tween_property(prompt, "modulate:a", 1.0, 0.8)
+	title.add_theme_color_override("font_color", _GameTheme.CYAN)
+	# The boot text used to carry its own two colours as inline bbcode; it is one
+	# terminal, so it is one colour, set once here.
+	label.add_theme_color_override("default_color", _GameTheme.TEXT)
+	label.add_theme_font_size_override("normal_font_size", _Modal.BODY)
+	prompt.add_theme_color_override("font_color", _GameTheme.TEXT_DIM)
 	_GameTheme.open_panel(panel)
 
 func _process(delta: float) -> void:
@@ -102,8 +98,8 @@ func _build_display() -> String:
 	var line: String = LINES[_line_index]
 	shown += line.substr(0, mini(_char_index, line.length()))
 	if _typing and int(Time.get_ticks_msec() / 400) % 2 == 0:
-		shown += "[color=#4de8c8]_"
-	return "[color=#c8f0e8]" + shown + "[/color]"
+		shown += "_"
+	return shown
 
 func _next_line() -> void:
 	_line_index += 1

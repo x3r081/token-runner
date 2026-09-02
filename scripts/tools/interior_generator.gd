@@ -1,29 +1,30 @@
 extends RefCounted
 class_name InteriorGenerator
 ## Procedurally generates purpose-built interior art for the Localhost apartment
-## plus the shared structure props that dress every region. Everything follows
-## the Visual Bible: 4-tone shading lit from the top-left, 1px outlines, rim
-## light on silhouettes, dithered gradients instead of flat fills, and
-## WHITE_HOT cores inside anything emissive so the HDR bloom picks it up.
+## plus the shared structure props that dress every region.
+##
+## VISUAL_BIBLE_V2. Three tones per material lit from the top-left, a 1px
+## outline, and ONE white-hot core pixel per genuine light source. No rim light
+## (that is the player's alone), no baked glow halos, no dithering below 24px,
+## and no per-pixel noise on anything the floor stamps three hundred times.
 ## Also emits the shared fx/decal manifest (light cookie, grime, wall-base AO).
 
 const OUT_DIR := "res://assets/textures/generated/"
 
-# Bible palette (see docs/VISUAL_BIBLE.md). Outline is #0A0C16 at 85%.
-const OUTLINE := Color(0.039, 0.047, 0.086, 0.85)
+# Bible palette (see docs/VISUAL_BIBLE_V2.md). Outline is #0A0C16 at 90%.
+const OUTLINE := Color(0.039, 0.047, 0.086, 0.90)
 const WHITE_HOT := Color(0.957, 0.976, 1.0)
 const CYAN := Color(0.141, 0.941, 0.863)
 const CYAN_HOT := Color(0.49, 1.0, 0.941)
 const AMBER := Color(1.0, 0.69, 0.125)
-const ACID := Color(0.659, 1.0, 0.243)
-const MAGENTA := Color(1.0, 0.176, 0.584)
-const GOLD := Color(1.0, 0.827, 0.302)
 const RED := Color(1.0, 0.278, 0.341)
-const RIM_WARM := Color(1.0, 0.85, 0.62)     # localhost furniture rim (amber-ish)
-const RIM_COOL := Color(0.94, 0.95, 1.0)     # near-white rim for tintable structs
-## 4x4 ordered-dither thresholds. Bible rule is "selective dithering on large
-## gradients"; a Bayer matrix does that at twice the spatial frequency of a 2x2
-## checker, so curved surfaces stop reading as chessboards.
+## Kept only so every _finish() call site still reads. _finish ignores them now:
+## LAW 7 gives the fourth "rim" tone to the player and to nobody else.
+const RIM_WARM := Color(1.0, 0.85, 0.62)
+const RIM_COOL := Color(0.94, 0.95, 1.0)
+## 4x4 ordered-dither thresholds. Used on exactly one surface: the 76px
+## containment sphere, which is well above LAW 7's 24px dither floor and would
+## band visibly in four flat tones.
 const BAYER4 := [0.0, 0.5, 0.125, 0.625,
 	0.75, 0.25, 0.875, 0.375,
 	0.1875, 0.6875, 0.0625, 0.5625,
@@ -86,75 +87,29 @@ func generate() -> void:
 # Emissive details keep their own hue (or sit near-white so the tint owns them).
 
 func _tech_floor() -> void:
-	# The neutral deck under every region. It fills roughly four cells in ten of
-	# every floor, which makes it the single texture that decides whether the
-	# world reads as GROUND or as a spreadsheet. The previous version baked a
-	# bright bevel cross every 32px; stamped three hundred times per region those
-	# lips locked into a perfect lattice and became the most visible graphical
-	# defect in the build (see docs/screenshots/qa/region_cloud_district.png).
+	# The neutral deck under every region, and the single texture that decides
+	# whether the world reads as GROUND or as a spreadsheet. It fills roughly
+	# four cells in ten of every floor.
 	#
-	# So: this texture now contains NO axis-aligned feature whatsoever. What
-	# survives the region tint is a cast composite body with wrapping mottle, a
-	# 16px DIAGONAL tread lattice (neither family is parallel to a tile edge, and
-	# both wrap cleanly at 64), and traffic polish that eats the tread away in
-	# broad organic patches. Mean value stays at the 0.50 the region floor tints
-	# were calibrated against, so nothing downstream re-lights.
+	# LAW 6: a floor tile is a clean 32px material with three tones — base, seam,
+	# lit lip — and nothing else. Deleted here: two octaves of wrapped value
+	# noise, per-pixel grit, a two-octave "wear field", a 16px diagonal tread
+	# lattice, quartz flecks, dark pits, eleven hairline scratches at assorted
+	# angles and two coolant weep stains. Every one of those is a feature at a
+	# FIXED offset in a texture that is stamped three hundred times per region,
+	# so all of them became lattice contrast — which is the definition of a noise
+	# floor. The mean value is unchanged at ~0.50, so no region re-lights.
 	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
-	var s := 9137
 	for y in 64:
 		for x in 64:
-			# Cast body: two octaves of wrapped value noise + per-pixel grit.
-			# 0.486 rather than 0.500 because losing the old hard seams (which
-			# darkened 2 pixels in every 32) raised the tile's mean by ~4%; the
-			# region floor tints are calibrated against a 0.50 average and this
-			# keeps them honest.
-			var v := 0.486
-			v += (_vnoise(x, y, 32, s) - 0.5) * 0.088
-			v += (_vnoise(x, y, 8, s + 77) - 0.5) * 0.040
-			v += float(_hash(x * 3 + 1, y * 5 + 2) % 9 - 4) / 460.0
-			# Wear field: high where the tread is still proud, low where a decade
-			# of boots polished it flat. Two octaves so the patches have shape.
-			var wear := _vnoise(x, y, 16, s + 311) * 0.62 + _vnoise(x, y, 32, s + 907) * 0.48
-			var tread := clampf((wear - 0.34) * 3.0, 0.0, 1.0)
-			if tread > 0.02:
-				var ra := _tread((x + y) & 15)
-				var rb := _tread((x - y + 64) & 15)
-				v += (ra if absf(ra) > absf(rb) else rb) * tread
-			# aggregate: bright quartz flecks and dark pits, ~3% of pixels
-			var hp := _hash(x * 7 + 5, y * 11 + 3)
-			if hp % 61 == 0:
-				v -= 0.055
-			elif hp % 67 == 3:
-				v += 0.048
+			var mx := x & 31
+			var my := y & 31
+			var v := 0.500
+			if mx == 0 or my == 0:
+				v = 0.412            # the cast seam between panels
+			elif mx == 1 or my == 1:
+				v = 0.548            # near lip, catching the top-left light
 			img.set_pixel(x, y, Color(v, v * 1.015, v * 1.115, 1.0))
-	# Hairline scratches at assorted angles. Short, low contrast, never straight
-	# across the tile — grit at a glance, story at nose distance.
-	for i in 11:
-		var sx := _hash(i, 41) % 64
-		var sy := _hash(i, 43) % 64
-		var ang := TAU * float(_hash(i, 47) % 64) / 64.0
-		var ln := 5 + _hash(i, 53) % 11
-		for j in ln:
-			var px: int = (sx + int(cos(ang) * float(j)) + 64) % 64
-			var py: int = (sy + int(sin(ang) * float(j)) + 64) % 64
-			# kept faint on purpose: a scratch is a feature at a fixed offset in
-			# every tile, so any contrast it has becomes lattice contrast
-			img.set_pixel(px, py, img.get_pixel(px, py).darkened(0.045 + 0.025 * float(j % 3)))
-	# Two coolant weep stains, wrapped, at ~5% — the floor has a slow leak
-	# somewhere and nobody has filed the ticket.
-	for i in 2:
-		var cx := _hash(i, 71) % 64
-		var cy := _hash(i, 73) % 64
-		var rr := 7.0 + float(_hash(i, 79) % 6)
-		for oy in range(-10, 11):
-			for ox in range(-10, 11):
-				var d := Vector2(float(ox), float(oy) * 1.35).length() / rr
-				if d >= 1.0:
-					continue
-				var px: int = (cx + ox + 64) % 64
-				var py: int = (cy + oy + 64) % 64
-				var a := (1.0 - d) * 0.10 * (0.6 + 0.4 * _vnoise(px, py, 8, s + 41))
-				img.set_pixel(px, py, img.get_pixel(px, py).darkened(a))
 	_save(img, "tech_floor.png")
 
 func _struct_slab() -> void:
@@ -217,8 +172,9 @@ func _struct_slab() -> void:
 	_rect(img, 29, 63, 22, 1, g.darkened(0.46))
 	_rect(img, 33, 67, 14, 1, Color(0.82, 0.85, 0.88))
 	_rect(img, 33, 70, 9, 1, Color(0.72, 0.75, 0.79))
-	for gy in range(76, 90, 6):
-		_glow(img, 40, gy, Color(0.90, 0.93, 0.97))
+	_rect(img, 33, 76, 14, 1, Color(0.62, 0.64, 0.68))
+	_rect(img, 33, 82, 9, 1, Color(0.52, 0.54, 0.58))
+	_glow(img, 40, 88, Color(0.90, 0.93, 0.97))   # one lit indicator
 	# stub mast with a bead: 6px of extra height reads as intent from across the
 	# room, which is the whole job of a landmark prop
 	_rect(img, 38, 0, 2, 7, g.darkened(0.18))
@@ -361,8 +317,7 @@ func _struct_console() -> void:
 	# speaker grille + status LEDs on the cabinet cheek
 	for vy in range(58, 66, 2):
 		_rect(img, 70, vy, 8, 1, body.darkened(0.40))
-	_glow(img, 72, 52, Color(0.95, 0.75, 0.30))
-	_glow(img, 78, 52, Color(0.90, 0.93, 0.97))
+	_glow(img, 72, 52, Color(0.90, 0.93, 0.97))
 	_finish(img, RIM_COOL, 0.42)
 	_save(img, "struct_console.png")
 
@@ -417,7 +372,11 @@ func _struct_tower() -> void:
 		_rect(img, 67, ly, 5, 1, cab.darkened(0.16))
 	_rect(img, 63, 62, 3, 26, cab.darkened(0.40))
 	# equipment bays with LEDs that report nothing useful
-	var leds := [Color(0.30, 0.95, 0.40), Color(0.95, 0.75, 0.20), Color(0.95, 0.30, 0.25)]
+	# ONE lit indicator per bay, near-white so the region tint owns its hue.
+	# It used to be three saturated LEDs per bay, randomly on, each with a
+	# nine-pixel halo — on a prop that is dressed into every region in the game.
+	var led_on := Color(0.72, 0.76, 0.80)
+	var led_off := Color(0.13, 0.14, 0.17)
 	for u in range(38, 130, 19):
 		_rect(img, 11, u, 50, 14, Color(0.07, 0.08, 0.10))
 		_rect(img, 11, u, 50, 1, Color(0.03, 0.04, 0.05))
@@ -426,11 +385,7 @@ func _struct_tower() -> void:
 		_rect(img, 13, u + 4, 2, 6, cab.lightened(0.12))
 		_rect(img, 13, u + 4, 2, 1, cab.lightened(0.30))
 		for i in 3:
-			var on: bool = _rng.randf() > 0.45
-			var col: Color = leds[i]
-			_rect(img, 19 + i * 7, u + 5, 3, 3, col.darkened(0.25) if on else col.darkened(0.72))
-			if on:
-				_glow(img, 20 + i * 7, u + 6, col)
+			_rect(img, 19 + i * 7, u + 5, 3, 3, led_on if i == 0 else led_off)
 		for vx in range(42, 58, 4):
 			_rect(img, vx, u + 3, 2, 8, cab.darkened(0.42))
 			_rect(img, vx, u + 3, 1, 8, cab.darkened(0.25))
@@ -598,8 +553,9 @@ func _struct_arch() -> void:
 		_line(img, px0 + 6, 40, px0 + 12, 70, stone.darkened(0.36))
 		_line(img, px0 + 7, 40, px0 + 13, 70, stone.lightened(0.06))
 		_line(img, px0 + 20, 78, px0 + 14, 108, stone.darkened(0.30))
-		for gy in range(30, 46, 7):
-			_glow(img, px0 + 15, gy, Color(0.90, 0.92, 0.88))
+		_rect(img, px0 + 13, 30, 5, 1, Color(0.58, 0.58, 0.55))
+		_rect(img, px0 + 13, 37, 5, 1, Color(0.52, 0.52, 0.50))
+		_glow(img, px0 + 15, 44, Color(0.90, 0.92, 0.88))
 		# damp streaks running down from the lintel joint
 		for st in 4:
 			var stx: int = px0 + 4 + _hash(st + pi * 11, 29) % 22
@@ -658,94 +614,47 @@ func _struct_arch() -> void:
 # ---------------------------------------------------------------- floor -----
 
 func _floor_tiles() -> void:
-	# Warm plank flooring, three tone variants that share one plank phase so
-	# any tile sits next to any other without a visible seam. Grain runs along
-	# the boards; each board gets its own value jitter, lit top edge and AO.
-	# Warmer and a step brighter than they used to be: the wall above is now
-	# cool indigo, so the floor has to own the warm half of the frame or the
-	# two collapse back into one brown mass.
-	# Three variants that are genuinely different runs of board rather than the
-	# same tile at three brightnesses: each gets its own grain phase, its own
-	# butt-joint offset, its own knot position and its own wear story. Anything
-	# that appears in more than one variant appears in a different PLACE, or the
-	# 64px stamp shows up as a dot grid on the apartment floor.
-	var bases := [Color(0.318, 0.234, 0.166), Color(0.286, 0.214, 0.156), Color(0.344, 0.252, 0.174)]
-	var phases := [0.0, 1.9, 3.7]
-	for v in bases.size():
+	# Warm plank flooring: 16px boards, a seam, a lit board edge, one staggered
+	# butt joint per variant. Three variants that differ by 4% of VALUE and by
+	# where their joint falls — nothing else. Per LAW 6 the variants must sit
+	# within 6% of each other, or a mixed floor reads as patchwork.
+	#
+	# Deleted: two grain waves, per-plank value jitter, per-pixel noise, a knot
+	# in two of three variants, a scuffed traffic streak, a sun-bleached patch
+	# and a coaster ring. At a 64px stamp every one of those repeated on a grid.
+	var base := Color(0.318, 0.234, 0.166)
+	var joints: Array[int] = [12, 34, 52]
+	for v in 3:
 		var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
-		var base: Color = bases[v]
-		var phase: float = phases[v]
+		var k: float = 1.0 - 0.04 * float(v)
+		var body := Color(base.r * k, base.g * k, base.b * k, 1.0)
+		var seam := body.darkened(0.34)
+		var lip := body.lightened(0.14)
+		var joint: int = joints[v]
 		for y in 64:
-			var row := y >> 4          # 16px planks, same phase in every variant
 			var ry := y & 15
+			var row := y >> 4
+			var c := body
+			if ry == 0:
+				c = seam
+			elif ry == 1:
+				c = lip
+			elif ry == 15:
+				c = body.darkened(0.14)
 			for x in 64:
-				# per-plank tone jitter (±4%) so boards read as separate cuts
-				var pj := float(_hash(row * 31 + v * 7, 5) % 9 - 4) / 100.0
-				var c := Color(base.r + pj, base.g + pj, base.b + pj * 0.8, 1.0)
-				# Grain that actually runs ALONG the board: streaks parallel to the
-				# plank, waving gently down its length (two full waves per tile, so
-				# it still tiles). The old version varied with x alone, which drew
-				# vertical stripes across horizontal boards and was the real reason
-				# this floor read as brickwork.
-				var g := sin(float(ry) * 1.35 + float(row) * 2.1 + phase + sin(float(x) * 0.19635 + phase) * 1.8)
-				if g > 0.72:
-					c = c.darkened(0.13)
-				elif g < -0.78:
-					c = c.lightened(0.08)
-				# a second, longer grain wave so the boards read as sawn timber
-				# rather than as one repeated stripe pattern
-				var g2 := sin(float(x) * 0.0982 + float(row) * 1.3 + phase * 1.7)
-				if g2 > 0.86:
-					c = c.darkened(0.05)
-				# fine per-pixel noise
-				var n := float(_hash(x * 3 + v * 101, y) % 10) / 300.0
-				c = Color(c.r + n, c.g + n, c.b + n * 0.8, 1.0)
-				# 4-tone plank profile: seam shadow, lit edge, AO before the seam
-				if ry == 0:
-					c = c.darkened(0.46)
-				elif ry == 1:
-					c = c.lightened(0.17)
-				elif ry == 15:
-					c = c.darkened(0.20)
-				# Staggered butt joints, on every other course only: one joint per
-				# board per tile was reading as masonry rather than floorboards.
-				var joint := (x + row * 29 + v * 23) % 64
-				if (row + v) % 2 == 0 and ry > 0:
-					if joint == 0:
-						c = c.darkened(0.32)
-					elif joint == 1:
-						c = c.lightened(0.10)
-				img.set_pixel(x, y, c)
-		# One knot per variant, each in its OWN place and softer than before: at
-		# 64px the old shared position stamped a visible dot lattice across the
-		# whole apartment.
-		if v == 0:
-			_knot(img, 17, 25, base)
-		elif v == 2:
-			_knot(img, 44, 55, base)
-		# Per-variant wear, wrapped so it still tiles: v0 gets a scuffed traffic
-		# streak, v1 a pale sun-bleached patch under where the window falls, v2 a
-		# dark ring left by something that was never a coaster.
-		if v == 0:
-			for sc in 5:
-				var sx := 6 + _hash(sc, 91) % 50
-				var sy := 4 + _hash(sc, 93) % 56
-				for j in 4 + _hash(sc, 97) % 7:
-					var tx: int = (sx + j) % 64
-					var ty: int = (sy + j / 4) % 64
-					img.set_pixel(tx, ty, img.get_pixel(tx, ty).darkened(0.09))
-		elif v == 1:
-			for yy in 64:
-				for xx in 64:
-					var d := Vector2(float(xx - 32) * 1.1, float(yy - 34)).length() / 21.0
-					if d < 1.0:
-						_px(img, xx, yy, Color(0.92, 0.82, 0.62, 0.05 * (1.0 - d)))
-		else:
-			for a in 96:
-				var ang := TAU * float(a) / 96.0
-				var rx: int = 20 + int(cos(ang) * 7.0)
-				var ry2: int = 30 + int(sin(ang) * 7.0)
-				img.set_pixel(rx, ry2, img.get_pixel(rx, ry2).darkened(0.08))
+				var cc := c
+				# one butt joint, on one course only, so the boards have a
+				# direction without the floor turning into masonry
+				if row == 1 and ry > 0:
+					if x == joint:
+						cc = seam
+					elif x == joint + 1:
+						cc = lip
+				img.set_pixel(x, y, cc)
+		# LAW 6's "one subtle inset detail on ~10% of tiles": exactly one knot,
+		# in exactly one of the three variants.
+		if v == 2:
+			_knot(img, 44, 55, body)
 		_save(img, "int_floor_%d.png" % v)
 
 func _knot(img: Image, cx: int, cy: int, c: Color) -> void:
@@ -764,18 +673,20 @@ func _knot(img: Image, cx: int, cy: int, c: Color) -> void:
 	_px(img, cx - 3, cy - 3, c.lightened(0.06))
 
 func _rug() -> void:
-	# A proper woven rug (banded borders + central medallion + end fringe) that
-	# anchors the battlestation zone. Deliberately NOT a checkerboard.
+	# A woven rug that anchors the battlestation zone: field, two guard bands,
+	# one accent band, a simple medallion and an end fringe.
+	#
+	# LAW 2: it used to carry indigo, teal, rust, gold thread AND a fringe
+	# colour — five hues in one prop, in a region that is allowed three. It is
+	# now the region's cool BASE plus ONE accent band, in three values.
 	var w := 320
 	var h := 224
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var field := Color(0.15, 0.18, 0.25)        # deep indigo weave
-	var field2 := Color(0.17, 0.21, 0.29)
-	var band_dark := Color(0.11, 0.13, 0.19)
-	var band_teal := Color(0.28, 0.52, 0.58)
-	var band_rust := Color(0.64, 0.40, 0.22)    # warm amber-rust accent thread
-	var fringe_col := Color(0.72, 0.68, 0.58)
+	var field := Color(0.150, 0.180, 0.250)
+	var guard := Color(0.105, 0.125, 0.180)
+	var band := Color(0.220, 0.400, 0.440)      # the one accent, already muted
+	var fringe_col := Color(0.400, 0.380, 0.340)
 	var cx := w / 2
 	var cy := h / 2
 	# baked drop shadow so the rug sits ON the floor instead of hovering
@@ -783,51 +694,30 @@ func _rug() -> void:
 	for y in h:
 		for x in w:
 			var edge: int = min(min(x, w - 1 - x), min(y, h - 1 - y))
-			# End fringe: short vertical tassels beyond the woven body (top/bottom).
+			# End fringe: short tassels beyond the woven body (top/bottom).
 			if y < 6 or y >= h - 6:
 				if (x % 6) < 3 and x > 10 and x < w - 10:
-					img.set_pixel(x, y, fringe_col.darkened(0.1 + 0.2 * ((x / 6) % 2)))
+					img.set_pixel(x, y, fringe_col)
 				continue
 			if edge < 4:
 				continue
-			var c: Color
+			var c := field
 			if edge < 9:
-				c = band_dark                       # outer guard band
+				c = guard                        # outer guard band
 			elif edge < 13:
-				c = band_teal                       # bright teal frame
+				c = band                         # the accent frame
 			elif edge < 17:
-				c = band_dark
-			elif edge < 22:
-				# repeating rust "hook" motif in the inner border
-				c = band_rust if ((x + y) / 6) % 2 == 0 else band_rust.darkened(0.25)
+				c = guard
 			else:
-				# Field: soft diagonal weave (very low contrast) + subtle grain.
-				var weave: float = 0.03 * sin((x + y) * 0.20)
-				c = field2 if ((x - y) & 12) == 0 else field
-				var n := (_hash(x, y) % 6) / 340.0
-				c = Color(c.r + n + weave, c.g + n + weave, c.b + n + weave, 1.0)
-				# Central diamond medallion (concentric rings + gold thread).
+				# Field with a single concentric medallion in two values.
 				var dman: int = int(absf(x - cx) * 0.7) + int(absf(y - cy))
-				if dman < 66 and dman >= 60:
-					c = band_teal.darkened(0.1)
-				elif dman < 60 and dman >= 54:
-					c = band_rust.darkened(0.15)
-				elif dman == 53 and (x + y) % 3 == 0:
-					c = Color(0.78, 0.64, 0.32)     # glinting gold thread
-				elif dman < 20 and dman >= 14:
-					c = band_teal.darkened(0.2)
-				elif dman < 8:
-					c = band_rust.darkened(0.1)
-					if dman < 2 and (x + y) % 2 == 0:
-						c = Color(0.80, 0.66, 0.34)
+				if dman < 62 and dman >= 56:
+					c = band.darkened(0.20)
+				elif dman < 18 and dman >= 12:
+					c = band.darkened(0.20)
+				elif dman < 6:
+					c = guard
 			img.set_pixel(x, y, c)
-	# threadbare patches where the chair rolls: the rug is also crunching
-	for p in [Vector3i(150, 122, 26), Vector3i(214, 96, 17)]:
-		for y in range(p.y - p.z, p.y + p.z + 1):
-			for x in range(p.x - p.z * 2, p.x + p.z * 2 + 1):
-				var d := Vector2(float(x - p.x) * 0.5, float(y - p.y)).length() / float(p.z)
-				if d < 1.0 and _hash(x, y) % 3 != 0:
-					_px(img, x, y, Color(0.55, 0.55, 0.60, 0.07 * (1.0 - d)))
 	_save(img, "int_rug.png")
 
 # ---------------------------------------------------------------- walls -----
@@ -853,11 +743,11 @@ func _wall_tiles() -> void:
 			elif y == 8:
 				c = wall.darkened(0.40)                  # trim shadow
 			elif y < 75:
-				# field: gentle top-to-bottom falloff, dithered, plus seams
+				# field: gentle top-to-bottom falloff plus panel seams. The
+				# dither speckle, the per-pixel noise and the random scuffs are
+				# gone — a wall is a large flat surface and it should read as one.
 				var t := float(y - 9) / 66.0
 				c = wall.lightened(0.07 * (1.0 - t)).darkened(0.12 * t)
-				if (((x >> 1) + (y >> 1)) & 7) == 0:
-					c = c.lightened(0.025)
 				if x % 32 == 0:
 					c = c.darkened(0.26)                 # panel seam
 				elif x % 32 == 1:
@@ -866,11 +756,6 @@ func _wall_tiles() -> void:
 					c = trim.lightened(0.20)             # wainscot rail
 				elif y == 53:
 					c = c.darkened(0.30)
-				var n := float(_hash(x, y * 2) % 6) / 340.0
-				c = Color(c.r + n, c.g + n, c.b + n, 1.0)
-				# the occasional scuff down low; furniture happened here
-				if y > 62 and _hash(x >> 2, y >> 1) % 37 == 0:
-					c = c.darkened(0.14)
 			elif y == 75:
 				c = Color(0.24, 0.17, 0.10)              # skirting channel
 			elif y == 76:
@@ -887,13 +772,12 @@ func _wall_tiles() -> void:
 				var fa: float = clampf((1.0 - float(y - 89) / 7.0) * 0.82, 0.0, 1.0)
 				c = Color(0.012, 0.014, 0.035, fa)
 			img.set_pixel(x, y, c)
-	# Skirting light: a dim amber strip in the channel above the baseboard with
-	# one hot LED per tile. Cheap trick, enormous wall/floor separation, and
-	# entirely in character for someone who lit their flat from Amazon.
+	# Skirting light: ONE dim, even warm strip in the channel above the
+	# baseboard. It is the localhost WARM, and it is here because it separates
+	# wall from floor in a single value step. The sine-modulated brightness ramp
+	# and the hot LED are gone: a strip light is a strip, not a chase sequence.
 	for lx in 64:
-		var a := 0.5 + 0.5 * sin(float(lx) * 0.098)
-		img.set_pixel(lx, 75, Color(0.26, 0.17, 0.09).lerp(AMBER.darkened(0.30), a * 0.65))
-	_glow(img, 32, 75, AMBER)
+		img.set_pixel(lx, 75, Color(0.26, 0.17, 0.09).lerp(AMBER.darkened(0.42), 0.55))
 	_save(img, "int_wall.png")
 
 	# Side wall column (for left/right room edges): lit inner face, dark outer.
@@ -913,12 +797,7 @@ func _wall_tiles() -> void:
 				c = c.darkened(0.20)                     # panel joint
 			elif y % 32 == 1:
 				c = c.lightened(0.07)
-			var n := float(_hash(x * 5, y) % 6) / 340.0
-			c = Color(c.r + n, c.g + n, c.b + n, 1.0)
 			side.set_pixel(x, y, c)
-	# a bolt head per panel
-	_px(side, 20, 12, wall.lightened(0.25))
-	_px(side, 20, 44, wall.lightened(0.25))
 	_save(side, "int_wall_side.png")
 
 func _window() -> void:
@@ -955,9 +834,9 @@ func _window() -> void:
 				c = sky_top.lerp(sky_low, clampf(tt, 0.0, 1.0))
 				# city glow haze near the horizon
 				c = c.lerp(Color(0.19, 0.10, 0.22), clampf((t - 0.55) * 0.9, 0.0, 0.35))
-				# stars, a few of them hot enough to bloom
-				if t < 0.55 and _hash(x * 7, y * 13) % 331 == 0:
-					c = WHITE_HOT if _hash(x, y) % 5 == 0 else Color(0.62, 0.66, 0.80)
+				# stars, none of them overbright
+				if t < 0.55 and _hash(x * 7, y * 13) % 601 == 0:
+					c = Color(0.62, 0.66, 0.80)
 				# far skyline (hazy blue towers)
 				var fh: int = 20 + _hash(x >> 4, 3) % 22
 				if y > h - 12 - fh:
@@ -966,39 +845,32 @@ func _window() -> void:
 				var nh: int = 12 + _hash((x * 7) >> 6, 7) % 36
 				if y > h - 10 - nh:
 					c = Color(0.028, 0.032, 0.058)
-					if (x % 4) != 0 and (y % 5) < 2 and _hash(x >> 2, (y * 13) >> 6) % 7 == 0:
-						c = Color(0.95, 0.72, 0.34) if _hash(x, y) % 3 != 0 else Color(0.38, 0.85, 0.90)
-						if _hash(x * 5, y * 3) % 41 == 0:
-							c = WHITE_HOT
+					# LAW 8's skyline rule, applied to the view as well as the
+					# menu: a few lit windows in WARM and ACCENT, not confetti.
+					# The density was 1-in-7 with white-hot outliers; it is now
+					# 1-in-23 with no overbright pixels at all.
+					if (x % 4) != 0 and (y % 5) < 2 and _hash(x >> 2, (y * 13) >> 6) % 23 == 0:
+						c = Color(0.72, 0.54, 0.26) if _hash(x, y) % 3 != 0 else Color(0.26, 0.58, 0.62)
 			img.set_pixel(x, y, c)
-	# moon with soft halo and a hot crescent core
-	for yy in range(20, 46):
-		for xx in range(106, 132):
+	# The moon: a crisp disc in two tones with one crater tone (LAW 8). The soft
+	# halo ring and the white-hot crescent are gone — a moon is a shape, and a
+	# blurred bright ring around it is the exact "everything blooms" tell.
+	for yy in range(24, 42):
+		for xx in range(110, 128):
 			var d := Vector2(xx - 118, yy - 32).length()
 			if d < 7.0:
-				var b := clampf(0.80 - float(xx - 118 + yy - 32) * 0.012, 0.62, 0.94)
-				img.set_pixel(xx, yy, Color(b, b + 0.02, b + 0.06))
-			elif d < 11.0:
-				_px(img, xx, yy, Color(0.85, 0.88, 1.0, (11.0 - d) * 0.016))
-	_px(img, 116, 30, WHITE_HOT)
-	_px(img, 117, 30, WHITE_HOT)
-	_px(img, 116, 31, WHITE_HOT)
-	_px(img, 120, 34, Color(0.60, 0.62, 0.72))   # crater
-	_px(img, 118, 36, Color(0.64, 0.66, 0.76))
+				img.set_pixel(xx, yy, Color(0.82, 0.84, 0.90) if (xx - 118) + (yy - 32) < 0 else Color(0.70, 0.72, 0.80))
+	_px(img, 120, 34, Color(0.58, 0.60, 0.68))   # one crater tone
+	_px(img, 121, 35, Color(0.58, 0.60, 0.68))
+	_px(img, 118, 36, Color(0.58, 0.60, 0.68))
 	# neon sign on one near tower (magenta, hot cores every few px). The key
 	# for the tower-height hash matches the columns the sign sits on.
+	# ONE neon sign, one pixel wide, in the region WARM. The magenta core with
+	# two white-hot pips was a third hue and two bloom sources in a background.
 	var sign_top: int = h - 10 - (12 + _hash((39 * 7) >> 6, 7) % 36) + 4
 	var sign_bot: int = mini(sign_top + 16, h - 10)
 	for sy in range(sign_top, sign_bot):
-		_px(img, 38, sy, Color(0.62, 0.10, 0.38))
-		_px(img, 39, sy, MAGENTA)
-		_px(img, 40, sy, Color(0.62, 0.10, 0.38))
-	if sign_top + 11 < sign_bot:
-		_px(img, 39, sign_top + 5, WHITE_HOT)
-		_px(img, 39, sign_top + 11, WHITE_HOT)
-	# aviation beacon on the tallest-looking tower
-	var b_top: int = h - 10 - (12 + _hash((76 * 7) >> 6, 7) % 36)
-	_glow(img, 76, maxi(b_top - 1, 12), RED)
+		_px(img, 39, sy, Color(0.72, 0.46, 0.22))
 	# glass: two faint diagonal reflections + warm interior spill low down
 	for y in range(8, h - 8):
 		for x in range(8, w - 8):
@@ -1008,33 +880,15 @@ func _window() -> void:
 			if y > h - 30:
 				var a := float(y - (h - 30)) / 22.0 * 0.08
 				_px(img, x, y, Color(1.0, 0.80, 0.50, a))
-	# Condensation on the inside of the glass, low down where the warm room meets
-	# the cold pane. Deliberately faint: bright runnels across the sky read as
-	# scratches on the render, not as weather.
-	for r in 9:
-		var rx := 14 + _hash(r, 131) % (w - 30)
-		var ry := h - 44 + _hash(r, 137) % 18
-		var rl := 5 + _hash(r, 139) % 13
-		for j in rl:
-			var yy := ry + j
-			if yy >= h - 10:
-				break
-			var xx := rx + int(sin(float(j) * 0.22 + float(r)) * 1.2)
-			_px(img, xx, yy, Color(0.70, 0.78, 0.92, 0.055))
-		var by: int = mini(ry + rl, h - 11)
-		_px(img, rx, by, Color(0.84, 0.90, 1.0, 0.17))
-	for fg in 34:
-		var gx2 := 10 + _hash(fg, 149) % (w - 20)
-		var gy2 := h - 34 + _hash(fg, 151) % 24
-		_px(img, gx2, gy2, Color(0.72, 0.80, 0.92, 0.05))
+	# The condensation runnels and the 34 fog speckles are gone. They were
+	# scattered marks at fixed offsets over a background nobody looks at, and
+	# LAW 4 is blunt about scatter: the answer is zero.
 	# fairy lights taped along the inside of the top rail. They were for the
-	# holidays. It is not the holidays.
+	# holidays. It is not the holidays. One warm pixel each, no hot cores: at
+	# twelve bulbs a string, white-hot was twelve bloom sources on one prop.
 	for lx in range(14, w - 14, 12):
 		var ly: int = 11 + (1 if (lx / 12) % 2 == 0 else 0)
-		_px(img, lx, ly, Color(1.0, 0.78, 0.42))
-		_px(img, lx, ly - 1, WHITE_HOT)
-		_px(img, lx - 1, ly, Color(0.95, 0.70, 0.36, 0.55))
-		_px(img, lx + 1, ly, Color(0.95, 0.70, 0.36, 0.55))
+		_px(img, lx, ly, Color(0.86, 0.64, 0.34))
 	for cx2 in range(9, w - 9):
 		_px(img, cx2, 10 + int(sin(float(cx2) * 0.26) * 1.0), Color(0.20, 0.20, 0.24, 0.55))
 	# mullions with lit left/top edge
@@ -1061,8 +915,10 @@ func _desk() -> void:
 	# floor's in-game value, so the whole battlestation read as a black cutout.
 	# The slab now sits a step above the boards, and the legs a step below it —
 	# three honest values before the rim light even lands.
-	var top := Color(0.300, 0.262, 0.325)
-	var legc := Color(0.130, 0.120, 0.165)
+	# LAW 7: desaturated toward the region BASE. The old slab was violet-brown,
+	# which put a fourth hue under the whole battlestation.
+	var top := Color(0.285, 0.258, 0.250)
+	var legc := Color(0.125, 0.122, 0.140)
 	_shadow(img, 120, 89, 108, 6, 0.32)
 	# legs with feet
 	_bevel(img, 10, 46, 12, 44, legc)
@@ -1071,8 +927,8 @@ func _desk() -> void:
 	_rect(img, 216, 88, 16, 3, legc.darkened(0.30))
 	# under-desk cable tray with cables that were "temporary" two years ago
 	_rect(img, 26, 52, 188, 5, Color(0.07, 0.07, 0.10))
-	_line(img, 30, 54, 120, 56, Color(0.16, 0.30, 0.34))
-	_line(img, 60, 54, 200, 55, Color(0.36, 0.14, 0.24))
+	_line(img, 30, 54, 120, 56, Color(0.17, 0.18, 0.22))
+	_line(img, 60, 54, 200, 55, Color(0.13, 0.14, 0.17))
 	# drawer pedestal: three drawers, one of which does not close any more
 	var ped := Color(0.155, 0.140, 0.185)
 	_bevel(img, 166, 50, 48, 38, ped)
@@ -1099,8 +955,8 @@ func _desk() -> void:
 	_ellipse(img, 100, 28, 7.0, 3.4, top.darkened(0.42))
 	_ellipse(img, 100, 28, 5.6, 2.4, Color(0.045, 0.048, 0.070))
 	_rect(img, 95, 26, 11, 1, top.lightened(0.16))
-	_line(img, 97, 28, 94, 25, Color(0.20, 0.34, 0.38))
-	_line(img, 104, 28, 108, 24, Color(0.34, 0.16, 0.24))
+	_line(img, 97, 28, 94, 25, Color(0.17, 0.18, 0.22))
+	_line(img, 104, 28, 108, 24, Color(0.13, 0.14, 0.17))
 	# monitor riser: a low plinth the screen stands on, plus the books under it
 	_rect(img, 20, 18, 44, 6, top.darkened(0.18))
 	_rect(img, 20, 18, 44, 1, top.lightened(0.22))
@@ -1119,7 +975,6 @@ func _desk() -> void:
 	_rect(img, 31, 11, 5, 8, Color(0.13, 0.14, 0.18))
 	_rect(img, 31, 11, 5, 2, Color(0.22, 0.24, 0.30))
 	_rect(img, 48, 11, 5, 8, Color(0.10, 0.11, 0.15))
-	_glow(img, 33, 17, CYAN)
 	# keyboard, backlit because obviously, with a wrist rest nobody uses right
 	_rect(img, 56, 44, 78, 2, Color(0.10, 0.10, 0.14))
 	_rect(img, 56, 44, 78, 1, Color(0.21, 0.22, 0.27))
@@ -1132,29 +987,25 @@ func _desk() -> void:
 		_rect(img, kx, 38, 4, 3, Color(0.22, 0.24, 0.30))
 		_rect(img, kx, 38, 4, 1, Color(0.30, 0.32, 0.38))
 		_px(img, kx + 1, 39, Color(0.40, 0.42, 0.50))
-	_rect(img, 61, 37, 68, 1, Color(CYAN.r, CYAN.g, CYAN.b, 0.30))  # key glow leak
-	_rect(img, 61, 44, 68, 1, Color(CYAN.r, CYAN.g, CYAN.b, 0.16))  # underglow spill
-	_glow(img, 129, 32, CYAN)                                        # caps lock, on, always
-	# mouse with an RGB scroll wheel
+	# THE ONE lit surface on this prop: the keyboard underglow, in the region
+	# ACCENT, on the surface it actually falls on. Removed: the caps-lock glow,
+	# the magenta mouse LED and the cyan headphone-stand LED — three separate
+	# emissive points on one desk, in three different hues.
+	_rect(img, 61, 37, 68, 1, Color(CYAN.r, CYAN.g, CYAN.b, 0.26))  # key glow leak
+	_rect(img, 61, 44, 68, 1, Color(CYAN.r, CYAN.g, CYAN.b, 0.14))  # underglow spill
+	# mouse
 	_rect(img, 146, 34, 11, 8, Color(0.10, 0.11, 0.15))
 	_rect(img, 146, 34, 11, 2, Color(0.20, 0.22, 0.28))
-	_glow(img, 151, 35, MAGENTA)
-	# mug of coffee, load-bearing
-	_rect(img, 172, 26, 14, 16, Color(0.62, 0.26, 0.15))
-	_rect(img, 172, 26, 3, 16, Color(0.74, 0.36, 0.20))
-	_rect(img, 186, 30, 3, 8, Color(0.52, 0.22, 0.13))   # handle
-	_rect(img, 173, 27, 12, 2, Color(0.16, 0.10, 0.06))  # coffee surface
-	_px(img, 176, 20, Color(0.75, 0.78, 0.85, 0.22))     # steam
-	_px(img, 178, 16, Color(0.75, 0.78, 0.85, 0.16))
-	_px(img, 175, 12, Color(0.75, 0.78, 0.85, 0.10))
-	# sticky notes: TODO (amber) and TODO (acid). Both say TODO.
-	_rect(img, 200, 27, 9, 9, Color(0.92, 0.78, 0.36))
-	_px(img, 208, 35, Color(0.70, 0.56, 0.22))
-	_line(img, 202, 30, 206, 30, Color(0.35, 0.28, 0.12))
-	_line(img, 202, 33, 205, 33, Color(0.35, 0.28, 0.12))
-	_rect(img, 213, 31, 8, 8, Color(0.72, 0.86, 0.40))
-	_px(img, 220, 38, Color(0.52, 0.64, 0.26))
-	_line(img, 215, 34, 218, 34, Color(0.30, 0.38, 0.14))
+	# mug of coffee, load-bearing, desaturated to the room
+	_rect(img, 172, 26, 14, 16, Color(0.42, 0.28, 0.22))
+	_rect(img, 172, 26, 3, 16, Color(0.52, 0.36, 0.28))
+	_rect(img, 186, 30, 3, 8, Color(0.35, 0.23, 0.18))   # handle
+	_rect(img, 173, 27, 12, 2, Color(0.14, 0.10, 0.08))  # coffee surface
+	# ONE sticky note. There were two, in two different hues, saying the same word.
+	_rect(img, 200, 27, 9, 9, Color(0.72, 0.62, 0.34))
+	_px(img, 208, 35, Color(0.52, 0.44, 0.22))
+	_line(img, 202, 30, 206, 30, Color(0.32, 0.26, 0.13))
+	_line(img, 202, 33, 205, 33, Color(0.32, 0.26, 0.13))
 	# a cable escaping off the right end of the desk
 	_line(img, 132, 44, 226, 48, Color(0.10, 0.10, 0.14))
 	_finish(img, RIM_WARM, 0.55)
@@ -1196,7 +1047,7 @@ func _monitor() -> void:
 	_rect(img, 42, 0, 12, 1, bez.lightened(0.26))
 	_disc(img, 48, 1, 1.6, Color(0.03, 0.04, 0.06))
 	_px(img, 47, 1, Color(0.30, 0.40, 0.52))
-	_px(img, 53, 1, Color(0.55, 0.12, 0.14))
+	_px(img, 53, 1, Color(0.34, 0.20, 0.21))
 	# chin vents + brand notch
 	for vx in range(30, 66, 3):
 		_rect(img, vx, 58, 2, 2, bez.darkened(0.34))
@@ -1233,7 +1084,12 @@ func _server_rack() -> void:
 	_rect(img, 8, 160, 10, 4, cab.darkened(0.35))
 	_rect(img, 78, 160, 10, 4, cab.darkened(0.35))
 	# rack units
-	var col := [Color(0.30, 0.90, 0.40), Color(0.90, 0.70, 0.20), Color(0.30, 0.90, 0.40), Color(0.90, 0.25, 0.20)]
+	# LAW 2/LAW 3: the rack used to run four saturated LED hues across seven
+	# bays — up to twenty-eight lights, each with a nine-pixel halo, on one
+	# prop. It is now ONE lit indicator per bay in the region ACCENT, and the
+	# rest of the bay reads as dark hardware.
+	var led_on := CYAN.darkened(0.30)
+	var led_off := Color(0.10, 0.13, 0.15)
 	for u in range(10, 150, 20):
 		_rect(img, 10, u, w - 20, 15, Color(0.055, 0.065, 0.085))
 		_rect(img, 10, u, w - 20, 1, Color(0.02, 0.025, 0.035))     # recess AO
@@ -1246,11 +1102,10 @@ func _server_rack() -> void:
 			_glow(img, 38, u + 8, CYAN_HOT)
 		else:
 			for i in 4:
-				var on: bool = _rng.randf() > 0.35
-				var c: Color = col[i]
-				_rect(img, 16 + i * 8, u + 4, 4, 4, c.darkened(0.25) if on else c.darkened(0.72))
+				var on: bool = i == 0
+				_rect(img, 16 + i * 8, u + 4, 4, 4, led_on if on else led_off)
 				if on:
-					_glow(img, 17 + i * 8, u + 5, c)
+					_px(img, 17 + i * 8, u + 5, WHITE_HOT)
 		# vent slits with a lit edge
 		for sx in range(56, w - 12, 4):
 			_rect(img, sx, u + 3, 2, 9, cab.darkened(0.42))
@@ -1265,8 +1120,8 @@ func _server_rack() -> void:
 		var px := 13 + pi * 6
 		_rect(img, px, 153, 4, 4, Color(0.12, 0.13, 0.16))
 		_rect(img, px, 153, 4, 1, Color(0.03, 0.04, 0.05))
-		if pi % 2 == 0:
-			_px(img, px + 1, 155, Color(0.30, 0.85, 0.40))
+		if pi % 4 == 0:
+			_px(img, px + 1, 155, CYAN.darkened(0.45))
 	# a dymo label strip that says something wrong, confidently
 	_rect(img, 14, 6, 34, 4, Color(0.66, 0.66, 0.62))
 	_rect(img, 14, 6, 34, 1, Color(0.80, 0.80, 0.76))
@@ -1278,10 +1133,9 @@ func _server_rack() -> void:
 		_disc(img, cx + 5, 164, 2.0, cab.lightened(0.10))
 		_px(img, cx + 4, 163, cab.lightened(0.32))
 	# cable spaghetti exiting stage left
-	_line(img, 20, 160, 8, 166, Color(0.14, 0.26, 0.30))
-	_line(img, 26, 160, 12, 167, Color(0.34, 0.12, 0.22))
+	_line(img, 20, 160, 8, 166, Color(0.15, 0.16, 0.20))
+	_line(img, 26, 160, 12, 167, Color(0.12, 0.13, 0.16))
 	_line(img, 32, 160, 18, 167, Color(0.16, 0.17, 0.22))
-	_line(img, 21, 160, 9, 166, Color(0.22, 0.38, 0.42))
 	_finish(img, Color(0.70, 0.95, 1.0), 0.50)
 	_save(img, "furn_server.png")
 
@@ -1291,9 +1145,9 @@ func _bed() -> void:
 	var h := 108
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var frame := Color(0.205, 0.163, 0.142)
-	var sheet := Color(0.285, 0.305, 0.410)
-	var blanket := Color(0.225, 0.268, 0.385)
+	var frame := Color(0.200, 0.170, 0.152)
+	var sheet := Color(0.290, 0.300, 0.335)
+	var blanket := Color(0.230, 0.245, 0.290)
 	_shadow(img, w / 2, 102, 78, 5, 0.30)
 	# frame with a lit headboard edge (head of bed is at the top)
 	_bevel(img, 3, 10, 162, 90, frame)
@@ -1320,26 +1174,30 @@ func _bed() -> void:
 	_rect(img, 9, 91, 150, 3, blanket.darkened(0.26))    # drape shadow
 	_rect(img, 3, 94, 162, 1, frame.lightened(0.18))     # footboard lit edge
 	# pillow: 4-tone with a center crease. Untouched. Pristine. Sad.
-	_rect(img, 14, 20, 44, 26, Color(0.80, 0.82, 0.88))
-	_rect(img, 14, 20, 44, 3, Color(0.92, 0.93, 0.97))
-	_rect(img, 14, 20, 3, 26, Color(0.87, 0.88, 0.93))
-	_rect(img, 14, 43, 44, 3, Color(0.62, 0.64, 0.72))
-	_rect(img, 55, 20, 3, 26, Color(0.68, 0.70, 0.78))
-	_line(img, 22, 32, 50, 33, Color(0.66, 0.68, 0.76))
+	# Three tones, and none of them near-white: a pillow that reads brighter than
+	# the player is a pillow the eye goes to first.
+	_rect(img, 14, 20, 44, 26, Color(0.60, 0.62, 0.68))
+	_rect(img, 14, 20, 44, 3, Color(0.70, 0.72, 0.78))
+	_rect(img, 14, 20, 3, 26, Color(0.66, 0.68, 0.74))
+	_rect(img, 14, 43, 44, 3, Color(0.46, 0.48, 0.54))
+	_rect(img, 55, 20, 3, 26, Color(0.50, 0.52, 0.58))
 	# the laptop, open, mid-build, judging you
 	_rect(img, 108, 24, 36, 22, Color(0.085, 0.095, 0.125))
 	_rect(img, 108, 24, 36, 1, Color(0.18, 0.20, 0.25))
-	_rect(img, 111, 26, 30, 15, Color(0.075, 0.28, 0.30))
-	_rect(img, 113, 28, 18, 1, Color(0.35, 0.85, 0.82))
-	_rect(img, 113, 31, 24, 1, Color(0.28, 0.70, 0.68))
-	_rect(img, 113, 34, 12, 1, Color(0.35, 0.85, 0.82))
-	_glow(img, 128, 37, CYAN_HOT)
+	# The laptop screen is the ONE motivated light on this prop (LAW 3), so it
+	# keeps its accent and its single hot pixel; everything else on the bed is
+	# cloth.
+	_rect(img, 111, 26, 30, 15, Color(0.065, 0.22, 0.24))
+	_rect(img, 113, 28, 18, 1, Color(0.30, 0.70, 0.68))
+	_rect(img, 113, 31, 24, 1, Color(0.24, 0.56, 0.55))
+	_rect(img, 113, 34, 12, 1, Color(0.30, 0.70, 0.68))
+	_px(img, 128, 37, WHITE_HOT)
 	# charger brick and the cable that reaches exactly nowhere useful
-	_rect(img, 148, 62, 9, 7, Color(0.86, 0.87, 0.90))
-	_rect(img, 148, 62, 9, 2, Color(0.94, 0.95, 0.98))
-	_rect(img, 148, 68, 9, 1, Color(0.55, 0.56, 0.60))
-	_line(img, 148, 65, 132, 58, Color(0.80, 0.81, 0.84))
-	_line(img, 132, 58, 126, 48, Color(0.80, 0.81, 0.84))
+	_rect(img, 148, 62, 9, 7, Color(0.62, 0.63, 0.66))
+	_rect(img, 148, 62, 9, 2, Color(0.72, 0.73, 0.76))
+	_rect(img, 148, 68, 9, 1, Color(0.42, 0.43, 0.46))
+	_line(img, 148, 65, 132, 58, Color(0.56, 0.57, 0.60))
+	_line(img, 132, 58, 126, 48, Color(0.56, 0.57, 0.60))
 	# phone, face down, because that is how boundaries are set
 	_rect(img, 76, 66, 9, 16, Color(0.09, 0.10, 0.13))
 	_rect(img, 76, 66, 9, 1, Color(0.18, 0.20, 0.25))
@@ -1369,39 +1227,40 @@ func _fridge() -> void:
 	_rect(img, 6, 64, 72, 1, body.lightened(0.12))
 	# handles with a hot glint
 	for hy in [16, 72]:
-		_rect(img, 64, hy, 5, 32, Color(0.72, 0.75, 0.82))
-		_rect(img, 68, hy, 1, 32, Color(0.45, 0.48, 0.55))
-		_rect(img, 64, hy, 5, 2, Color(0.86, 0.88, 0.94))
-		_px(img, 65, hy, WHITE_HOT)
+		_rect(img, 64, hy, 5, 32, Color(0.55, 0.57, 0.62))
+		_rect(img, 68, hy, 1, 32, Color(0.36, 0.38, 0.43))
+		_rect(img, 64, hy, 5, 2, Color(0.66, 0.68, 0.72))
 	# temperature display: it reads an error code, like everything else here
 	_rect(img, 12, 10, 22, 11, Color(0.045, 0.055, 0.075))
 	_rect(img, 12, 10, 22, 1, Color(0.02, 0.025, 0.035))
-	_rect(img, 15, 13, 4, 5, Color(0.25, 0.85, 0.80))
-	_rect(img, 21, 13, 4, 5, Color(0.25, 0.85, 0.80))
-	_px(img, 27, 17, Color(0.25, 0.85, 0.80))
-	_glow(img, 30, 14, CYAN)
-	# energy-drink magnets, each with a shaded lip
+	_rect(img, 15, 13, 4, 5, CYAN.darkened(0.30))
+	_rect(img, 21, 13, 4, 5, CYAN.darkened(0.30))
+	_px(img, 27, 17, CYAN.darkened(0.30))
+	_px(img, 17, 13, WHITE_HOT)
+	# Energy-drink magnets in three VALUES of one muted tone. They used to be
+	# green, red and blue — three saturated hues on a door, in a region allowed
+	# three hues in total.
 	for m in [Vector3i(14, 28, 0), Vector3i(30, 32, 1), Vector3i(46, 30, 2)]:
-		var mc: Color = [Color(0.20, 0.75, 0.32), Color(0.85, 0.28, 0.28), Color(0.28, 0.55, 0.88)][m.z]
+		var mc: Color = [Color(0.36, 0.40, 0.38), Color(0.42, 0.36, 0.35), Color(0.33, 0.36, 0.42)][m.z]
 		_rect(img, m.x, m.y, 10, 16, mc.darkened(0.15))
 		_rect(img, m.x, m.y, 10, 3, mc.lightened(0.20))
 		_rect(img, m.x, m.y + 14, 10, 2, mc.darkened(0.40))
 		_px(img, m.x + 1, m.y + 1, mc.lightened(0.45))
 	# grocery list sticky note: it just says "sleep". aspirational.
-	_rect(img, 40, 78, 13, 11, Color(0.90, 0.85, 0.62))
-	_px(img, 52, 88, Color(0.66, 0.60, 0.40))
+	_rect(img, 40, 78, 13, 11, Color(0.66, 0.62, 0.48))
+	_px(img, 52, 88, Color(0.48, 0.44, 0.32))
 	_line(img, 42, 81, 49, 81, Color(0.35, 0.32, 0.20))
 	_line(img, 42, 84, 46, 84, Color(0.35, 0.32, 0.20))
 	# takeaway menu, held by a magnet, curled at one corner from being consulted
-	_rect(img, 14, 46, 14, 12, Color(0.86, 0.84, 0.78))
-	_rect(img, 14, 46, 14, 1, Color(0.94, 0.92, 0.88))
-	_rect(img, 16, 49, 9, 1, Color(0.62, 0.22, 0.20))
+	_rect(img, 14, 46, 14, 12, Color(0.62, 0.61, 0.57))
+	_rect(img, 14, 46, 14, 1, Color(0.70, 0.69, 0.66))
+	_rect(img, 16, 49, 9, 1, Color(0.42, 0.26, 0.24))
 	_rect(img, 16, 52, 7, 1, Color(0.36, 0.34, 0.32))
 	_rect(img, 16, 54, 8, 1, Color(0.36, 0.34, 0.32))
 	_px(img, 27, 57, Color(0.66, 0.64, 0.58))
 	_px(img, 26, 57, Color(0.74, 0.72, 0.66))
-	_disc(img, 21, 45, 2.0, Color(0.20, 0.55, 0.80))
-	_px(img, 20, 44, Color(0.40, 0.75, 0.95))
+	_disc(img, 21, 45, 2.0, Color(0.26, 0.32, 0.40))
+	_px(img, 20, 44, Color(0.38, 0.44, 0.52))
 	# a dent in the lower door: something was slammed, once, memorably
 	for dy in 7:
 		var dw: int = 7 - absi(dy - 3)
@@ -1432,13 +1291,13 @@ func _coffee() -> void:
 	_rect(img, 10, 2, 48, 1, body.lightened(0.42))
 	# tiny status screen: reads ERR, brews anyway
 	_rect(img, 16, 13, 16, 8, Color(0.045, 0.05, 0.07))
-	_rect(img, 18, 15, 3, 4, Color(0.95, 0.65, 0.25))
-	_rect(img, 23, 15, 3, 4, Color(0.95, 0.65, 0.25))
-	_rect(img, 28, 15, 2, 4, Color(0.95, 0.65, 0.25))
-	# buttons + the sacred green light
+	_rect(img, 18, 15, 3, 4, AMBER.darkened(0.40))
+	_rect(img, 23, 15, 3, 4, AMBER.darkened(0.40))
+	_rect(img, 28, 15, 2, 4, AMBER.darkened(0.40))
+	# buttons. The sacred green light is gone: acid green in the localhost
+	# apartment was a fourth hue spent on a two-pixel indicator.
 	_rect(img, 38, 15, 3, 3, body.lightened(0.25))
 	_rect(img, 43, 15, 3, 3, body.lightened(0.25))
-	_glow(img, 50, 16, ACID)
 	# dispenser cavity with an amber back-glow
 	_rect(img, 16, 30, 36, 26, Color(0.030, 0.035, 0.050))
 	_rect(img, 16, 30, 36, 1, Color(0.012, 0.015, 0.022))
@@ -1447,15 +1306,14 @@ func _coffee() -> void:
 			var d := Vector2(float(xx - 34) * 0.7, float(yy - 44)).length() / 12.0
 			if d < 1.0:
 				_px(img, xx, yy, Color(1.0, 0.62, 0.20, 0.10 * (1.0 - d)))
-	# pour stream: amber with white-hot droplets (it blooms; it has earned it)
-	_rect(img, 33, 31, 2, 12, Color(0.95, 0.62, 0.18))
+	# pour stream: amber, with ONE hot pixel where it catches the cavity light
+	_rect(img, 33, 31, 2, 12, AMBER.darkened(0.14))
 	_px(img, 33, 34, WHITE_HOT)
-	_px(img, 34, 39, WHITE_HOT)
 	# the mug, receiving
-	_rect(img, 26, 42, 16, 13, Color(0.36, 0.23, 0.14))
-	_rect(img, 26, 42, 3, 13, Color(0.46, 0.30, 0.18))
-	_rect(img, 27, 43, 14, 2, Color(0.62, 0.40, 0.16))
-	_rect(img, 42, 45, 3, 7, Color(0.30, 0.19, 0.12))
+	_rect(img, 26, 42, 16, 13, Color(0.32, 0.25, 0.20))
+	_rect(img, 26, 42, 3, 13, Color(0.41, 0.32, 0.26))
+	_rect(img, 27, 43, 14, 2, Color(0.48, 0.36, 0.22))
+	_rect(img, 42, 45, 3, 7, Color(0.26, 0.20, 0.16))
 	# group head + portafilter: the bit that makes it look like a machine and
 	# not a vending cabinet
 	_rect(img, 28, 26, 12, 5, body.lightened(0.14))
@@ -1473,17 +1331,14 @@ func _coffee() -> void:
 	_rect(img, 22, 55, 24, 4, body.lightened(0.10))
 	_rect(img, 22, 55, 24, 1, body.lightened(0.26))
 	_rect(img, 26, 56, 8, 2, Color(0.05, 0.08, 0.10))
-	_px(img, 28, 57, Color(0.30, 0.85, 0.80))
-	_px(img, 31, 57, Color(0.30, 0.85, 0.80))
+	_px(img, 28, 57, CYAN.darkened(0.45))
+	_px(img, 31, 57, CYAN.darkened(0.45))
 	# drip tray with a grate and the ring of every cup before this one
 	_rect(img, 16, 60, 36, 5, body.darkened(0.30))
 	_rect(img, 16, 60, 36, 1, body.lightened(0.15))
 	for gx in range(18, 50, 3):
 		_rect(img, gx, 62, 2, 2, body.darkened(0.48))
 	_ellipse(img, 40, 62, 4.0, 1.4, Color(0.35, 0.20, 0.10, 0.45))
-	# splash stains on the counter side; this machine has never been wiped
-	_px(img, 14, 68, Color(0.28, 0.16, 0.08, 0.5))
-	_px(img, 16, 71, Color(0.28, 0.16, 0.08, 0.35))
 	# steam
 	_px(img, 32, 27, Color(0.80, 0.82, 0.88, 0.20))
 	_px(img, 35, 24, Color(0.80, 0.82, 0.88, 0.14))
@@ -1525,11 +1380,12 @@ func _plant() -> void:
 	_rect(img, 39, 24, 1, 38, Color(0.28, 0.24, 0.14))
 	_rect(img, 36, 40, 5, 1, Color(0.62, 0.58, 0.36))
 	# stems + drooping leaves; two fronds have gone amber (end-of-life notice)
-	var leaf := Color(0.235, 0.335, 0.195)
+	var leaf := Color(0.225, 0.290, 0.200)
 	for i in 6:
 		var bx := 22 + i * 4
 		var dying := i == 1 or i == 4
-		var lc := Color(0.55, 0.47, 0.20) if dying else leaf
+		# the end-of-life fronds read by VALUE, not by a second hue
+		var lc := Color(0.400, 0.360, 0.230) if dying else leaf
 		_line(img, 32, 62, bx, 46, Color(0.16, 0.22, 0.13))
 		_line(img, 33, 62, bx + 1, 46, Color(0.22, 0.29, 0.17))
 		for j in range(0, 32, 4):
@@ -1544,9 +1400,9 @@ func _plant() -> void:
 			_px(img, xx + 2, yy + 1, lc.darkened(0.26))
 			_px(img, xx, yy, lc.darkened(0.14))
 	# one fallen leaf; no one has swept
-	_ellipse(img, 52, 88, 3.0, 1.6, Color(0.50, 0.42, 0.20))
-	_px(img, 51, 87, Color(0.58, 0.50, 0.26))
-	_px(img, 53, 89, Color(0.36, 0.30, 0.14))
+	_ellipse(img, 52, 88, 3.0, 1.6, Color(0.38, 0.34, 0.22))
+	_px(img, 51, 87, Color(0.46, 0.41, 0.28))
+	_px(img, 53, 89, Color(0.28, 0.25, 0.16))
 	_finish(img, Color(0.75, 0.95, 0.65), 0.32)
 	_save(img, "furn_plant.png")
 
@@ -1558,10 +1414,10 @@ func _node_modules() -> void:
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 	_shadow(img, 70, 97, 62, 6, 0.32)
-	var ca := Color(0.52, 0.40, 0.26)
-	var cb := Color(0.58, 0.44, 0.28)
-	var cc := Color(0.60, 0.46, 0.30)
-	var cd := Color(0.47, 0.36, 0.24)
+	var ca := Color(0.40, 0.34, 0.27)
+	var cb := Color(0.45, 0.38, 0.30)
+	var cc := Color(0.47, 0.40, 0.32)
+	var cd := Color(0.36, 0.31, 0.25)
 	# back-left box
 	_bevel(img, 10, 34, 52, 42, ca)
 	_rect(img, 34, 36, 4, 38, ca.darkened(0.20))          # tape
@@ -1574,7 +1430,7 @@ func _node_modules() -> void:
 	_rect(img, 100, 30, 4, 34, cb.darkened(0.20))
 	_line(img, 80, 65, 124, 65, cb.darkened(0.32))
 	# warning label nobody read
-	_rect(img, 110, 38, 8, 8, Color(0.92, 0.72, 0.24))
+	_rect(img, 110, 38, 8, 8, Color(0.62, 0.52, 0.24))
 	_px(img, 113, 40, Color(0.20, 0.15, 0.05))
 	_px(img, 114, 40, Color(0.20, 0.15, 0.05))
 	_px(img, 113, 42, Color(0.20, 0.15, 0.05))
@@ -1594,13 +1450,14 @@ func _node_modules() -> void:
 	_bevel(img, 34, 40, 26, 20, cb.lightened(0.05))
 	_rect(img, 38, 40, 18, 4, Color(0.13, 0.095, 0.07))
 	# spilling packages (each one is a dependency of the one next to it)
-	_package(img, 40, 38, Color(0.62, 0.30, 0.28))
-	_package(img, 50, 42, Color(0.30, 0.44, 0.62))
-	_package(img, 44, 52, Color(0.36, 0.55, 0.34))
-	_package(img, 58, 60, Color(0.62, 0.52, 0.28))
-	_package(img, 14, 88, Color(0.46, 0.36, 0.56))
-	_package(img, 98, 92, Color(0.30, 0.44, 0.62))
-	_package(img, 66, 94, Color(0.62, 0.30, 0.28))
+	# Seven spilling packages in TWO muted tones instead of five saturated ones.
+	_package(img, 40, 38, Color(0.42, 0.34, 0.30))
+	_package(img, 50, 42, Color(0.32, 0.35, 0.42))
+	_package(img, 44, 52, Color(0.42, 0.34, 0.30))
+	_package(img, 58, 60, Color(0.32, 0.35, 0.42))
+	_package(img, 14, 88, Color(0.42, 0.34, 0.30))
+	_package(img, 98, 92, Color(0.32, 0.35, 0.42))
+	_package(img, 66, 94, Color(0.42, 0.34, 0.30))
 	# one loose cable, for flavor
 	_line(img, 72, 74, 88, 84, Color(0.12, 0.12, 0.16))
 	_finish(img, RIM_WARM, 0.35)
@@ -1622,7 +1479,10 @@ func _bookshelf() -> void:
 	img.fill(Color(0, 0, 0, 0))
 	var wood := Color(0.270, 0.212, 0.172)
 	_bevel(img, 2, 2, 136, 116, wood)
-	var shelf_cols := [Color(0.55, 0.28, 0.28), Color(0.28, 0.40, 0.55), Color(0.34, 0.48, 0.34), Color(0.60, 0.52, 0.30), Color(0.42, 0.34, 0.50), Color(0.30, 0.30, 0.36)]
+	# Three muted spine tones, not six saturated ones. A wall of books is a
+	# TEXTURE: it earns its read from the vertical rhythm of the spines, not
+	# from being a colour wheel.
+	var shelf_cols := [Color(0.36, 0.30, 0.28), Color(0.28, 0.31, 0.37), Color(0.33, 0.34, 0.30)]
 	var shelf_i := 0
 	for s: int in [6, 40, 74]:
 		# cavity with AO at the top (the shelf above casts it)
@@ -1644,21 +1504,22 @@ func _bookshelf() -> void:
 			_rect(img, x + 1, by + 4, bw - 2, 2, col.lightened(0.14))  # title band
 			if shelf_i == 0 and x == 10:
 				# the glowing spine: documentation that is actually up to date
-				_rect(img, x, by, bw, bh, Color(0.10, 0.55, 0.50))
-				_rect(img, x + 1, by + 2, bw - 2, 1, CYAN)
-				_glow(img, x + bw / 2, by + 10, CYAN)
+				_rect(img, x, by, bw, bh, Color(0.10, 0.45, 0.42))
+				_rect(img, x + 1, by + 2, bw - 2, 1, CYAN.darkened(0.25))
+				_px(img, x + bw / 2, by + 10, WHITE_HOT)
 			x += bw + 2
 		if shelf_i == 1:
 			# one book gave up and leans against the frame (relatable)
 			for iy in 22:
-				_rect(img, 98 + (iy >> 2), s + 5 + iy, 7, 1, Color(0.55, 0.36, 0.30).darkened(0.012 * float(iy)))
+				_rect(img, 98 + (iy >> 2), s + 5 + iy, 7, 1, Color(0.38, 0.31, 0.28).darkened(0.012 * float(iy)))
 			# rubber duck, senior debugging consultant
-			_rect(img, 116, s + 18, 9, 7, Color(0.95, 0.75, 0.22))
-			_rect(img, 116, s + 18, 9, 2, Color(1.0, 0.85, 0.35))
-			_rect(img, 122, s + 14, 5, 6, Color(0.95, 0.75, 0.22))
-			_rect(img, 126, s + 16, 3, 2, Color(0.90, 0.45, 0.15))  # beak
+			# The duck stays; the duck stops glowing. One warm tone, two values,
+			# and no white-hot glint in a five-pixel eye.
+			_rect(img, 116, s + 18, 9, 7, Color(0.66, 0.55, 0.26))
+			_rect(img, 116, s + 18, 9, 2, Color(0.76, 0.64, 0.32))
+			_rect(img, 122, s + 14, 5, 6, Color(0.66, 0.55, 0.26))
+			_rect(img, 126, s + 16, 3, 2, Color(0.56, 0.34, 0.18))  # beak
 			_px(img, 124, s + 15, Color(0.15, 0.12, 0.08))          # eye
-			_px(img, 123, s + 14, WHITE_HOT)                        # eye glint
 		if shelf_i == 2:
 			# horizontal stack: books demoted to being a monitor stand someday
 			for st in 3:
@@ -1676,10 +1537,9 @@ func _bookshelf() -> void:
 	_rect(img, 88, 12, 20, 20, Color(0.28, 0.23, 0.18))
 	_rect(img, 88, 12, 20, 1, Color(0.40, 0.34, 0.26))
 	_rect(img, 90, 14, 16, 16, Color(0.14, 0.16, 0.22))
-	_rect(img, 92, 22, 12, 6, Color(0.24, 0.30, 0.42))
-	_disc(img, 95, 20, 2.0, Color(0.60, 0.50, 0.42))
-	_disc(img, 101, 20, 2.0, Color(0.56, 0.46, 0.38))
-	_line(img, 90, 14, 96, 20, Color(1, 1, 1, 0.10))
+	_rect(img, 92, 22, 12, 6, Color(0.24, 0.27, 0.34))
+	_disc(img, 95, 20, 2.0, Color(0.48, 0.42, 0.37))
+	_disc(img, 101, 20, 2.0, Color(0.44, 0.38, 0.34))
 	# an unopened box of something bought during a productivity phase
 	_rect(img, 8, 106, 26, 10, Color(0.46, 0.36, 0.24))
 	_rect(img, 8, 106, 26, 2, Color(0.58, 0.46, 0.30))
@@ -1694,7 +1554,7 @@ func _chair() -> void:
 	var h := 88
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var c := Color(0.175, 0.188, 0.252)
+	var c := Color(0.180, 0.185, 0.215)
 	_shadow(img, 32, 84, 22, 3, 0.30)
 	# star base + wheels first (they sit behind everything)
 	for wp in [Vector2i(10, 82), Vector2i(54, 82), Vector2i(20, 85), Vector2i(44, 85), Vector2i(32, 86)]:
@@ -1727,8 +1587,10 @@ func _chair() -> void:
 	for mx in range(19, 45, 2):
 		_rect(img, mx, 17, 1, 25, c.darkened(0.06))
 	_rect(img, 18, 16, 28, 1, c.darkened(0.46))           # AO under the frame lip
-	_rect(img, 20, 14, 2, 31, Color(0.55, 0.14, 0.34))
-	_rect(img, 42, 14, 2, 31, Color(0.55, 0.14, 0.34))
+	# Racing stripes in a muted rust: at full magenta this chair carried a hue
+	# that nothing else in localhost uses, on a prop nobody ever looks at.
+	_rect(img, 20, 14, 2, 31, Color(0.34, 0.22, 0.26))
+	_rect(img, 42, 14, 2, 31, Color(0.34, 0.22, 0.26))
 	_rect(img, 16, 28, 32, 4, c.lightened(0.04))          # lumbar support bar
 	_rect(img, 16, 28, 32, 1, c.lightened(0.20))
 	_rect(img, 16, 31, 32, 1, c.darkened(0.34))
@@ -1737,14 +1599,14 @@ func _chair() -> void:
 	_rect(img, 39, 10, 3, 4, c.darkened(0.30))
 	_bevel(img, 19, 3, 26, 9, c.lightened(0.06))
 	_line(img, 22, 7, 42, 7, c.darkened(0.18))
-	_px(img, 24, 6, Color(0.55, 0.14, 0.34))
-	_px(img, 39, 6, Color(0.55, 0.14, 0.34))
+	_px(img, 24, 6, Color(0.34, 0.22, 0.26))
+	_px(img, 39, 6, Color(0.34, 0.22, 0.26))
 	# a hoodie left over the backrest, because of course it is
-	_rect(img, 44, 18, 9, 20, Color(0.19, 0.26, 0.40))
-	_rect(img, 44, 18, 9, 2, Color(0.27, 0.36, 0.52))
-	_rect(img, 44, 18, 2, 20, Color(0.24, 0.32, 0.47))
-	_rect(img, 45, 36, 7, 2, Color(0.12, 0.17, 0.28))
-	_finish(img, Color(1.0, 0.60, 0.80), 0.42)
+	_rect(img, 44, 18, 9, 20, Color(0.21, 0.24, 0.31))
+	_rect(img, 44, 18, 9, 2, Color(0.29, 0.32, 0.40))
+	_rect(img, 44, 18, 2, 20, Color(0.26, 0.29, 0.36))
+	_rect(img, 45, 36, 7, 2, Color(0.13, 0.15, 0.20))
+	_finish(img, RIM_COOL, 0.0)
 	_save(img, "furn_chair.png")
 
 func _whiteboard() -> void:
@@ -1764,7 +1626,9 @@ func _whiteboard() -> void:
 				if _hash(xx, yy) % 4 != 0:
 					_px(img, xx, yy, Color(0.55, 0.56, 0.58, 0.06))   # eraser smear
 	# diagram: node boxes chained by arrows, drawn with total confidence
-	var cols := [Color(0.17, 0.25, 0.55), Color(0.63, 0.17, 0.17), Color(0.14, 0.14, 0.18)]
+	# Two inks: the dark one and the one thing circled in red. A whiteboard with
+	# three marker hues is three hues spent on a background prop.
+	var cols := [Color(0.20, 0.21, 0.26), Color(0.55, 0.20, 0.20), Color(0.20, 0.21, 0.26)]
 	var nodes := []
 	for i in 7:
 		nodes.append(Vector2i(18 + _rng.randi_range(0, w - 60), 14 + _rng.randi_range(0, h - 52)))
@@ -1792,19 +1656,20 @@ func _whiteboard() -> void:
 	# the red circle of concern
 	for a in 64:
 		var ang := TAU * float(a) / 64.0
-		_px(img, 122 + int(cos(ang) * 24.0), 38 + int(sin(ang) * 14.0), Color(0.75, 0.16, 0.16))
+		_px(img, 122 + int(cos(ang) * 24.0), 38 + int(sin(ang) * 14.0), Color(0.60, 0.22, 0.22))
 	# the crossed-out plan (it was the good one)
-	_line(img, 24, 78, 58, 96, Color(0.75, 0.16, 0.16))
-	_line(img, 58, 78, 24, 96, Color(0.75, 0.16, 0.16))
+	_line(img, 24, 78, 58, 96, Color(0.60, 0.22, 0.22))
+	_line(img, 58, 78, 24, 96, Color(0.60, 0.22, 0.22))
 	# DO NOT ERASE, underlined twice, in the hand of somebody who meant it
 	_rect(img, 108, 12, 44, 3, Color(0.16, 0.16, 0.20))
-	_rect(img, 108, 17, 44, 1, Color(0.75, 0.16, 0.16))
-	_rect(img, 108, 19, 38, 1, Color(0.75, 0.16, 0.16))
+	_rect(img, 108, 17, 44, 1, Color(0.60, 0.22, 0.22))
+	_rect(img, 108, 19, 38, 1, Color(0.60, 0.22, 0.22))
 	# sticky-note cluster: four estimates, none of them survived contact
 	for si in 4:
 		var sx: int = 14 + (si % 2) * 13
 		var sy: int = 14 + (si / 2) * 13
-		var sc: Color = [Color(0.94, 0.82, 0.36), Color(0.74, 0.88, 0.44), Color(0.96, 0.62, 0.62), Color(0.62, 0.80, 0.94)][si]
+		# one paper colour in two values, not four hues
+		var sc: Color = Color(0.74, 0.66, 0.42) if si % 2 == 0 else Color(0.68, 0.60, 0.38)
 		_rect(img, sx, sy, 11, 11, sc)
 		_rect(img, sx, sy, 11, 1, sc.lightened(0.24))
 		_rect(img, sx, sy + 10, 11, 1, sc.darkened(0.26))
@@ -1820,9 +1685,9 @@ func _whiteboard() -> void:
 	# marker tray with the tools of chaos
 	_rect(img, 30, 104, 116, 6, alu.lightened(0.10))
 	_rect(img, 30, 104, 116, 1, alu.lightened(0.30))
-	_rect(img, 40, 105, 12, 3, Color(0.63, 0.17, 0.17))
-	_rect(img, 58, 105, 12, 3, Color(0.17, 0.25, 0.55))
-	_rect(img, 76, 105, 12, 3, Color(0.14, 0.14, 0.18))
+	_rect(img, 40, 105, 12, 3, Color(0.55, 0.20, 0.20))
+	_rect(img, 58, 105, 12, 3, Color(0.20, 0.21, 0.26))
+	_rect(img, 76, 105, 12, 3, Color(0.20, 0.21, 0.26))
 	_rect(img, 100, 104, 16, 4, Color(0.55, 0.56, 0.60))
 	_rect(img, 100, 104, 16, 1, Color(0.70, 0.71, 0.75))
 	_finish(img, Color(0.95, 0.96, 1.0), 0.22)
@@ -1865,7 +1730,7 @@ func _door() -> void:
 	for ky in 3:
 		for kx2 in 2:
 			_rect(img, 63 + kx2 * 5, 50 + ky * 3, 3, 2, Color(0.22, 0.23, 0.28))
-	_glow(img, 66, 46, ACID)
+	_px(img, 66, 46, WHITE_HOT)
 	# peephole: brass ring, dark glass, one caught highlight
 	_disc(img, 48, 12, 3.4, Color(0.34, 0.27, 0.15))
 	_disc(img, 48, 12, 2.2, Color(0.05, 0.05, 0.07))
@@ -1918,24 +1783,19 @@ func _window_hero() -> void:
 			var tt := t + (0.030 if (((x >> 1) + (y >> 1)) & 1) == 0 else 0.0)
 			var c := sky_top.lerp(sky_low, clampf(tt, 0.0, 1.0))
 			c = c.lerp(Color(0.205, 0.105, 0.235), clampf((t - 0.52) * 1.1, 0.0, 0.40))
-			# stars — the menu's starfield, seen from indoors
-			if t < 0.55 and _hash(x * 7, y * 13) % 431 == 0:
-				c = WHITE_HOT if _hash(x, y) % 5 == 0 else Color(0.60, 0.64, 0.80)
+			# stars — the menu's starfield, seen from indoors. None overbright.
+			if t < 0.55 and _hash(x * 7, y * 13) % 701 == 0:
+				c = Color(0.60, 0.64, 0.80)
 			img.set_pixel(x, y, c)
-	# moon, indifferent, with a hot crescent for the bloom pass
-	for yy in range(38, 82):
-		for xx in range(318, 362):
+	# The moon: a crisp disc, two tones, one crater tone (LAW 8). No halo ring,
+	# no white-hot crescent.
+	for yy in range(44, 78):
+		for xx in range(324, 358):
 			var d := Vector2(float(xx - 340), float(yy - 60)).length()
 			if d < 15.0:
-				var b := clampf(0.78 - (float(xx - 340) + float(yy - 60)) * 0.010, 0.58, 0.92)
-				img.set_pixel(xx, yy, Color(b, b + 0.02, b + 0.06))
-			elif d < 21.0:
-				_px(img, xx, yy, Color(0.85, 0.88, 1.0, (21.0 - d) * 0.012))
+				img.set_pixel(xx, yy, Color(0.80, 0.82, 0.88) if (xx - 340) + (yy - 60) < 0 else Color(0.66, 0.68, 0.76))
 	for mc: Vector2i in [Vector2i(344, 62), Vector2i(336, 56), Vector2i(341, 68)]:
-		_px(img, mc.x, mc.y, Color(0.60, 0.62, 0.72))
-	_px(img, 332, 52, WHITE_HOT)
-	_px(img, 333, 52, WHITE_HOT)
-	_px(img, 332, 53, WHITE_HOT)
+		_px(img, mc.x, mc.y, Color(0.56, 0.58, 0.66))
 	# far skyline: hazy indigo towers, one value step above the sky
 	for x in range(glass_l, glass_r):
 		var fh := 46 + _hash((x - glass_l) / 24, 3) % 42
@@ -1955,42 +1815,24 @@ func _window_hero() -> void:
 			if y == top:
 				c = Color(0.052, 0.058, 0.096)
 			elif (x - glass_l) % 5 != 0 and (y - top) % 7 >= 2 and (y - top) % 7 <= 4:
+				# LAW 8's skyline rule: a few lit windows in WARM and ACCENT,
+				# counted rather than sprayed. 1-in-19 instead of 1-in-7, and
+				# nothing overbright.
 				var wx := (x - glass_l) / 5
 				var wy := (y - top) / 7
-				if _hash(wx * 3 + band * 17, wy * 11) % 7 == 0:
-					c = Color(0.95, 0.70, 0.33) if _hash(wx, wy * 5) % 3 != 0 else Color(0.35, 0.85, 0.90)
-					if _hash(wx * 5, wy * 3) % 37 == 0:
-						c = WHITE_HOT
+				if _hash(wx * 3 + band * 17, wy * 11) % 19 == 0:
+					c = Color(0.72, 0.53, 0.25) if _hash(wx, wy * 5) % 3 != 0 else Color(0.24, 0.58, 0.62)
 			img.set_pixel(x, y, c)
-	# aviation beacons on the tallest towers, each on its own mast
-	for b in (glass_r - glass_l) / 34 + 1:
-		var nh2 := 26 + _hash(b * 13, 7) % 92
-		if nh2 < 96:
-			continue
-		var bx := glass_l + b * 34 + 17
-		if bx >= glass_r - 4:
-			continue
-		var top2 := glass_bot - nh2
-		_rect(img, bx, top2 - 6, 1, 6, Color(0.05, 0.055, 0.09))
-		_glow(img, bx, top2 - 7, RED)
-	# neon signage on two near towers — the city the menu promised
-	for si: int in [2, 6]:
-		var nh3 := 26 + _hash(si * 13, 7) % 92
-		var top3 := glass_bot - nh3
-		var sx := glass_l + si * 34 + 6
-		if si == 2:
-			for sy in range(top3 + 8, mini(top3 + 34, glass_bot - 4)):
-				_px(img, sx, sy, Color(0.60, 0.10, 0.36))
-				_px(img, sx + 1, sy, MAGENTA)
-				_px(img, sx + 2, sy, Color(0.60, 0.10, 0.36))
-				if (sy - top3) % 7 == 1:
-					_px(img, sx + 1, sy, WHITE_HOT)
-		else:
-			_rect(img, sx, top3 + 10, 22, 9, Color(0.04, 0.10, 0.12))
-			_rect(img, sx + 2, top3 + 12, 18, 2, CYAN)
-			_rect(img, sx + 2, top3 + 16, 12, 1, Color(0.10, 0.55, 0.52))
-			_px(img, sx + 4, top3 + 12, WHITE_HOT)
-			_px(img, sx + 13, top3 + 13, WHITE_HOT)
+	# ONE piece of signage in the whole view, in the region ACCENT, at a value
+	# that reads as "lit sign a mile away" rather than "light source in the
+	# room". Gone: every aviation beacon (each one a red glow cross), a magenta
+	# neon strip with white-hot pips, and a second cyan sign with two more.
+	var sign_h := 26 + _hash(6 * 13, 7) % 92
+	var sign_top := glass_bot - sign_h
+	var sign_x := glass_l + 6 * 34 + 6
+	_rect(img, sign_x, sign_top + 10, 22, 9, Color(0.04, 0.08, 0.10))
+	_rect(img, sign_x + 2, sign_top + 12, 18, 2, CYAN.darkened(0.42))
+	_rect(img, sign_x + 2, sign_top + 16, 12, 1, Color(0.08, 0.34, 0.32))
 	# glass: two faint diagonal reflections + the room's warm spill low down
 	for y in range(glass_top, glass_bot):
 		for x in range(glass_l, glass_r):
@@ -2001,17 +1843,7 @@ func _window_hero() -> void:
 		var wa := float(y2 - (glass_bot - 34)) / 34.0 * 0.085
 		for x2 in range(glass_l, glass_r):
 			_px(img, x2, y2, Color(1.0, 0.80, 0.52, wa))
-	# condensation runnels where the warm room meets the cold pane
-	for r in 12:
-		var rx := glass_l + 8 + _hash(r, 131) % (w - 36)
-		var ry := glass_bot - 40 + _hash(r, 137) % 20
-		var rl := 6 + _hash(r, 139) % 14
-		for j in rl:
-			var ryy := ry + j
-			if ryy >= glass_bot - 2:
-				break
-			_px(img, rx + int(sin(float(j) * 0.23 + float(r)) * 1.3), ryy, Color(0.70, 0.78, 0.92, 0.05))
-		_px(img, rx, mini(ry + rl, glass_bot - 3), Color(0.84, 0.90, 1.0, 0.15))
+	# (the twelve condensation runnels are gone — scatter, per LAW 4)
 	# mullions: two verticals + a transom, lit on their left/top edges
 	for my in range(glass_top, glass_bot):
 		for mx: int in [glass_l + 146, glass_l + 292]:
@@ -2027,10 +1859,7 @@ func _window_hero() -> void:
 		_px(img, cx, 15 + int(sin(float(cx) * 0.11) * 2.0), Color(0.20, 0.20, 0.24, 0.55))
 	for lx in range(glass_l + 10, glass_r - 10, 26):
 		var ly := 16 + int(sin(float(lx) * 0.11) * 2.0)
-		_px(img, lx, ly, Color(1.0, 0.78, 0.42))
-		_px(img, lx, ly - 1, WHITE_HOT)
-		_px(img, lx - 1, ly, Color(0.95, 0.70, 0.36, 0.55))
-		_px(img, lx + 1, ly, Color(0.95, 0.70, 0.36, 0.55))
+		_px(img, lx, ly, Color(0.86, 0.64, 0.34))
 	# a sticky note stuck to the glass at eye height, overlapping the skyline so
 	# it reads as ON the pane, not in the sky. It says TODO. Same TODO.
 	_rect(img, 262, 210, 12, 12, Color(0.92, 0.78, 0.36))
@@ -2059,13 +1888,14 @@ func _window_hero() -> void:
 	_rect(img, 0, h - 16, w, 6, sill.darkened(0.35))
 	_rect(img, 0, h - 10, w, 2, sill.darkened(0.55))
 	# two dead tins on the sill, keeping watch over the city
+	# Two dead tins on the sill, desaturated to the room and no longer carrying a
+	# white-hot glint each (LAW 7: props are not light sources).
 	for k: int in [0, 1]:
 		var cx2 := 64 + k * 22
-		var tin := Color(0.30, 0.72, 0.38) if k == 0 else Color(0.82, 0.34, 0.30)
+		var tin := Color(0.34, 0.40, 0.36) if k == 0 else Color(0.42, 0.35, 0.33)
 		_rect(img, cx2, h - 36, 8, 12, tin.darkened(0.12))
-		_rect(img, cx2, h - 36, 2, 12, tin.lightened(0.30))
+		_rect(img, cx2, h - 36, 2, 12, tin.lightened(0.24))
 		_ellipse(img, cx2 + 4, h - 36, 4.0, 1.5, tin.darkened(0.45))
-		_px(img, cx2 + 1, h - 35, WHITE_HOT)
 	for y3 in range(h - 8, h):
 		var fa := clampf((1.0 - float(y3 - (h - 8)) / 7.0) * 0.80, 0.0, 1.0)
 		_rect(img, 0, y3, w, 1, Color(0.012, 0.014, 0.035, fa))
@@ -2166,7 +1996,7 @@ func _power_strip() -> void:
 		else:
 			# the one free socket, guarded like a parking spot
 			_px(img, sx + 2, 10, Color(0.06, 0.06, 0.08))
-	_glow(img, 51, 8, RED)
+	_px(img, 51, 8, RED.darkened(0.35))
 	_finish(img, RIM_WARM, 0.32)
 	_save(img, "int_power_strip.png")
 
@@ -2174,9 +2004,11 @@ func _sticky_strip() -> void:
 	# Six estimates on a desk edge. The scribbles are load-bearing.
 	var img := Image.create(96, 26, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
+	# Six notes, ONE paper colour in three values. Six hues on a 96px prop was
+	# more of the palette than the room the prop sits in is allowed.
 	var cols: Array[Color] = [
-		Color(0.93, 0.80, 0.38), Color(0.74, 0.87, 0.42), Color(0.95, 0.62, 0.60),
-		Color(0.62, 0.80, 0.94), Color(0.93, 0.80, 0.38), Color(0.86, 0.70, 0.90),
+		Color(0.72, 0.62, 0.34), Color(0.66, 0.57, 0.32), Color(0.76, 0.66, 0.38),
+		Color(0.66, 0.57, 0.32), Color(0.72, 0.62, 0.34), Color(0.76, 0.66, 0.38),
 	]
 	for i in cols.size():
 		var nx := 2 + i * 15
@@ -2197,7 +2029,7 @@ func _sticky_strip() -> void:
 				_px(img, nx + 8 + f, ny + 11 - f, c.lightened(0.30))
 				_px(img, nx + 8 + f, ny + 12 - f, c.darkened(0.20))
 	# the one that already fell, at an angle nobody will fix
-	_rect(img, 82, 14, 11, 10, Color(0.84, 0.72, 0.34))
+	_rect(img, 82, 14, 11, 10, Color(0.66, 0.57, 0.32))
 	_line(img, 84, 17, 90, 17, Color(0.35, 0.28, 0.12))
 	_line(img, 84, 20, 88, 20, Color(0.35, 0.28, 0.12))
 	_finish(img, RIM_WARM, 0.0)
@@ -2231,7 +2063,7 @@ func _couch_tex() -> void:
 	var h := 84
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
-	var base := Color(0.300, 0.270, 0.385)
+	var base := Color(0.285, 0.272, 0.300)
 	_shadow(img, 86, 78, 76, 5, 0.32)
 	# backrest with cushion seams
 	_bevel(img, 10, 6, 152, 30, base.darkened(0.10))
@@ -2262,7 +2094,7 @@ func _couch_tex() -> void:
 		_rect(img, fx, 74, 8, 5, Color(0.10, 0.08, 0.09))
 		_rect(img, fx, 74, 8, 1, Color(0.18, 0.15, 0.16))
 	# the blanket, folded over the right arm, one corner reaching the seat
-	var bl := Color(0.52, 0.30, 0.34)
+	var bl := Color(0.38, 0.29, 0.30)
 	_rect(img, 140, 10, 26, 34, bl)
 	_rect(img, 140, 10, 26, 3, bl.lightened(0.22))
 	_rect(img, 140, 41, 26, 3, bl.darkened(0.30))
@@ -2273,11 +2105,8 @@ func _couch_tex() -> void:
 	# remote, unreachable from the dent by exactly one cushion
 	_rect(img, 34, 40, 6, 12, Color(0.09, 0.10, 0.13))
 	_rect(img, 34, 40, 6, 1, Color(0.20, 0.22, 0.27))
-	_px(img, 36, 42, Color(0.62, 0.28, 0.24))
-	_px(img, 36, 45, Color(0.24, 0.44, 0.30))
-	# crumbs in the seam. Carbon dating: recent.
-	for cr in 8:
-		_px(img, 30 + _hash(cr, 13) % 110, 57 + _hash(cr, 17) % 4, Color(0.72, 0.62, 0.40, 0.8))
+	_px(img, 36, 42, Color(0.42, 0.26, 0.24))
+	_px(img, 36, 45, Color(0.24, 0.30, 0.26))
 	_finish(img, RIM_WARM, 0.40)
 	_save(img, "int_couch.png")
 
@@ -2338,8 +2167,8 @@ func _dress_awning() -> void:
 		var u := float(x2 - 18) / 126.0
 		var by: int = 44 + int(sin(u * PI) * 7.0)
 		_px(img, x2, by, Color(0.24, 0.24, 0.27))
-	for b in 6:
-		var bx: int = 24 + b * 22
+	for b in 4:
+		var bx: int = 30 + b * 30
 		var u2 := float(bx - 18) / 126.0
 		var by2: int = 45 + int(sin(u2 * PI) * 7.0)
 		_rect(img, bx, by2, 3, 4, Color(0.86, 0.80, 0.62))
@@ -2441,8 +2270,9 @@ func _dress_monolith() -> void:
 	_rect(img, 24, 62, 22, 16, st.darkened(0.30))
 	_rect(img, 25, 63, 20, 14, st.darkened(0.10))
 	_rect(img, 25, 63, 20, 1, st.darkened(0.44))
-	for gi in 3:
-		_glow(img, 30 + gi * 6, 70, Color(0.90, 0.92, 0.96))
+	_rect(img, 30, 70, 5, 1, Color(0.56, 0.56, 0.58))
+	_rect(img, 30, 73, 3, 1, Color(0.50, 0.50, 0.52))
+	_glow(img, 42, 70, Color(0.90, 0.92, 0.96))
 	# cracks running out of the fracture
 	_line(img, 26, 34, 22, 58, st.darkened(0.34))
 	_line(img, 27, 34, 23, 58, st.lightened(0.07))
@@ -2587,8 +2417,8 @@ func _dress_ore_cart() -> void:
 		var orr := 3.0 + float(_hash(o, 61) % 4)
 		_ellipse(img, ox, oy, orr, orr * 0.8, Color(0.34, 0.33, 0.34))
 		_ellipse(img, ox - 1, oy - 1, orr * 0.55, orr * 0.45, Color(0.54, 0.53, 0.54))
-		if o % 3 == 0:
-			_glow(img, ox, oy, Color(0.94, 0.90, 0.86))
+		if o == 4:
+			_glow(img, ox, oy, Color(0.94, 0.90, 0.86))   # one lump still warm
 	_finish(img, RIM_COOL, 0.38)
 	_save(img, "dress_ore_cart.png")
 
@@ -2626,17 +2456,17 @@ func _dress_whiteboard() -> void:
 	var py := 60
 	for x in range(26, 98, 4):
 		var ny: int = maxi(py - 2 - _hash(x, 3) % 4, 20)
-		_line(img, x, py, x + 4, ny, Color(0.63, 0.17, 0.17))
+		_line(img, x, py, x + 4, ny, Color(0.55, 0.20, 0.20))
 		py = ny
 	# the ideal line, dashed, going the other way, ignored
 	for dx in range(26, 98, 6):
-		_rect(img, dx, 26 + (dx - 26) / 2, 3, 1, Color(0.17, 0.25, 0.55))
+		_rect(img, dx, 26 + (dx - 26) / 2, 3, 1, Color(0.20, 0.21, 0.26))
 	# marker tray with three markers, two of them dry
 	_rect(img, 24, 86, 72, 5, alu.lightened(0.10))
 	_rect(img, 24, 86, 72, 1, alu.lightened(0.30))
-	_rect(img, 32, 87, 12, 3, Color(0.63, 0.17, 0.17))
-	_rect(img, 48, 87, 12, 3, Color(0.17, 0.25, 0.55))
-	_rect(img, 64, 87, 12, 3, Color(0.14, 0.14, 0.18))
+	_rect(img, 32, 87, 12, 3, Color(0.55, 0.20, 0.20))
+	_rect(img, 48, 87, 12, 3, Color(0.20, 0.21, 0.26))
+	_rect(img, 64, 87, 12, 3, Color(0.20, 0.21, 0.26))
 	_rect(img, 80, 86, 12, 4, Color(0.55, 0.56, 0.60))
 	_finish(img, Color(0.95, 0.96, 1.0), 0.24)
 	_save(img, "dress_whiteboard.png")
@@ -2798,8 +2628,8 @@ func _dress_laser_emitter() -> void:
 	_glow(img, 24, 27, Color(0.98, 0.94, 0.92))
 	_rect(img, 22, 34, 4, 3, Color(0.92, 0.90, 0.90, 0.45))
 	_rect(img, 23, 37, 2, 3, Color(0.92, 0.90, 0.90, 0.22))
-	# status LED on the housing cheek
-	_glow(img, 35, 30, Color(0.95, 0.45, 0.35))
+	# The status LED on the housing cheek is gone: the emitter core is the
+	# motivated light on this prop and a second one halves its read.
 	_finish(img, RIM_COOL, 0.36)
 	_save(img, "dress_laser_emitter.png")
 
@@ -2972,36 +2802,28 @@ func _fx_radial() -> void:
 	_save(img, "fx_radial_soft.png")
 
 func _decal_grime() -> void:
-	# Translucent floor grime splats (alpha <= 0.35): irregular blob clusters
-	# with ragged edges, pinholes and stray speckles. Three moods of filth.
+	# LAW 4 is blunt about floor overlays: mottle, wear fields, blotches, drag
+	# marks and grime scatter are the noise floor, and the budget for them is
+	# ZERO. These three files still exist because consumers exists()-guard them
+	# by name, but each is now ONE soft, almost-invisible pool at a third of its
+	# old alpha, with no ragged edge modulation, no pinholes and no speckles.
+	# If a region wants a mark on the ground it should be hand-placed, and LAW 4
+	# allows three of them.
 	var tints := [Color(0.040, 0.045, 0.070), Color(0.070, 0.050, 0.030), Color(0.040, 0.055, 0.035)]
 	for i in 3:
 		var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
-		var rng := RandomNumberGenerator.new()
-		rng.seed = 777 + i * 131
-		var blobs := []
-		for b in 5 + i:
-			blobs.append(Vector3(rng.randf_range(18.0, 46.0), rng.randf_range(18.0, 46.0), rng.randf_range(5.0, 15.0)))
+		img.fill(Color(0, 0, 0, 0))
 		var tint: Color = tints[i]
+		var rx := 20.0 + float(i) * 3.0
+		var ry := 15.0 + float(i) * 2.0
 		for y in 64:
 			for x in 64:
-				var field := 0.0
-				for bl in blobs:
-					var v: Vector3 = bl
-					var dist := Vector2(x - v.x, y - v.y).length()
-					dist *= 0.8 + 0.45 * float(_hash(x + i * 977, y) % 97) / 97.0
-					field += maxf(0.0, 1.0 - dist / v.z)
-				if field <= 0.02:
+				var dx := float(x - 32) / rx
+				var dy := float(y - 32) / ry
+				var d := sqrt(dx * dx + dy * dy)
+				if d >= 1.0:
 					continue
-				var a := clampf(field * 0.5, 0.0, 1.0) * 0.32
-				if _hash(x * 3, y + i) % 17 == 0:
-					a *= 0.4
-				img.set_pixel(x, y, Color(tint.r, tint.g, tint.b, a))
-		for s in 26:
-			var sx := rng.randi_range(4, 59)
-			var sy := rng.randi_range(4, 59)
-			if img.get_pixel(sx, sy).a < 0.05:
-				img.set_pixel(sx, sy, Color(tint.r, tint.g, tint.b, 0.22))
+				img.set_pixel(x, y, Color(tint.r, tint.g, tint.b, (1.0 - d) * 0.11))
 		_save(img, "decal_grime_%d.png" % i)
 
 func _decal_ao_edge() -> void:
@@ -3015,82 +2837,51 @@ func _decal_ao_edge() -> void:
 	_save(img, "decal_ao_edge.png")
 
 func _decal_floor_set() -> void:
-	# Big translucent floor decals. A 64px tile texture can only do so much: what
-	# actually kills a visible grid is irregular, TILE-INDEPENDENT marks scattered
-	# on top of it at arbitrary positions, rotations and scales. These are those
-	# marks. Alpha-only, so they inherit whatever the floor underneath is doing.
+	# The hand-placeable floor marks. LAW 4 allows at most THREE decals in a
+	# region, so each one has to be worth its place — and worth it means a
+	# readable shape, not a texture. The random-walk crack spawns, the branching
+	# spurs, the forty ash flecks and the puddle's sky reflection are gone; what
+	# is left is one crack in two lengths, one scorch and one puddle, each a
+	# single quiet silhouette.
 	for i in 2:
 		var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
 		img.fill(Color(0, 0, 0, 0))
-		var rng := RandomNumberGenerator.new()
-		rng.seed = 5150 + i * 733
-		for b in 4 + i:
-			var a := rng.randf() * TAU
-			var x := 32.0
-			var y := 32.0
-			var steps := 18 + rng.randi() % 14
-			for st in steps:
-				a += rng.randf_range(-0.42, 0.42)
-				x += cos(a)
-				y += sin(a)
-				if x < 2.0 or y < 2.0 or x > 61.0 or y > 61.0:
-					break
-				var fade := 1.0 - float(st) / float(steps)
-				_px(img, int(x), int(y), Color(0.02, 0.025, 0.05, 0.44 * fade))
-				# the lip on the light side of the crack, so it reads as depth
-				_px(img, int(x), int(y) - 1, Color(0.62, 0.64, 0.70, 0.11 * fade))
-				if st % 7 == 3 and st > 5:
-					var sa := a + rng.randf_range(-1.5, 1.5)
-					var sx := x
-					var sy := y
-					for sp in 7:
-						sx += cos(sa)
-						sy += sin(sa)
-						_px(img, int(sx), int(sy), Color(0.02, 0.025, 0.05, 0.26 * fade * (1.0 - float(sp) / 7.0)))
+		var span: int = 40 + i * 14
+		var x := 12.0
+		var y := 22.0 + float(i) * 12.0
+		var a := 0.35 + float(i) * 0.5
+		for st in span:
+			a += sin(float(st) * 0.21 + float(i)) * 0.10
+			x += cos(a)
+			y += sin(a)
+			if x < 2.0 or y < 2.0 or x > 61.0 or y > 61.0:
+				break
+			var fade := 1.0 - float(st) / float(span)
+			_px(img, int(x), int(y), Color(0.02, 0.025, 0.05, 0.34 * fade))
+			_px(img, int(x), int(y) - 1, Color(0.55, 0.57, 0.62, 0.07 * fade))
 		_save(img, "decal_crack_%d.png" % i)
 	# Scorch: something ran hot here for longer than the datasheet allowed.
 	var sc := Image.create(96, 96, false, Image.FORMAT_RGBA8)
 	sc.fill(Color(0, 0, 0, 0))
 	for y in 96:
 		for x in 96:
-			# irregular but SMOOTH boundary: two angular harmonics, not a hash
-			# lookup on 4px blocks (which reads as a pixel-art snowflake)
 			var ang := atan2(float(y - 48), float(x - 48))
-			var wob := 1.0 + 0.17 * sin(ang * 3.0 + 0.7) + 0.09 * sin(ang * 7.0 - 1.3)
+			var wob := 1.0 + 0.14 * sin(ang * 3.0 + 0.7)
 			var d := Vector2(float(x - 48), float(y - 48) * 1.16).length() / (42.0 * wob)
 			if d >= 1.0:
 				continue
-			var a := pow(1.0 - d, 1.7) * 0.55
-			a *= 0.86 + 0.28 * float(_hash(x, y) % 97) / 97.0
-			var c := Color(0.02, 0.02, 0.03, a)
-			if d > 0.64 and d < 0.82:
-				c = Color(0.36, 0.30, 0.24, a * 0.75)      # ash ring at the edge
-			sc.set_pixel(x, y, c)
-	for f in 40:
-		var fx := 12 + _hash(f, 101) % 72
-		var fy := 12 + _hash(f, 103) % 72
-		_px(sc, fx, fy, Color(0.55, 0.48, 0.40, 0.20))
+			sc.set_pixel(x, y, Color(0.02, 0.02, 0.03, pow(1.0 - d, 1.7) * 0.42))
 	_save(sc, "decal_scorch.png")
 	# Puddle: coolant, or rain that found a way in, or neither. Nobody looked.
 	var pd := Image.create(80, 56, false, Image.FORMAT_RGBA8)
 	pd.fill(Color(0, 0, 0, 0))
 	for y in 56:
 		for x in 80:
-			var wob := 1.0 + 0.16 * sin(atan2(float(y - 28), float(x - 40)) * 3.0 + 1.1)
-			var d := Vector2(float(x - 40) / 36.0, float(y - 28) / 22.0).length() / wob
-			if d >= 1.0:
+			var wob2 := 1.0 + 0.16 * sin(atan2(float(y - 28), float(x - 40)) * 3.0 + 1.1)
+			var d2 := Vector2(float(x - 40) / 36.0, float(y - 28) / 22.0).length() / wob2
+			if d2 >= 1.0:
 				continue
-			var a := 0.34 * clampf((1.0 - d) * 3.0, 0.0, 1.0)
-			pd.set_pixel(x, y, Color(0.015, 0.020, 0.040, a))
-	# rim highlight on the light side, and one sky reflection in the middle
-	for a2 in 200:
-		var ang := PI * 0.72 + PI * 0.80 * float(a2) / 200.0
-		var wob2 := 1.0 + 0.16 * sin(ang * 3.0 + 1.1)
-		var rx: int = 40 + int(cos(ang) * 35.0 * wob2)
-		var ry: int = 28 + int(sin(ang) * 21.0 * wob2)
-		_px(pd, rx, ry, Color(0.72, 0.80, 0.94, 0.26))
-	for ry2 in range(20, 32, 3):
-		_rect(pd, 30 + (ry2 - 20), ry2, 18 - (ry2 - 20), 1, Color(0.66, 0.74, 0.90, 0.10))
+			pd.set_pixel(x, y, Color(0.015, 0.020, 0.040, 0.28 * clampf((1.0 - d2) * 3.0, 0.0, 1.0)))
 	_save(pd, "decal_puddle.png")
 
 # --------------------------------------------------------------- helpers ----
@@ -3140,17 +2931,27 @@ func _shadow(img: Image, cx: int, cy: int, rx: int, ry: int, amt: float = 0.34) 
 				img.set_pixel(x, y, img.get_pixel(x, y).blend(Color(0.01, 0.015, 0.04, amt * (1.0 - dd * dd))))
 
 func _glow(img: Image, x: int, y: int, halo: Color) -> void:
-	# WHITE_HOT core + accent halo cross: bright enough for HDR bloom to catch.
+	# LAW 7: ONE white-hot core pixel per genuine light source. This used to
+	# stamp a nine-pixel halo cross, and it is called on every LED, every screen
+	# corner, every status light and every lamp in the game — which is precisely
+	# how a room full of furniture ends up glowing. The accent is now a single
+	# pixel of falloff directly below the core, where a real light would spill
+	# onto the surface it is mounted on, and nowhere else.
 	_px(img, x, y, WHITE_HOT)
-	for o in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
-		_px(img, x + o.x, y + o.y, Color(halo.r, halo.g, halo.b, 0.85))
-	for o in [Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(1, 1)]:
-		_px(img, x + o.x, y + o.y, Color(halo.r, halo.g, halo.b, 0.38))
+	_px(img, x, y + 1, Color(halo.r, halo.g, halo.b, 0.55))
 
-func _finish(img: Image, rim: Color, rim_amt: float = 0.5) -> void:
-	# Silhouette pass: rim light on top-left edges, then a 1px outline into the
-	# surrounding empty space. Solidity is sampled once so the passes don't
-	# cascade into each other.
+func _finish(img: Image, _rim: Color, _rim_amt: float = 0.5) -> void:
+	# Silhouette pass: a 1px outline into the surrounding empty space, and
+	# nothing else.
+	#
+	# The rim light is GONE (LAW 7: a fourth "rim" tone belongs to the player and
+	# to no other sprite). Every prop, every struct and every piece of furniture
+	# in the game was being edge-lit near-white or warm on its top-left, which is
+	# most of why the QA frames read as a room where everything is emitting.
+	# Props already draw their own lit top and left faces through _bevel; light
+	# from the top-left was never the missing information.
+	#
+	# The two parameters stay so every caller keeps working unchanged.
 	var w := img.get_width()
 	var h := img.get_height()
 	var solid := PackedByteArray()
@@ -3160,14 +2961,7 @@ func _finish(img: Image, rim: Color, rim_amt: float = 0.5) -> void:
 			solid[y * w + x] = 1 if img.get_pixel(x, y).a >= 0.55 else 0
 	for y in h:
 		for x in w:
-			if solid[y * w + x] == 1:
-				if rim_amt <= 0.0:
-					continue
-				var open_up := y == 0 or solid[(y - 1) * w + x] == 0
-				var open_left := x == 0 or solid[y * w + x - 1] == 0
-				if open_up or open_left:
-					img.set_pixel(x, y, img.get_pixel(x, y).lerp(rim, rim_amt))
-			else:
+			if solid[y * w + x] == 0:
 				var edge := false
 				if x > 0 and solid[y * w + x - 1] == 1:
 					edge = true
@@ -3237,44 +3031,6 @@ func _bolt(img: Image, x: int, y: int, c: Color) -> void:
 	# 2x2 fastener with a top-left glint. The cheapest greeble in the business.
 	_rect(img, x, y, 2, 2, c.darkened(0.36))
 	_px(img, x, y, c.lightened(0.34))
-
-func _hash01(a: int, b: int) -> float:
-	return float(_hash(a, b) % 4096) / 4095.0
-
-func _lat(x: int, y: int, cells: int, s: int) -> float:
-	# One lattice value, WRAPPED — this is what makes the noise built on it tile.
-	var xx := ((x % cells) + cells) % cells
-	var yy := ((y % cells) + cells) % cells
-	return _hash01(xx * 17 + s, yy * 23 + s * 3)
-
-func _vnoise(x: int, y: int, period: int, s: int) -> float:
-	# Smoothstep-interpolated value noise on a wrapped lattice. `period` MUST
-	# divide 64 or the texture it feeds stops tiling.
-	var cells: int = 64 / maxi(period, 1)
-	var fx := float(x) / float(period)
-	var fy := float(y) / float(period)
-	var x0 := int(floor(fx))
-	var y0 := int(floor(fy))
-	var tx := fx - float(x0)
-	var ty := fy - float(y0)
-	tx = tx * tx * (3.0 - 2.0 * tx)
-	ty = ty * ty * (3.0 - 2.0 * ty)
-	var a := _lat(x0, y0, cells, s)
-	var b := _lat(x0 + 1, y0, cells, s)
-	var c := _lat(x0, y0 + 1, cells, s)
-	var d := _lat(x0 + 1, y0 + 1, cells, s)
-	return lerpf(lerpf(a, b, tx), lerpf(c, d, tx), ty)
-
-func _tread(v: int) -> float:
-	# One diagonal tread rib in profile: groove floor, lit crest, falling
-	# shoulder, then flat. Light comes from the top-left, as it does everywhere.
-	if v == 0:
-		return -0.066
-	if v == 1:
-		return 0.096
-	if v == 2:
-		return 0.032
-	return 0.0
 
 func _hash(a: int, b: int) -> int:
 	var h := (a * 73856093) ^ (b * 19349663)
