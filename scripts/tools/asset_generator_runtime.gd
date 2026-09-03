@@ -1164,11 +1164,30 @@ func _save_floor_tile(img: Image, filename: String) -> void:
 ##
 ## So quiet becomes a number too. Lay the A/B pair down as a 4x4 checkerboard
 ## — the worst case, since the builder's cell hash only ever asks for the B
-## variant 38% of the time — cut the render into 32px blocks, and count the
-## blocks whose internal luminance range is at most FLOOR_QUIET_RANGE. A block
-## that spans nothing but stone is quiet; a block a rug runner crosses is not,
-## and that is the point. The ratio is how much of the ground a stall can
-## stand on without competing with it.
+## variant 38% of the time — cut the render into 32px blocks, and measure how
+## far each block's BULK spreads. A block that is stone with a joint across it
+## is quiet; a block that changes tone everywhere is not, and that is the
+## point. The ratio is how much of the ground a stall can stand on without
+## competing with it.
+##
+## ROUND 13 — the block statistic was min-to-max, and that was a trap. A single
+## dark joint pixel sets the minimum, so ANY floor carrying LAW 6's seam tone
+## measured 0.00: the carpet, the sludge slabs and the Stack Overflow ruins all
+## score zero on it, and the ruins are the floor the critic keeps naming as the
+## reference. The gate was therefore not measuring "is this ground calm", it
+## was measuring "does this ground have structure" — and forbidding the exact
+## thing LAW 6 makes mandatory. It is why the bazaar's joint had been authored
+## as a 3/255 step: that was the only joint the gate would pass.
+##
+## The statistic is now the block's p10-to-p90 spread, which is the instrument
+## the critic reads these frames with in the first place ("p10 61 / p90 66").
+## A 1px joint is 3% of a 32px block and a lit edge another 3%, so neither
+## moves a percentile — but a field that changes tone every two pixels moves
+## both, which is the failure this gate exists to catch. Everything else holds:
+## same block size, same 12/255 window, same 0.65 minimum, and the same 0.75
+## the shipped floor scored, so the threshold keeps its calibration. Verified
+## against both ends — the pre-round-12 full-tile basket weave still measures
+## 0.00 and still fires the gate.
 const FLOOR_QUIET_BLOCK := 32
 const FLOOR_QUIET_RANGE := 12.0
 const FLOOR_QUIET_MIN := 0.65
@@ -1200,26 +1219,32 @@ func _floor_quiet_fraction(a: Image, b: Image) -> float:
 		return 1.0
 	var la := _tile_luma(a)
 	var lb := _tile_luma(b)
+	# p10 and p90 of the sorted block. Joints and lit edges are each ~3% of a
+	# 32px block, so they sit outside both percentiles by design.
+	var n := FLOOR_QUIET_BLOCK * FLOOR_QUIET_BLOCK
+	var p_lo := (n * 10) / 100
+	var p_hi := (n * 90) / 100
+	var block := PackedFloat32Array()
+	block.resize(n)
 	var quiet := 0
 	for by in rows:
 		for bx in cols:
-			var lo := 1024.0
-			var hi := -1024.0
+			var i := 0
 			for iy in FLOOR_QUIET_BLOCK:
 				var gy := by * FLOOR_QUIET_BLOCK + iy
 				for ix in FLOOR_QUIET_BLOCK:
 					var gx := bx * FLOOR_QUIET_BLOCK + ix
 					var src := lb if (((gx / tw) + (gy / th)) & 1) == 1 else la
-					var l := src[(gy % th) * tw + (gx % tw)]
-					lo = minf(lo, l)
-					hi = maxf(hi, l)
-			if hi - lo <= FLOOR_QUIET_RANGE:
+					block[i] = src[(gy % th) * tw + (gx % tw)]
+					i += 1
+			block.sort()
+			if block[p_hi] - block[p_lo] <= FLOOR_QUIET_RANGE:
 				quiet += 1
 	return float(quiet) / float(rows * cols)
 
 func _report_floor_quiet(rname: String, a: Image, b: Image) -> void:
 	var q := _floor_quiet_fraction(a, b)
-	print("LAW 6 quiet: %-14s %3d%% of 32px blocks within %d/255" % [
+	print("LAW 6 quiet: %-14s %3d%% of 32px blocks with p10-p90 within %d/255" % [
 		rname, int(round(q * 100.0)), int(FLOOR_QUIET_RANGE)])
 	if rname == FLOOR_QUIET_GATED and q < FLOOR_QUIET_MIN:
 		push_error("LAW 6 quiet: %s floor at %.2f is under the %.2f minimum" % [
@@ -1282,11 +1307,29 @@ func _floor_planks(img: Image, t: FloorTones, alt: bool) -> void:
 		_floor_blot(img, 44, 39, 3, t.lip)
 		_floor_blot(img, 44, 39, 1, t.seam)
 
-## DEPENDENCY DISTRICT — node_modules sludge slabs. 32px slabs with a 1px
-## joint and a lit lip; inside them the ooze that got poured over this floor
-## and set, as a wide soft swell inside the 3% jitter, plus four low spots
-## where it pooled deepest. No cell-sized radial basin: that tiled into polka
-## dots, which is what the round-6 frame was actually showing.
+## DEPENDENCY DISTRICT — node_modules sludge slabs. 32px slabs, a 1px DARK
+## joint, and the ooze that got poured over this floor and set.
+##
+## ROUND 13, finding #4: this floor read as GRAPH PAPER, and so did the
+## carpet, for one shared reason. The joint was drawn `sx == 0 or sy == 0` and
+## the lit lip `sx == 1 or sy == 1`, so every slab got a full 1px BRIGHT cross
+## on two of its sides — 61 of the 1024 pixels in a slab at LAW 6's highlight
+## tone, laid end to end into an unbroken lattice. Measured on the frame: the
+## district's ground sat at 65-68 and its p90 was 96 — the brightest thing on
+## the floor was the grid.
+##
+## LAW 6 puts the seam at the DARK tone and its highlight is *small*. So the
+## lit lip now follows the TOP joint only, which is the one edge a slab lying
+## under a top-left light would actually catch, and it costs 31 pixels a slab
+## instead of 61. The joint stays, dark, on all four sides: that is the line
+## the player is meant to read.
+##
+## The second subtraction is the finer harmonic in the swell. It had a 10px
+## period, which is mottle, and LAW 4 puts floor overlays at zero. One wide
+## swell per slab is left, inside the 3% jitter, plus the four spots where the
+## ooze pooled deepest — three concentric steps down to the shaded tone, so
+## they read as a depression rather than as a stamped dot, and no highlight
+## pixel on top (a puddle has no specular in the middle of it).
 func _floor_sludge(img: Image, t: FloorTones, alt: bool) -> void:
 	for y in 64:
 		for x in 64:
@@ -1295,18 +1338,28 @@ func _floor_sludge(img: Image, t: FloorTones, alt: bool) -> void:
 			var c: Color = t.base
 			if sx == 0 or sy == 0:
 				c = t.seam
-			elif sx == 1 or sy == 1:
+			elif sy == 1:
 				c = t.hi
 			else:
 				var n := sin(float(sx) * PI / 16.0 + 0.6) * sin(float(sy) * PI / 16.0 + 1.9)
-				n += 0.45 * sin(float(sx) * PI / 5.0) * sin(float(sy) * PI / 6.0 + 2.2)
 				c = t.g(clampf(n, -1.0, 1.0))
 			_px(img, x, y, c)
-	for p: Vector2i in [Vector2i(11, 21), Vector2i(26, 8), Vector2i(46, 41), Vector2i(58, 55)]:
-		_floor_blot(img, p.x, p.y, 3, t.lip)
-		_px(img, p.x - 1, p.y - 1, t.hi)
-	if alt:
-		_floor_square(img, 41, 25, 5, t.hi, t.lip)
+	# Four pooled low spots per four slabs — but NOT one per slab. One each is
+	# what put polka dots on the round-6 floor and they came back the moment
+	# the pools stopped sparkling: a mark that lands once in every cell is a
+	# lattice, whatever shape it is. So they clump, two slabs to a puddle and
+	# one slab bare, and the two variants clump differently — that difference
+	# IS the B tile's inset detail, so nothing here repeats on the 64px grid.
+	# Every pool sits at least 5px clear of a joint at r = 4.
+	var pools_a: Array[Vector2i] = [Vector2i(9, 7), Vector2i(24, 20),
+		Vector2i(46, 12), Vector2i(52, 49)]
+	var pools_b: Array[Vector2i] = [Vector2i(12, 42), Vector2i(25, 56),
+		Vector2i(41, 9), Vector2i(8, 22)]
+	var pool_mid := _at_luma(t.base, (_luma255(t.base) + _luma255(t.lip)) * 0.5)
+	for p: Vector2i in (pools_b if alt else pools_a):
+		_floor_blot(img, p.x, p.y, 4, t.g(-1.0))
+		_floor_blot(img, p.x, p.y, 3, pool_mid)
+		_floor_blot(img, p.x, p.y, 1, t.lip)
 
 ## The joint layout of the ruins. Two courses of flagstones, deliberately
 ## different widths, and a wobble table that walks every joint a pixel either
@@ -1343,73 +1396,68 @@ func _floor_sandstone(img: Image, t: FloorTones, alt: bool) -> void:
 		for i in 9:
 			_px(img, 36 + i, 20 + (i >> 1), t.seam)
 
-## API BAZAAR — flagstone, with the weave kept as rug runners.
+## API BAZAAR — laid flagstone.
 ##
-## ROUND 12, finding #4: the basket weave that used to live here alternated
-## t.hi and t.lip every two pixels across all 4096, and three hundred of those
-## tiles is not a material — it is visual static. LAW 6 asks for STRUCTURE, and
-## structure is not texture: a floor earns it with a few long readable lines,
-## not with a tone change every other pixel. The market's stalls, tokens and
-## NPCs were competing with the ground they stand on.
+## Round 12 took the basket weave off this floor because it changed tone every
+## two pixels across all 4096 of them. Round 13, finding #5, is what that left
+## behind, and it is two separate failures.
 ##
-## The field is now flagstone. Four 32px stones per tile in a running bond, two
-## stone tones 5.6% apart, one 1px joint and the 1px lit lip that follows it.
-## Every pixel of the field lives inside a single WEAVE_QUIET_RANGE window, so
-## a 32px block that lands anywhere on the stone measures quiet.
+## The field went FLAT — measured p10 61, p90 66, no seam tone anywhere on it.
+## The cause was the joint's definition: it was not LAW 6's dark tone but a
+## SUBTRACTION from the quiet budget, the brightest field pixel minus 10.5, so
+## the whole material was authored to fit through the gate below rather than to
+## be read. A joint at 62 against a base at 65 is not a joint, and a floor with
+## two tones is not a material.
 ##
-## The weave is not deleted, it is placed: it survives at FULL material
-## contrast (LAW 6's seam AND its highlight both appear in it, which the field
-## no longer spends) as one 8px-pitch runner band along the bottom border of
-## the B tile only. The builder asks for B on 38% of cells, so the market keeps
-## rugs underfoot on about a third of its ground and the rest is quiet stone.
-## _report_floor_quiet measures the result at 75%.
+## And the rug survived as one band along the bottom of the B tile only. The
+## builder picks A/B by cell hash, so those bands landed as nine isolated
+## strips scattered across the market: broken decals, not a runner. A rug that
+## cannot be laid CONTINUOUSLY is not a rug, so it is gone. Calm beats clever,
+## and the market's stalls, tokens and NPCs are what this ground exists to hold
+## up.
 ##
-## Values are fractions of the LAW 6 base tone. The joint is not a ratio but a
-## subtraction: it sits exactly WEAVE_QUIET_RANGE below the brightest pixel in
-## the field, which spends the whole quiet budget on the one line that has to
-## read and leaves the 12/255 gate its margin for 8-bit rounding.
-const WEAVE_LIP := 1.060
-const WEAVE_STONE_HI := 1.030
-const WEAVE_STONE_LO := 0.975
-const WEAVE_GRAIN := 0.015
-const WEAVE_QUIET_RANGE := 10.5
-## The runner: a lit leading edge, twelve rows of 4px basket weave (so the
-## motif's pitch is 8px, four times the static it replaces), and the contact
-## shadow where the far edge lies back down on the stone. It stays wholly
-## inside the tile's lower half, which is what holds the quiet fraction at
-## 0.75: the two upper 32px blocks of a B tile never see it.
-const WEAVE_BAND_Y := 50
+## What is left spends LAW 6's three tones where they belong: a 1px dark joint
+## at 40, two stone tones 5.6% apart around a base of 68, and one lit edge at
+## 99 along the top of each stone — the same profile the Stack Overflow ruins
+## measure at (p2 43 / p50 78 / p98 112), which is the floor every critic pass
+## has named as the reference. The B variant is the same stone with the bond
+## shifted half a stone, so the 38% of cells the builder draws it on break the
+## 64px lattice instead of stamping a motif onto it.
+const FLAG_STONE_HI := 1.030
+const FLAG_STONE_LO := 0.975
+const FLAG_GRAIN := 0.015
+const FLAG_BOND := 16
 
 func _floor_weave(img: Image, t: FloorTones, alt: bool) -> void:
 	var b := _luma255(t.base)
-	# Named apart from t.lip / t.seam on purpose: these two are the FIELD's
-	# quiet pair, and the runner below still wants the material's loud one.
-	var stone_lip := _at_luma(t.base, b * WEAVE_LIP)
-	var stone_joint := _at_luma(t.base, maxf(b * WEAVE_LIP - WEAVE_QUIET_RANGE, 1.0))
 	var stone: Array[Color] = [
-		_at_luma(t.base, b * WEAVE_STONE_HI),
-		_at_luma(t.base, b * WEAVE_STONE_LO),
+		_at_luma(t.base, b * FLAG_STONE_HI),
+		_at_luma(t.base, b * FLAG_STONE_LO),
 	]
 	var grain_lo: Array[Color] = []
 	var grain_hi: Array[Color] = []
 	for s: Color in stone:
 		var sl := _luma255(s)
-		grain_lo.append(_at_luma(s, sl * (1.0 - WEAVE_GRAIN)))
-		grain_hi.append(_at_luma(s, sl * (1.0 + WEAVE_GRAIN)))
+		grain_lo.append(_at_luma(s, sl * (1.0 - FLAG_GRAIN)))
+		grain_hi.append(_at_luma(s, sl * (1.0 + FLAG_GRAIN)))
+	var bond: int = FLAG_BOND if alt else 0
 	for y in 64:
 		# Running bond: the lower course steps half a stone, so no vertical
 		# joint ever runs the full height of the floor.
 		var course := y >> 5
 		var sy := y & 31
 		for x in 64:
-			var ox := (x + course * 16) & 63
+			var ox := (x + course * 16 + bond) & 63
 			var sx := ox & 31
 			var i := ((ox >> 5) + course) & 1
 			var c: Color = stone[i]
 			if sx == 0 or sy == 0:
-				c = stone_joint
-			elif sx == 1 or sy == 1:
-				c = stone_lip
+				c = t.seam
+			elif sy == 1:
+				# One lit edge, on the top of the stone only. Light is from the
+				# top-left everywhere in this file, but a lit lip on BOTH sides
+				# of every stone is the bright lattice finding #4 is about.
+				c = t.hi
 			else:
 				# Cut-stone grain: 4px blocks at +/-1.5%, well inside LAW 6's
 				# 3% jitter and far too small to read as a second pattern.
@@ -1418,19 +1466,6 @@ func _floor_weave(img: Image, t: FloorTones, alt: bool) -> void:
 					c = grain_lo[i]
 				elif g == 3:
 					c = grain_hi[i]
-			_px(img, x, y, c)
-	if not alt:
-		return
-	for x in 64:
-		_px(img, x, WEAVE_BAND_Y, t.hi)
-		_px(img, x, 63, t.seam)
-	for y in range(WEAVE_BAND_Y + 1, 63):
-		var r := y - WEAVE_BAND_Y - 1
-		for x in 64:
-			var over := (((x >> 2) + (r >> 2)) & 1) == 0
-			var c: Color = t.lip
-			if over:
-				c = t.hi if (r & 3) == 0 else t.mid
 			_px(img, x, y, c)
 
 ## CLOUD DISTRICT — steel grating. A 16px lattice of load bars lit on their
@@ -1496,11 +1531,31 @@ func _floor_loam(img: Image, t: FloorTones, alt: bool) -> void:
 			_px(img, 24 + i, 30, t.seam)
 		_px(img, 27, 31, t.seam)
 
+## Which carpet cell catches the light: one of the four 32px cells in a 64px
+## tile, at a different corner in each variant. The builder asks for B on 38%
+## of cells, so about a quarter of the floor carries a lit edge and no two
+## neighbours agree on where it is.
+const CARPET_LIT_A := Vector2i(1, 1)
+const CARPET_LIT_B := Vector2i(0, 0)
+
 ## CORPORATE ENTERPRISE — contract carpet tile, quarter-turned, with the loop
-## pile running with the turn. The whole material is a seam, a lit lip and a
-## 3% checker; it is meant to be forgettable, and that is what makes the room
-## on top of it readable.
+## pile running with the turn.
+##
+## ROUND 13, finding #4, the same defect the sludge slabs had: `cx == 1 or
+## cy == 1` painted a full 1px BRIGHT cross inside every tile, and the floor
+## measured p90 96-102 against a base of 65-68. Graph paper.
+##
+## LAW 6's highlight is *small* — a lit edge on ONE side of ONE tile, not a
+## line that runs the whole room. So the bright cross is gone and the highlight
+## survives on the top-left corner of a single cell per tile, which is what a
+## floor of dropped-in carpet tiles looks like when one of them catches the
+## light. The seam stays and stays DARK: a carpet tile has a visible join.
+##
+## What is left reads the tile boundary the way carpet actually reads it — the
+## dark join, and the pile turning 90 degrees across it. It is meant to be
+## forgettable, and that is what makes the room on top of it readable.
 func _floor_carpet(img: Image, t: FloorTones, alt: bool) -> void:
+	var lit: Vector2i = CARPET_LIT_B if alt else CARPET_LIT_A
 	for y in 64:
 		for x in 64:
 			var cx := x & 31
@@ -1508,16 +1563,17 @@ func _floor_carpet(img: Image, t: FloorTones, alt: bool) -> void:
 			var c: Color = t.base
 			if cx == 0 or cy == 0:
 				c = t.seam
-			elif cx == 1 or cy == 1:
+			elif Vector2i(x >> 5, y >> 5) == lit and (cx == 1 or cy == 1):
 				c = t.hi
 			else:
 				var turned := (((x >> 5) + (y >> 5)) & 1) == 1
 				var u: int = cx if turned else cy
 				var w: int = cy if turned else cx
-				c = t.g(1.0 if (((u >> 1) + (w >> 2)) & 1) == 0 else -1.0)
+				# Loop pile: 2px across the run, 8px along it, at +/-1.5% —
+				# half the old checker's amplitude and twice its pitch, so it
+				# is a tooth underfoot rather than a texture on screen.
+				c = t.g(0.6 if (((u >> 1) + (w >> 3)) & 1) == 0 else -0.6)
 			_px(img, x, y, c)
-	if alt:
-		_floor_blot(img, 46, 46, 3, t.lip)
 
 ## GPU MINES — scorched deck plate. 32px plates, a hard seam, a lit near bevel,
 ## four rivet heads per plate and a brushed grain running with the roll. The B
@@ -1607,22 +1663,14 @@ func _floor_concrete(img: Image, t: FloorTones, alt: bool) -> void:
 			_px(img, 38 + i, 45, t.lip)
 
 ## One soft round mark, wrapped so it never straddles the tile seam. The whole
-## vocabulary of "inset detail" is this and a rectangle.
+## vocabulary of "inset detail" is this, and stacking two or three of them
+## concentrically is how a mark becomes a depression rather than a dot.
 func _floor_blot(img: Image, cx: int, cy: int, r: int, c: Color) -> void:
 	for dy in range(-r, r + 1):
 		for dx in range(-r, r + 1):
 			if dx * dx + dy * dy > r * r:
 				continue
 			_px(img, (cx + dx + 64) % 64, (cy + dy + 64) % 64, c)
-
-## A small object sitting in the floor: lit top edge, body, shadowed foot.
-func _floor_square(img: Image, x: int, y: int, size: int, hi: Color, sh: Color) -> void:
-	for oy in size:
-		for ox in size:
-			var c: Color = sh
-			if oy == 0:
-				c = hi
-			_px(img, (x + ox) % 64, (y + oy) % 64, c)
 
 ## THE ENEMY CAST — one drawing language, thirteen silhouettes (LAW 7).
 ##

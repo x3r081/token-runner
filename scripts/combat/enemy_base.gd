@@ -447,9 +447,17 @@ func _update_hp_bar() -> void:
 ##
 ## What is left is the two things the laws actually ask for:
 ##   * a contact shadow, so the body stands ON the floor rather than over it;
-##   * a floor ring, drawn ONLY while this one is hunting you — a flat HOSTILE
-##     outline at 55% alpha in the same red as every wind-up wedge and charge
+##   * a floor ring, drawn ONLY while this one is COMMITTED — a flat HOSTILE
+##     outline at 45% alpha in the same red as every wind-up wedge and charge
 ##     lane. A telegraph is a shape, not a light source.
+##
+## ROUND 13, critique #1: the ring used to come on at `_on_aggro` and stay on for
+## as long as the enemy had a leash on you, i.e. it was an IDLE RADIUS painted on
+## the floor under every awake body in the room. Six enemies noticing you at once
+## is six red ellipses that mean nothing in particular; the same ring drawn only
+## while `is_committed()` is true (wind-up, dash, boss telegraph) means exactly
+## one thing — "this one is mid-swing, move" — which is what a tell is for.
+## `_sync_alert_ring` in `_physics_process` is the single owner of its visibility.
 func _build_presence() -> void:
 	var shadow := Polygon2D.new()
 	shadow.polygon = CombatFx.ring_points(16)
@@ -469,7 +477,7 @@ func _build_presence() -> void:
 	_alert_ring.points = ring_pts
 	# No additive blend and nothing over 1.0: at bloom threshold 1.0 (LAW 5) the
 	# old (2.4, 0.62, 0.74) stroke was a light source drawn on the floor.
-	_alert_ring.default_color = Color(HOSTILE.r, HOSTILE.g, HOSTILE.b, 0.55)
+	_alert_ring.default_color = Color(HOSTILE.r, HOSTILE.g, HOSTILE.b, 0.45)
 	_alert_ring.width = PX  # exactly one art pixel of stroke
 	_alert_ring.position = Vector2(0, 13)
 	_alert_ring.z_index = -2
@@ -748,6 +756,7 @@ func _physics_process(delta: float) -> void:
 	# enemy sits at z 0 while every builder prop sets z_index = _depth(y), so
 	# cover and landmarks draw in front of enemies at any Y.
 	z_index = int(global_position.y)
+	_sync_alert_ring()
 	# Lobbed shots live on this enemy's own clock (deliberately not on a tween),
 	# so they keep travelling through knockback and stun, and stop dead when the
 	# room does.
@@ -780,7 +789,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if _intro_lock > 0.0:
 		_intro_lock -= delta
-	if is_boss and not _intro_done and global_position.distance_to(target.global_position) < 620.0 \
+	if is_boss and not _intro_done and global_position.distance_to(target.global_position) < BOSS_INTRO_RANGE \
 			and _on_camera():
 		_play_boss_intro()
 	# A committed swing owns the frame: the enemy plants and cannot chase, which
@@ -817,8 +826,6 @@ func _physics_process(delta: float) -> void:
 	elif dist > aggro_radius * LEASH_MULT:
 		_aggroed = false
 		_wake_t = _wake_delay
-		if is_instance_valid(_alert_ring):
-			_alert_ring.visible = false
 		_music_calm_check()
 
 	var desired := Vector2.ZERO
@@ -865,8 +872,6 @@ func _role_steering(to_player: Vector2, dist: float) -> Vector2:
 ## "It has seen you." A classic exclamation tell plus a startle hop, so the
 ## moment a fight starts is never ambiguous.
 func _on_aggro() -> void:
-	if is_instance_valid(_alert_ring):
-		_alert_ring.visible = true
 	if _dying or is_boss:
 		return
 	AudioManager.play_music("combat_music")
@@ -984,6 +989,15 @@ func _reach() -> float:
 ## it paints is a threat rather than an announcement it has already missed.
 func _start_reach() -> float:
 	return _reach() - (STRIKE_RANGE - STRIKE_START_RANGE)
+
+## The alert ring's ONE owner. A tell is on while the thing it tells you about is
+## happening, and off otherwise — no aggro toggle, no leash toggle, no idle
+## radius (critique #1). Called from the top of `_physics_process`, so it also
+## covers the frames a knockback, a pause or a stun returns early from.
+func _sync_alert_ring() -> void:
+	if not is_instance_valid(_alert_ring):
+		return
+	_alert_ring.visible = not _dying and is_committed()
 
 ## Is this enemy currently locked into something the player must react to?
 ## Used by the pack to take turns; public so siblings can ask cheaply.
@@ -1363,6 +1377,16 @@ func _build_boss_presence() -> void:
 ## is in the frame to be seen making it; chasing brings it in within a second or
 ## two. `take_damage()` still triggers the intro unconditionally, so sniping a
 ## boss from beyond the trigger is unchanged and the fight is never anonymous.
+##
+## ROUND 13 tightens the distance half of the same test from 620 to 480. The
+## rooms are 1280x960 and there is nowhere in one of them a boss can stand that
+## is a full frame below the arrival view, so region_builder stages every boss at
+## y 906 — 500-odd units from the spawn plaza. At 620 that is INSIDE the trigger
+## on the first frame of the visit and the gate is carrying the whole load on its
+## own; at 480 the distance test agrees with the camera test instead of fighting
+## it, and neither one has to be right by itself.
+const BOSS_INTRO_RANGE := 480.0
+
 func _on_camera() -> bool:
 	var vp := get_viewport()
 	if vp == null:
@@ -1382,11 +1406,15 @@ func _play_boss_intro() -> void:
 	if _boss_hud and is_instance_valid(_boss_hud):
 		_boss_hud.play_entrance()
 	var host := get_parent()
-	var col := FxLib.vivid(_accent())
+	# LAW 2 and LAW 7: an entrance is a HOSTILE tell, not the boss's own hue. The
+	# accent ramp (#FF2D95 for the merge conflict, #24F0DC for the infinite
+	# context, #6BC7FF for the bill) put a second saturated hue on screen per boss
+	# and drew it as three stacked layers — a 240-unit shockwave, a 150-unit ring
+	# and twenty-six overbright glow dots. That is what the QA frames read as "a
+	# triple magenta ring filling the bottom third" and "a cyan ring in the gold
+	# vault". One shockwave, in the same red as every other telegraph in the game.
 	if host:
-		CombatFx.shockwave(host, global_position, col, 240.0, 0.6)
-		CombatFx.ring(host, global_position, col, 10.0, 150.0, 0.9, 10.0, 2.0)
-		FxLib.burst(host, global_position, Color(col.r * 2.0, col.g * 2.0, col.b * 2.0), 26, 300.0, FxLib.glow_dot(), Vector2(0, -120), CombatFx.Z_FX)
+		CombatFx.shockwave(host, global_position, HOSTILE, 200.0, 0.55)
 	# It rears up. (A pose, not a tween — `_process` owns the sprite transform.)
 	_set_pose(POSE_HOP, Vector2.UP, 20.0, 0.6)
 	FxLib.add_trauma(get_tree(), 0.5)
@@ -1480,7 +1508,14 @@ func _tick_boss(delta: float) -> void:
 	if _special_cd > 0.0 or target == null or not is_instance_valid(target):
 		return
 	var dist := global_position.distance_to(target.global_position)
-	if dist > 460.0:
+	# ...and never before its own entrance. A boss's aggro radius is 900, so it
+	# starts walking at the player from across the room the instant it is built,
+	# and at 460 it began telegraphing while it was still off the bottom of the
+	# arrival frame — a 150- or 220-unit ring painted under the ability bar around
+	# a body the player cannot see (critiques #1 and #3). `_play_boss_intro` fires
+	# on proximity + camera, or on the first damage taken, so a boss that is
+	# genuinely in the fight has always had its entrance by the time this matters.
+	if dist > 460.0 or not _intro_done:
 		return
 	var moves := _boss_moves()
 	_boss_move = int(moves[randi() % moves.size()])
@@ -1496,20 +1531,26 @@ func _tick_boss(delta: float) -> void:
 	_telegraph_boss_move()
 
 ## Paint the move before it happens. No hidden information, ever.
+##
+## In HOSTILE, like every other telegraph the game draws (LAW 2's "enemy tells
+## only", LAW 7's "exactly one red tell"). These two rings were the largest
+## coloured shapes in four of the QA frames and each was in its own boss's private
+## hue — the per-enemy rainbow LAW 7 exists to forbid — and it cost the reading
+## besides, because a player who has learnt that red means "move" should not have
+## to re-learn it per boss.
 func _telegraph_boss_move() -> void:
 	var host := get_parent()
 	if host == null:
 		return
-	var col := FxLib.vivid(_accent())
 	match _boss_move:
 		BOSS_BARRAGE:
 			CombatFx.glyph(host, global_position + Vector2(0, -72),
-				str(TELLS.get(enemy_type, "incoming")), col, 16, _boss_tele + 0.2, 18.0)
-			CombatFx.ring(host, global_position, col, 20.0, 150.0, _boss_tele, 3.0, 7.0, 28)
+				str(TELLS.get(enemy_type, "incoming")), HOSTILE, 16, _boss_tele + 0.2, 18.0)
+			CombatFx.ring(host, global_position, HOSTILE, 20.0, 150.0, _boss_tele, 3.0, 5.0, 28)
 		BOSS_SIGNATURE:
 			CombatFx.glyph(host, global_position + Vector2(0, -72), _signature_tell(),
-				col, 16, _boss_tele + 0.3, 18.0)
-			CombatFx.ring(host, global_position, col, 220.0, 30.0, _boss_tele, 3.0, 8.0, 28)
+				HOSTILE, 16, _boss_tele + 0.3, 18.0)
+			CombatFx.ring(host, global_position, HOSTILE, 220.0, 30.0, _boss_tele, 3.0, 5.0, 28)
 		_:
 			# The slam reaches 260px; so does the marker.
 			_boss_marker = CombatFx.marker(host, global_position, HOSTILE, 260.0, _boss_tele)

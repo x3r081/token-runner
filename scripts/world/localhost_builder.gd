@@ -1042,22 +1042,30 @@ static func _build_lighting(parent: Node2D) -> void:
 	# get a bar of cyan bleeding in from an object it cannot see (critique #7).
 	_light_pool(z, PORTAL_POS + Vector2(0, 10), 300.0, ACCENT, 0.15)
 
-## Claude, standing in the one honest spotlight in the apartment. That is the
-## whole function now.
+## The point-of-interest pools. There are none left.
 ##
-## The twelve-rect ring of dashes around his feet went in round 8 (it read as a
-## summoning circle, not as lighting), and so did four of the six coloured
+## The twelve-rect ring of dashes around Claude's feet went in round 8 (it read as
+## a summoning circle, not as lighting), and so did four of the six coloured
 ## point-of-interest pools — a blue one, a cyan one, an orange one, a green one,
 ## a violet one and a red one, six hues in a three-hue room, all at the same
-## value, which is the definition of no reading order. Round 11 takes the last two.
+## value, which is the definition of no reading order. Round 11 took the last two
+## off the terminal and the deploy button. Round 12 took the PointLight2D off
+## Claude and kept his puddle.
+##
+## ROUND 13 takes the puddle: critique #7, "remove NPC spotlight cones and pools
+## entirely — the two motivated lights per region are the portal and the
+## set-piece; NPCs are lit by ambient". A 240-unit warm disc under the one person
+## in the apartment is that pool by another name, and the argument for keeping it
+## ("an NPC you must talk to IS the current objective") is an argument about
+## FINDING him, which four other things already do and do better: the waypoint
+## chevron over his head, his name plate, the "<- Talk to Claude, first" label
+## beside him and the objective line at the bottom of the screen. He stands at the
+## second desk, under the monitor bank that lights that whole corner, so what he
+## loses is the disc and not the light.
 static func _build_poi_pools(parent: Node2D) -> void:
 	var z := Node2D.new()
 	z.name = "PoiPools"
 	parent.add_child(z)
-	# ROUND 12: the PointLight2D is gone and the puddle stays (see _build_lighting
-	# for why). Four real lights in a two-hue flat was double LAW 3's allowance,
-	# and this was the one with nothing above it to be coming from.
-	_light_pool(z, Vector2(820, 586), 240.0, Color(1.0, 0.85, 0.58), 0.26)
 	# The last two point-of-interest puddles — one on the Dream App terminal, one
 	# on the deploy button — are gone with round-11 critique (f). They were the
 	# final survivors of a set of six, and they were doing the job the [E] prompt

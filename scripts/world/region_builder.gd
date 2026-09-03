@@ -75,7 +75,22 @@ static var _add_mat_cache: CanvasItemMaterial
 ## anchor its token cluster is composed around, so it lives in one constant
 ## rather than in three files' worth of magic numbers. West of the spawn column
 ## on purpose (critique #3): at (640, 812) it sat under the ability bar.
-const GPU_PIT := Vector2(386, 806)
+##
+## ROUND 13, critique #8: "a broad orange haze washing over the objective text at
+## bottom-left". The orange RECT went in round 11; what the frame caught this time
+## is the replacement — the pit's PointLight2D, at energy 0.9 and texture scale
+## 6.0, which is a 192-unit radius of #FF6B2D centred at y 806. Measured on the
+## capture, the floor at x 300..500 runs 50% brighter than the same tile at x 700,
+## from y 700 all the way to the bottom wall, and the objective line is printed
+## through the west edge of it.
+##
+## A light cannot be "small enough" while the thing it comes out of is standing in
+## the bottom HUD band, so the pit leaves the band: at (420,570) with the light
+## cut to energy 0.7 and scale 3.0 (a 96-unit radius) it reaches y 474..666 and
+## stops 64 units short of the band. It is also, for the first time, IN the
+## arrival frame — the mines' one motivated source is now a thing the player can
+## see at the moment they land, which is what LAW 3 asks a focal light to be.
+const GPU_PIT := Vector2(420, 570)
 
 ## Caption priority for the phase currently being built. Set-piece captions name
 ## the LANDMARKS ("WAR ROOM", "THE RESERVES") and are placed first at priority 2;
@@ -186,7 +201,18 @@ static func _dull(c: Color, amount: float = 0.55, cap: float = 0.66) -> Color:
 ## from the real texture so tall props (towers) and flat ones (crates) both sit
 ## ON the floor instead of hovering next to it. Positions snap to even integers
 ## (LAW 1: one pixel grid) and the tint is desaturated on the way in (_dull).
+##
+## THE BOTTOM KEEP-OUT LIVES HERE, once, for every decorative sprite in the file
+## (round-13 critique #6). Twelve hand-composed props were legal by their anchor
+## and illegal by their silhouette — a 0.6x slab at y 872 reaches 836, a 0.95x
+## stall at 874 reaches 832, the wildlands graveyard's first row at 846 reaches
+## 829 — and each of them was a shape read through the objective line. The height
+## is known here and nowhere else, so this is the only place the rule can be
+## enforced instead of re-derived at a hundred call sites.
 static func _prop(parent: Node2D, tex_name: String, pos: Vector2, sc: float = 1.0, mod: Color = Color.WHITE, rot: float = 0.0, shadow: float = 1.0) -> Sprite2D:
+	var t0 := _tex(tex_name)
+	if t0:
+		pos = _clear_low_band(pos, float(t0.get_height()) * 0.5 * sc)
 	pos = Vector2(round(pos.x * 0.5) * 2.0, round(pos.y * 0.5) * 2.0)
 	mod = _dull(mod)
 	var spr := _put(parent, tex_name, pos, _depth(pos.y, 40.0 * sc), sc, mod, rot)
@@ -516,6 +542,44 @@ static func _clear_hud_bands(p: Vector2) -> Vector2:
 		var nearer_up := (out.y - HUD_KEEP_Y_LOW) <= (HUD_KEEP_LOW_END - out.y)
 		out.y = HUD_LOW_UP if (nearer_up or not down_ok) else HUD_LOW_DOWN
 	return Vector2(round(out.x * 0.5) * 2.0, round(out.y * 0.5) * 2.0)
+
+## THE THIRD HALF OF IT — round-13 critique #6: "props and a boss arc clipped
+## under the bottom HUD band at spawn (production red arc, corporate red-eyed
+## robot, dependency AC units in both bottom corners)". Round 12's gate held for
+## every ANCHOR in the file and the frames still showed art in the band, because
+## an anchor is a point and a sprite is a box. The dependency/corporate AC units
+## stand at y 884 — legally below the arrival frame — and are drawn at 1.45x from
+## a 150px texture, so ninety units of them rise back into y 794..840.
+##
+## So the bottom rule is restated over a FOOTPRINT. `rise` is how far the art
+## reaches ABOVE its anchor; the art occupies p.y - rise .. p.y, and none of that
+## span may touch y 730..840.
+static func _hits_low_band(p: Vector2, rise: float) -> bool:
+	return p.y >= HUD_KEEP_Y_LOW and (p.y - rise) <= HUD_KEEP_LOW_END
+
+## ...and the move that fixes it, for the passes that place rather than choose.
+## DOWN by preference — everything this catches is already south of the plaza and
+## belongs below the arrival frame — falling back to the band's north lip when a
+## body that tall cannot fit between the band and the bottom wall.
+static func _clear_low_band(p: Vector2, rise: float) -> Vector2:
+	if not _hits_low_band(p, rise):
+		return p
+	var h := float(REGION_SIZE.y * TILE_SIZE)
+	var down := HUD_KEEP_LOW_END + rise + 2.0
+	var out := down if down <= h - 40.0 else HUD_LOW_UP
+	return Vector2(p.x, round(out * 0.5) * 2.0)
+
+## The four corner boxes of the arrival frame, as a footprint test. The top pair
+## is the token counter (260x70) and the HP/Focus bars (300x70); the bottom pair
+## is the objective line and the controls footer (320x110 each). `_in_hud_corner`
+## already owns the top pair for anchors; this is the version a sprite asks.
+const HUD_BOTTOM_CORNER_W := 320.0
+
+static func _in_bottom_corner(p: Vector2, rise: float) -> bool:
+	if not _hits_low_band(p, rise):
+		return false
+	var w := float(REGION_SIZE.x * TILE_SIZE)
+	return p.x <= HUD_BOTTOM_CORNER_W or p.x >= w - HUD_BOTTOM_CORNER_W
 
 ## An NPC is the one thing that can only leave the low band UPWARD. npc.gd hangs
 ## the name tag at y-106..-86 and stacks idle barks above that, so a person moved
@@ -1055,7 +1119,7 @@ static func _build_region_detail(parent: Node2D, theme: Dictionary, w: int, h: i
 ## scattered across the whole field. That is roughly four hundred primitives of
 ## floor dressing per room, and it is exactly the noise LAW 6 forbids: the ground
 ## stopped being ground and became a texture. The floor is the tile art now.
-static func _build_signature(parent: Node2D, region_id: String, theme: Dictionary, w: int, h: int) -> void:
+static func _build_signature(parent: Node2D, region_id: String, theme: Dictionary, w: int, _h: int) -> void:
 	var z := Node2D.new()
 	z.name = "Signature"
 	parent.add_child(z)
@@ -1084,10 +1148,21 @@ static func _build_signature(parent: Node2D, region_id: String, theme: Dictionar
 	# where the objective line and the ability bar are printed over it. The pair
 	# at h-76 is BELOW the arrival frame entirely, which is where a landmark you
 	# walk toward belongs.
+	#
+	# ROUND 13 retires that pair too, and this is the one pass where "below the
+	# frame" was not enough. THIS IS critique #6's "AC units in both bottom
+	# corners": (350, 884) and (930, 884) are legal POINTS, but what is put on
+	# them is a 150px texture drawn at 1.45x, so ninety units of it rise back to
+	# y 794 — inside the bottom band and inside its two corner boxes, in
+	# dependency, corporate and production alike. No anchor in a 960-tall room
+	# carries a silhouette that size clear of the band (it would need y >= 950,
+	# i.e. inside the wall), so the answer is subtraction: the bottom pair is gone
+	# and a mid pair at y 500 replaces it — open floor in every region, and clear
+	# of both bands by 250 units either way.
 	var spots: Array[Vector2] = [
 		Vector2(126.0, 372.0), Vector2(float(w) - 126.0, 372.0),
-		Vector2(350.0, float(h) - 76.0), Vector2(float(w) - 350.0, float(h) - 76.0),
 		Vector2(126.0, 620.0), Vector2(float(w) - 126.0, 620.0),
+		Vector2(126.0, 500.0), Vector2(float(w) - 126.0, 500.0),
 	]
 	var posts := _region_enemy_posts(region_id)
 	var focal: Vector2 = theme.get("focal", Vector2.ZERO)
@@ -1096,7 +1171,12 @@ static func _build_signature(parent: Node2D, region_id: String, theme: Dictionar
 		if placed >= 2:
 			break
 		var lp: Vector2 = spots[i]
-		if _in_cover(lp) or _in_hud_bands(lp):
+		# 110 is the tallest half-silhouette this pass can draw (a 150px texture
+		# at 1.45x), so the footprint test is asked with that rather than with the
+		# actual one: a spot that only works for the SHORT half of the vocabulary
+		# is a spot that fails the day the seed picks the tower.
+		if _in_cover(lp) or _in_hud_bands(lp) or _hits_low_band(lp, 110.0) \
+				or _in_bottom_corner(lp, 110.0):
 			continue
 		var clear := true
 		for pp: Vector2 in posts:
@@ -1563,7 +1643,7 @@ static func _build_region_fx(parent: Node2D, region_id: String, _theme: Dictiona
 			# mines' focal light: the heat pit, and the one bright thing in the
 			# room (LAW 3, item 4 — a motivated source). It follows GPU_PIT, so
 			# the light and the hole it comes out of can never drift apart.
-			_add_light(parent, GPU_PIT, Color("#FF6B2D"), 0.9, 6.0, true)
+			_add_light(parent, GPU_PIT, Color("#FF6B2D"), 0.7, 3.0, true)
 		_:
 			# The vault's gold code-rain is gone too. Under the corrected exposure
 			# it is not the subtle wash LAW 5 permits one region to keep — it is
@@ -1908,8 +1988,11 @@ static func _sp_stackoverflow(z: Node2D, glow: Color, _accent: Color) -> void:
 	# The pilgrim shrine. You bring your question here. The question has been
 	# asked. The answer is four versions out of date and marked as duplicate.
 	# 46 units up, which is what it takes for the ring's two southern candles to
-	# clear the bottom HUD band (critique #3).
-	_shrine(z, Vector2(324, 670), glow)
+	# clear the bottom HUD band (critique #3)... except that it wasn't: the ring
+	# is 62 units deep and a candle is 13 tall, so the southern pair ran to y 738
+	# and the last eight units of both of them were printed under the objective
+	# line. 12 more, measured this time.
+	_shrine(z, Vector2(324, 658), glow)
 	# The hermit's fire, burning documentation for warmth. Mid-ground: two stones
 	# and the dark between them. Its 240px pool and its lamp went with every other
 	# second light in the file (critique (f)) — the ruins spend their one on the
@@ -2012,16 +2095,25 @@ static func _sp_opensource(z: Node2D, glow: Color, _accent: Color) -> void:
 	# West of the camp: the generic NPC hint lands at (862,866) beside the
 	# maintainer, and a caption at 916 shared pixels with it.
 	_sign(z, Vector2(744, 716), "MAINTAINER", glow, 12)
-	# The maintainer's camp: one fire, one person, 4,000 dependents. THE focal —
-	# the warmest, brightest pool in the wildlands is the human — and, since
-	# round 11, the region's only light. The separate 340px pool that used to sit
-	# under it is folded into the lamp's own, so the fire throws one puddle.
+	# The maintainer's camp: one fire, one person, 4,000 dependents.
 	#
-	# ROUND 12 lifts the whole camp 150 units (critique #3, "Wildlands maintainer"
+	# ROUND 12 lifted the whole camp 150 units (critique #3, "Wildlands maintainer"
 	# under the ability bar). The camp is one composition — fire, stones, crates,
-	# bench, person, caption — so it moves as one; the internal offsets are
+	# bench, person, caption — so it moved as one; the internal offsets are
 	# untouched, and the maintainer still stands 40 units downhill of his own fire.
-	_lamp(z, Vector2(1058, 662), Color(1.0, 0.64, 0.28), 1.15, 2.4, true, 340.0)
+	#
+	# ROUND 13, critique #7: "a bright amber spotlight cone on the Maintainer — the
+	# brightest thing after the portal; the name label sits inside the glow". The
+	# lamp is gone, and this file's own rule at the top of it says why: "the person
+	# in the room is found by their name tag and the waypoint chevron, not by a
+	# private spotlight". The wildlands were the one region that broke it — the
+	# lamp stood 40 units above the maintainer's head, so the region's ONE light
+	# was aimed at a human being, and the frame measures 89 luminance on him
+	# against 51 at 180 units away. The fire's 16 particles are still there and
+	# still warm; a campfire is a small bright thing, not a 340-unit pool with a
+	# person standing in the middle of it. The wildlands now spend their two
+	# motivated sources on their two doors, which is the same budget every other
+	# region keeps.
 	for i in 5:
 		var a := TAU * float(i) / 5.0
 		_rect(z, Vector2(1058, 662) + Vector2(cos(a) * 34.0, sin(a) * 20.0), Vector2(9, 9), Color(0.18, 0.16, 0.14), _depth(662, 6), a)
@@ -2116,7 +2208,14 @@ static func _sp_corporate(z: Node2D, glow: Color, accent: Color) -> void:
 	_rect(z, Vector2(1000, 656), Vector2(250, 5), Color(0.32, 0.36, 0.5), _depth(682, 32))
 	_rect(z, Vector2(930, 650), Vector2(30, 42), Color(0.24, 0.26, 0.36), _depth(666, 22))
 	_screen(z, Vector2(1000, 612), glow, Vector2(2.6, 1.7), _depth(682, 34), 0.42)
-	_lamp(z, Vector2(1000, 592), glow, 1.05, 2.6, false, 320.0)
+	# ROUND 13, critique #7's second case. The lamp stays — it is a STAGE light,
+	# hung over a stage, and it is the region's one source — but it climbs 52 units
+	# to sit above its own screen rather than level with it, and its floor puddle
+	# is dropped. The SVP stands at (1000,656): with the lamp at 592 and a 320-unit
+	# pool centred at 618, the puddle was painted directly under the one person in
+	# the region, which is the same defect as the wildlands campfire one region
+	# back. At 540 the light's 83-unit radius stops 33 units short of him.
+	_lamp(z, Vector2(1000, 540), glow, 1.05, 2.6, false, 0.0)
 	# Reception: a desk, a ticket queue, and no receptionist. Its screen is the
 	# light; the 180px puddle it used to throw is not.
 	_drop_shadow(z, Vector2(258, 660), 165.0, _depth(640, 18) - 1, 0.36)
@@ -2131,7 +2230,7 @@ static func _sp_corporate(z: Node2D, glow: Color, accent: Color) -> void:
 
 static func _sp_gpu(z: Node2D, glow: Color, accent: Color) -> void:
 	## The region's ONE set-piece caption (LAW 4: <= 4 world labels).
-	_sign(z, Vector2(386, 700), "HEAT PIT", glow, 12)
+	_sign(z, Vector2(420, 464), "HEAT PIT", glow, 12)
 	# Two rig banks, thermally throttled, spiritually throttled.
 	for i in 3:
 		_rack(z, Vector2(214.0 + float(i) * 104.0, 240.0), Color(0.72, 0.5, 0.42), glow, 0.9, 0.15 + float(i) * 0.27)
@@ -2189,9 +2288,17 @@ static func _sp_gpu(z: Node2D, glow: Color, accent: Color) -> void:
 	# (energy 0.9, flickering, on GPU_PIT), which is the region's one lamp and the
 	# only source in the mines. A hole plus a real light is a pit; a hole plus an
 	# orange rectangle is a placeholder.
+	#
+	# ROUND 13 moves the whole thing north out of the bottom HUD band (see
+	# GPU_PIT) and takes 120 units off its light. The hole itself STAYS: it is
+	# near-black, so it can only ever make the ground under a HUD glyph darker,
+	# and a light with no hole under it is a source with nothing to come out of.
+	# Its satellites are composed relative to GPU_PIT and travel with it — one of
+	# them, now that the pit stands 90 units off the rail line, no longer has a
+	# job: a fourth ore cart parked 88 units from the third one is the same prop
+	# twice. The pipe stack keeps the pit company on the far side of the rails.
 	_floor_patch(z, GPU_PIT, 200.0, Color(0.03, 0.012, 0.008), 0.55, -92)
-	_prop(z, "dress_ore_cart", GPU_PIT + Vector2(-86, -100), 0.9, Color(0.86, 0.66, 0.54))
-	_prop(z, "dress_pipe_stack", GPU_PIT + Vector2(114, -80), 0.85, Color(0.82, 0.64, 0.56))
+	_prop(z, "dress_pipe_stack", GPU_PIT + Vector2(150, 110), 0.85, Color(0.82, 0.64, 0.56))
 	# The foreman's post. Lit by its own screen.
 	_prop(z, "struct_console", Vector2(1136, 716), 0.9, Color(0.74, 0.54, 0.44))
 	_screen(z, Vector2(1136, 696), accent, Vector2(1.1, 0.9), _depth(716, 54))
@@ -2504,8 +2611,28 @@ static var _cover_rects: Array[Rect2] = []
 ##     scale 2), so the five bosses that stood at y 856..880 were showing the
 ##     player their heads through the ability bar and nothing else — critique #3's
 ##     "Cloud ghost boss / SO Ruins beast / Vault eye turret / Corporate enemy /
-##     Production crate + enemy". They are staged at y 890 now: still south, still
-##     in their arenas, and the arrival frame's last row is empty floor.
+##     Production crate + enemy".
+##
+## ROUND 13, critiques #1, #3 and #6 — the boss rule again, with the arithmetic
+## done properly this time. y 890 was not enough: a boss is 128 units tall and
+## drawn centred, so its head reaches 826 and it was still standing in the band,
+## under the [H] hint, in production and corporate. The ideal answer is a FULL
+## FRAME below the arrival view (y >= spawn.y + 780 = 1260) and the room is 960
+## tall, so it does not exist here. What does exist is the far bottom band with
+## two extra constraints, and every boss below satisfies all three:
+##
+##   * y >= 906 — spawn.y + 426, and 64 units of clearance under the band, so no
+##     part of a 128-unit body is inside y 730..840. (_staged clamps to h - 52.)
+##   * |x - 640| >= 260 — outside the bottom-centre HUD column, i.e. clear of the
+##     six ability slots, the toast lane and the controls footer.
+##   * 320 <= x <= 960 — outside the two bottom corner boxes, i.e. clear of the
+##     objective line at bottom-left. That leaves exactly two windows, x 320..380
+##     and x 900..960, and each boss takes a different pixel in one of them so the
+##     five boss rooms do not all stage their fight in the same place.
+##
+## The distance from the plaza comes out at 500..525 for all five, which is over
+## the 420 the arrival test asks for AND over the 480 the boss entrance now
+## triggers at (enemy_base.gd), so no boss detonates its entrance off-screen.
 ##
 ## Those two rules fight each other in the top of the room — at y 250 the aggro
 ## radius allows only |x - 640| >= 345 — which is why the northern posts below are
@@ -2525,13 +2652,15 @@ static func _region_enemy_posts(region_id: String) -> Array:
 			# clearing, which is the only wide open floor in the ruins. The two
 			# north posts stand clear of the toppled slabs at (238,300) and
 			# (1096,318), and the south one clear of the shrine's sign plate.
-			return [Vector2(172, 368), Vector2(1010, 250), Vector2(180, 696), Vector2(866, 890)]
+			# The beast moves out of the bottom-centre HUD column to (938,906):
+			# 520 from the plaza, and its head clears the band by 68.
+			return [Vector2(172, 368), Vector2(1010, 250), Vector2(180, 696), Vector2(938, 906)]
 		"api_bazaar":
 			# Rate limiters posted at the market gates, bugs in the west aisle.
 			return [Vector2(1120, 300), Vector2(900, 890), Vector2(250, 696), Vector2(250, 268), Vector2(180, 252)]
 		"cloud_district":
-			# The bill occupies the south floor; the leaks sit on the racks.
-			return [Vector2(880, 890), Vector2(238, 296), Vector2(1082, 278)]
+			# The bill occupies the south-east floor; the leaks sit on the racks.
+			return [Vector2(912, 906), Vector2(238, 296), Vector2(1082, 278)]
 		"open_source_wildlands":
 			# Legacy systems squatting on the issue graveyard — the thing worth
 			# taking is the thing that is defended. Bugs patrol the perimeter.
@@ -2542,24 +2671,31 @@ static func _region_enemy_posts(region_id: String) -> Array:
 			# else, which is thematically the only correct arrangement. The
 			# reception picket moved off the "raise a ticket" sign plate — a
 			# world plate draws at z 1150 and hides anything standing under it.
-			return [Vector2(286, 890), Vector2(250, 248), Vector2(152, 596), Vector2(1108, 252)]
+			# The architect keeps the south-west floor but steps EAST to x 352:
+			# at 286 he stood inside the bottom-left corner box, which is where the
+			# objective line prints — critique #6's "red-eyed robot under the
+			# objective". 352 is the first pixel clear of that box that is still
+			# 288 from the centre column.
+			return [Vector2(352, 906), Vector2(250, 248), Vector2(152, 596), Vector2(1108, 252)]
 		"gpu_mines":
-			# Leaks on both rig banks and one down at the spoil heap; two bugs at
-			# the mouth of the heat pit, which is where you want to be standing.
+			# Leaks on both rig banks and one down at the spoil heap; two bugs on
+			# the southern haul road, which is the long way round to the pit.
 			# The northern pair stands at the ends of the rig banks rather than in
 			# the gaps between them: the gaps are at x 366 and x 970, and both of
 			# those sit under the HUD in the arrival frame.
 			return [Vector2(228, 250), Vector2(236, 356), Vector2(1010, 252), Vector2(1114, 320),
 				Vector2(250, 890), Vector2(750, 894), Vector2(1060, 894)]
 		"production":
-			# The monolith holds the south floor below the war room. The
-			# hallucinations are gathered around the status page, agreeing —
-			# west of it, clear of the slab and of the STATUS PAGE plate.
-			return [Vector2(420, 890), Vector2(170, 262), Vector2(1092, 268), Vector2(1148, 560)]
+			# The monolith holds the south floor DIRECTLY below the war room, which
+			# is where it belonged all along: at x 420 it stood in the bottom
+			# HUD column with its 260-unit slam marker printed across the ability
+			# bar (critique #6, "a red arc under the objective"), and the war room
+			# it is guarding is at x 856.
+			return [Vector2(924, 906), Vector2(170, 262), Vector2(1092, 268), Vector2(1148, 560)]
 		"token_vault":
 			# Two rate limiters on the shelving rows, the infinite context in the
 			# open south-east where there is room to run away from it.
-			return [Vector2(250, 258), Vector2(1092, 258), Vector2(872, 890)]
+			return [Vector2(250, 258), Vector2(1092, 258), Vector2(946, 906)]
 		_: return []
 
 ## Boss arena anchor (visual only — the post table above is what actually
@@ -2568,11 +2704,11 @@ static func _region_enemy_posts(region_id: String) -> Array:
 ## corners and every other piece of scenery kept out of it.
 static func _region_boss_arena(region_id: String) -> Vector2:
 	match region_id:
-		"stackoverflow_ruins": return Vector2(866, 890)
-		"cloud_district": return Vector2(880, 890)
-		"corporate_enterprise": return Vector2(286, 890)
-		"production": return Vector2(420, 890)
-		"token_vault": return Vector2(872, 890)
+		"stackoverflow_ruins": return Vector2(938, 906)
+		"cloud_district": return Vector2(912, 906)
+		"corporate_enterprise": return Vector2(352, 906)
+		"production": return Vector2(924, 906)
+		"token_vault": return Vector2(946, 906)
 		_: return Vector2.ZERO
 
 ## Solid cover, per region. Small isolated blocks only — never a wall, never two
@@ -2604,21 +2740,30 @@ static func _region_cover(region_id: String) -> Array:
 			# new posts — 87 units apart is a barrier an enemy spawns against.
 			return [Vector2(150, 660), Vector2(520, 700), Vector2(1160, 372)]
 		"stackoverflow_ruins":
-			return [Vector2(1180, 380), Vector2(300, 880), Vector2(700, 880), Vector2(980, 880)]
+			# (980,880) went east with the beast: 52 units from its new post is a
+			# barrier a boss spawns against.
+			return [Vector2(1180, 380), Vector2(300, 880), Vector2(700, 880), Vector2(1112, 890)]
 		"api_bazaar":
 			return [Vector2(700, 880), Vector2(150, 600), Vector2(170, 340)]
 		"cloud_district":
-			return [Vector2(720, 880), Vector2(1000, 900), Vector2(1180, 400)]
+			return [Vector2(720, 880), Vector2(1080, 884), Vector2(1180, 400)]
 		"open_source_wildlands":
 			return [Vector2(150, 700), Vector2(640, 880), Vector2(1160, 880)]
 		"corporate_enterprise":
-			return [Vector2(180, 880), Vector2(400, 880), Vector2(160, 340), Vector2(1170, 340)]
+			# (400,880) steps east to 508: at 400 it was 55 units from the
+			# architect's new post, which is a barrier a boss spawns against. 157
+			# now, and still west of the reserved arrival lane at x 524.
+			return [Vector2(180, 880), Vector2(508, 888), Vector2(160, 340), Vector2(1170, 340)]
 		"gpu_mines":
-			return [Vector2(1180, 520), Vector2(150, 860), Vector2(860, 880), Vector2(1160, 900)]
+			# (150,860) drops 24: a barrier's lit cap sits 23 above its anchor, so
+			# at 860 it printed inside the bottom band's left corner box.
+			return [Vector2(1180, 520), Vector2(150, 884), Vector2(860, 880), Vector2(1160, 900)]
 		"production":
-			return [Vector2(300, 900), Vector2(560, 880), Vector2(150, 600), Vector2(1180, 720)]
+			# (300,900) crosses the room to shape the monolith's new arena; it
+			# clears the reserved lane's east edge (x 756) by eight units.
+			return [Vector2(764, 900), Vector2(560, 880), Vector2(150, 600), Vector2(1180, 720)]
 		"token_vault":
-			return [Vector2(740, 890), Vector2(1000, 900), Vector2(1180, 420)]
+			return [Vector2(740, 890), Vector2(1116, 896), Vector2(1180, 420)]
 		_: return []
 
 static func _build_encounters(parent: Node2D, region_id: String, theme: Dictionary, w: int, h: int) -> void:
@@ -2632,10 +2777,10 @@ static func _build_encounters(parent: Node2D, region_id: String, theme: Dictiona
 		# The clearing is drawn around the boss post but clamped inward, because
 		# several posts sit close enough to a wall that an un-clamped ring would
 		# be painted over the wall or off the map entirely.
-		# h - 110 rather than h - 140 since round 12: the bosses are staged at
-		# y 890 now (critique #3), and a ring drawn 70 units north of the thing it
-		# is meant to be around stops reading as that thing's floor.
-		_arena(z, Vector2(clampf(arena.x, 260.0, float(w) - 260.0), clampf(arena.y, 250.0, float(h) - 110.0)), accent)
+		# h - 94 rather than h - 110 since round 13, following the bosses down to
+		# y 906: a pad drawn 70 units north of the thing it is meant to be around
+		# stops reading as that thing's floor.
+		_arena(z, Vector2(clampf(arena.x, 260.0, float(w) - 260.0), clampf(arena.y, 250.0, float(h) - 94.0)))
 	var idx := 0
 	for cp: Vector2 in _region_cover(region_id):
 		_cover(z, cp, glow, accent, idx)
@@ -2654,8 +2799,14 @@ static func _build_encounters(parent: Node2D, region_id: String, theme: Dictiona
 ## contact shadows, and the four approach chevrons: a hundred-odd primitives
 ## drawn on a floor to say "fight here", when a darker swept disc with one edge
 ## on it says the same thing and lets the boss be the thing you look at.
-static func _arena(parent: Node2D, pos: Vector2, accent: Color) -> void:
-	_floor_patch(parent, pos, 500.0, Color(accent.r, accent.g, accent.b), 0.07, -94)
+##
+## ROUND 13: the outer disc is gone as well. It was a 500-unit ACCENT stain at 7%
+## — the region's own neon, painted on the floor — and with the boss staged at
+## y 906 its top edge reached y 750, i.e. it was the region's accent hue smeared
+## under the objective line and the ability bar in five of the ten rooms. What is
+## left is one DARK swept pad, which cannot wash over anything: it makes the
+## ground under the HUD text darker, not brighter.
+static func _arena(parent: Node2D, pos: Vector2) -> void:
 	_floor_patch(parent, pos, 330.0, Color(0.014, 0.016, 0.03), 0.30, -93)
 	# ROUND 10: the poured RAIL is gone too — thirty rotated 4px bars laid end to
 	# end around an ellipse, which is what critique #8 read as "smooth red
@@ -2709,7 +2860,12 @@ static func _staged(want: Vector2, spawn: Vector2, rng: RandomNumberGenerator) -
 	var h := float(REGION_SIZE.y * TILE_SIZE)
 	if want == Vector2.ZERO:
 		return _safe_scatter(rng, spawn, w, h)
-	var p := Vector2(clampf(want.x, 130.0, w - 130.0), clampf(want.y, HUD_KEEP_Y, h - 66.0))
+	# h - 52 rather than h - 66 since round 13: a boss has to stand at y 906 for
+	# its 128-unit body to clear the bottom HUD band, and the old clamp silently
+	# pulled every one of them back to 894 — where the head is in the band again.
+	# 906 leaves 38 units between the body's own 14px radius and the wall collider
+	# at 944, so nothing is depenetrating into the masonry.
+	var p := Vector2(clampf(want.x, 130.0, w - 130.0), clampf(want.y, HUD_KEEP_Y, h - 52.0))
 	var d := p - spawn
 	if d.length() < 415.0:
 		if d.length() < 1.0:

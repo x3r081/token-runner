@@ -134,7 +134,7 @@ Exact targets, sRGB luminance 0–255, measured on the bare tile:
 | localhost | wood planks (reference — keep) | #5A3F2A |
 | dependency_district | node_modules sludge slabs, 1px joints | #3E4A36 |
 | stackoverflow_ruins | cracked sandstone, irregular joints | #5C503C |
-| api_bazaar | woven rug / flagstone, 2-tone weave | #4C3244 |
+| api_bazaar | flagstone, running bond, 1px joints | #4C3244 |
 | cloud_district | steel grating, dotted grille | #404854 |
 | open_source_wildlands | loam and moss, leaf specks | #404C32 |
 | corporate_enterprise | carpet tiles, subtle checker | #383E4E |
