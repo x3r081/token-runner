@@ -1,0 +1,160 @@
+name: Deploy web build to GitHub Pages
+
+on:
+  push:
+    branches:
+      - "cursor/game-quality-overhaul-2ae1"
+      - "main"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a deploy midway: a cancelled deploy-pages run can leave the
+# Pages environment pointing at a half-uploaded artifact.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+env:
+  GODOT_VERSION: "4.7.2"
+
+jobs:
+  build:
+    name: Export web build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Godot ${{ env.GODOT_VERSION }} (linux headless)
+        run: |
+          set -euo pipefail
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q "Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          chmod +x "Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          sudo mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot
+          godot --version
+
+      - name: Install Godot ${{ env.GODOT_VERSION }} export templates
+        run: |
+          set -euo pipefail
+          TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$TEMPLATE_DIR"
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          # The .tpz is a zip whose contents live under a single "templates" dir.
+          # Move the CONTENTS up, do not nest, or Godot will not find them.
+          unzip -q "Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          mv templates/* "$TEMPLATE_DIR/"
+          rm -rf templates
+
+          echo "Web templates installed:"
+          ls -1 "$TEMPLATE_DIR" | grep '^web' || true
+
+          # Fail loudly here rather than letting the export silently emit nothing.
+          if ! ls "$TEMPLATE_DIR"/web*.zip >/dev/null 2>&1; then
+            echo "::error::No web export templates found in $TEMPLATE_DIR. Contents:"
+            ls -1 "$TEMPLATE_DIR" || true
+            exit 1
+          fi
+          # The Web preset sets variant/thread_support=false, so this is the
+          # template the export actually consumes.
+          if [ ! -f "$TEMPLATE_DIR/web_nothreads_release.zip" ]; then
+            echo "::warning::web_nothreads_release.zip is missing; the nothreads export may fail."
+          fi
+
+      - name: Generate procedural assets
+        run: godot --headless --path . --script scripts/tools/run_generate.gd
+
+      - name: Import resources
+        run: |
+          set -uo pipefail
+          # Keep Godot from scanning the export output back into the project.
+          mkdir -p build
+          touch build/.gdignore
+
+          # A fresh checkout has no .godot/ cache, and the first import pass can
+          # bail out partway while it is still discovering resources. Let pass 1
+          # fail softly, then require pass 2 to succeed.
+          echo "--- import pass 1 ---"
+          godot --headless --path . --import || echo "pass 1 returned non-zero; retrying"
+          echo "--- import pass 2 ---"
+          godot --headless --path . --import
+
+      - name: Export web build
+        run: |
+          set -euo pipefail
+          mkdir -p build/web
+          godot --headless --path . --export-release "Web" build/web/index.html
+
+      - name: Verify the export actually produced a build
+        run: |
+          set -uo pipefail
+          FAILED=0
+
+          for f in index.html index.js index.wasm index.pck; do
+            if [ ! -s "build/web/$f" ]; then
+              echo "::error::build/web/$f is missing or empty - the web export produced nothing. This almost always means the ${GODOT_VERSION}.stable export templates were not installed where Godot looks for them."
+              FAILED=1
+            fi
+          done
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "Contents of build/web (if any):"
+            ls -la build/web || echo "  (build/web does not exist)"
+            echo "Contents of the export template dir:"
+            ls -la "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable" || echo "  (template dir does not exist)"
+            exit 1
+          fi
+
+          # A truncated or placeholder wasm is worse than a missing one: it
+          # deploys green and then fails in the browser. Check size and magic.
+          WASM_SIZE=$(stat -c%s build/web/index.wasm)
+          echo "index.wasm size: ${WASM_SIZE} bytes"
+          if [ "$WASM_SIZE" -lt 1000000 ]; then
+            echo "::error::build/web/index.wasm is only ${WASM_SIZE} bytes - expected tens of MB. The export is truncated or corrupt."
+            exit 1
+          fi
+          MAGIC=$(head -c 4 build/web/index.wasm | od -An -tx1 | tr -d ' \n')
+          if [ "$MAGIC" != "0061736d" ]; then
+            echo "::error::build/web/index.wasm does not start with the WebAssembly magic bytes (\\0asm)."
+            exit 1
+          fi
+
+          # GitHub Pages cannot send the COOP/COEP headers SharedArrayBuffer
+          # needs, so a threaded build would load and then hang. index.worker.js
+          # is only emitted by the threaded variant.
+          if [ -f build/web/index.worker.js ]; then
+            echo "::error::build/web/index.worker.js exists, so this is a THREADED web export. It cannot run on GitHub Pages (no COOP/COEP headers, so no SharedArrayBuffer). Set variant/thread_support=false on the Web preset in export_presets.cfg."
+            exit 1
+          fi
+
+          echo "Export verified:"
+          ls -la build/web
+
+      - name: Add .nojekyll
+        run: |
+          set -euo pipefail
+          # Without this, Pages runs the output through Jekyll, which strips
+          # files and directories whose names start with an underscore.
+          touch build/web/.nojekyll
+          ls -la build/web/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
