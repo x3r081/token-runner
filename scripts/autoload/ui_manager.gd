@@ -53,6 +53,21 @@ func push_modal() -> void:
 func pop_modal() -> void:
 	_modal_count = maxi(0, _modal_count - 1)
 
+## Drop every hold. The count is the twin of modal_panel.gd's `_dim_depth`, and
+## it has the same failure mode with none of its safety net: this is an autoload,
+## so the number outlives every scene, and a panel that never got to run its
+## `tree_exiting` release leaves `has_blocking_ui()` permanently true — random
+## events stop firing, the idle nudge goes quiet and the world reads as if a
+## modal it cannot see is open, for the rest of the session. Called where the
+## world dim is cleared (hud.gd, once per world) and on New Game, so a fresh room
+## always opens with nothing held.
+## The guide overlay is the ONE holder that can outlive a world — it is this
+## autoload's own child — so it re-asserts its hold instead of losing it.
+func clear_modals() -> void:
+	_modal_count = 0
+	if is_instance_valid(_guide) and _guide.get("_modal_pushed"):
+		_modal_count = 1
+
 func has_blocking_ui() -> bool:
 	if _modal_count > 0:
 		return true

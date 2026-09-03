@@ -258,8 +258,20 @@ func get_tracked_quest_id() -> String:
 		if obj.is_empty():
 			continue
 		var score := 0
-		if objective_region(qid, obj) == here:
+		var where := objective_region(qid, obj)
+		if where == here:
 			score += 100
+		# ...AND NEVER PREFER A ROOM THE PLAYER CANNOT OPEN. context_window_full is
+		# handed out in the Cloud District the moment cloud_migration is done, but
+		# its boss only ever stands in the Token Vault, which stays locked until
+		# production_down — five quests later. Between accepting it and picking up
+		# the next critical-path quest it is the highest-scoring thing active, and
+		# the permanent objective line then reads "Head to Token Vault" at a portal
+		# that will not open: the one failure mode the guidance system exists to
+		# prevent. The penalty only ever reorders — a quest with nowhere reachable
+		# to go is still tracked when it is all there is.
+		if where != "" and where not in GameManager.regions_unlocked:
+			score -= 50
 		var q: Dictionary = quest_defs.get(qid, {})
 		if q.get("rewards", {}).has("unlock_region"):
 			score += 10

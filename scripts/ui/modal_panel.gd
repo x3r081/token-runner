@@ -223,10 +223,42 @@ static func attach_scrim(panel: Control, alpha: float = SCRIM_ALPHA) -> ColorRec
 	panel.tree_exiting.connect(kill, CONNECT_ONE_SHOT)
 	return scrim
 
-## The height a centre-anchored modal is allowed to be on this viewport.
+## Panels re-placed when their content settles; see `place_centred`.
+const PLACE_META := "_modal_place"
+const HOOK_META := "_modal_place_hooked"
+
+## THE FRAME A MODAL LIVES IN, which is the world's letterbox and not the window.
+##
+## On a 3840x928 ultrawide the window is 2560px wider than the game; a panel
+## measured against it is centred on a desktop, not on a room. The pixel stage
+## knows where the world is, so ask it, and fall back to the viewport for a rig
+## that mounts a panel with no world around it (the main menu, a test).
+static func stage_rect(panel: Control) -> Rect2:
+	if panel == null or not panel.is_inside_tree():
+		return Rect2(Vector2.ZERO, Vector2(1920.0, 1080.0))
+	var st := PixelStage.find(panel.get_tree())
+	if st != null:
+		return st.world_rect
+	return panel.get_viewport_rect()
+
+## The stage, but only for a panel the stage's letterbox correction applies to.
+##
+## That correction turns "anchored to the window" into "anchored to the world
+## rect", so it belongs to a ROOT Control of a CanvasLayer and to nothing else: a
+## panel nested inside another Control (the Dream App's body inside its full-rect
+## root) is already measured against a parent the fit has put on the world, and
+## correcting it a second time would push it down by the letterbox bar.
+static func _root_stage(panel: Control) -> PixelStage:
+	if panel == null or not panel.is_inside_tree():
+		return null
+	if not (panel.get_parent() is CanvasLayer):
+		return null
+	return PixelStage.find(panel.get_tree())
+
+## The height a centre-anchored modal is allowed to be in that frame.
 static func fitted_height(panel: Control, want_h: float,
 		top_pad: float = TOP_PAD, bottom_reserve: float = HUD_BOTTOM_RESERVE) -> float:
-	var vh: float = panel.get_viewport_rect().size.y
+	var vh: float = stage_rect(panel).size.y
 	return minf(want_h, maxf(MIN_HEIGHT, vh - top_pad - bottom_reserve))
 
 ## Size a centre-anchored modal and centre it in the space the HUD is NOT using —
@@ -237,10 +269,55 @@ static func place_centred(panel: Control, want_h: float,
 		top_pad: float = TOP_PAD, bottom_reserve: float = HUD_BOTTOM_RESERVE) -> void:
 	if panel == null or not panel.is_inside_tree():
 		return
-	var h := fitted_height(panel, want_h, top_pad, bottom_reserve)
-	var shift: float = (top_pad - bottom_reserve) * 0.5
-	panel.offset_top = -h * 0.5 + shift
-	panel.offset_bottom = h * 0.5 + shift
+	panel.set_meta(PLACE_META, PackedFloat32Array([want_h, top_pad, bottom_reserve]))
+	# EVERY SCREEN SETS ITS BOX BEFORE IT FILLS IT, so the minimum size that
+	# decides how tall this panel really ends up is not known on this call. The
+	# signal that says it changed is the only honest moment to place it again, and
+	# the work is two offsets.
+	if not panel.has_meta(HOOK_META):
+		panel.set_meta(HOOK_META, true)
+		panel.minimum_size_changed.connect(_replace_bound.bind(panel))
+	_apply_place(panel)
+
+## `place_centred` again, with the arguments it was last given.
+static func _replace_bound(panel: Control) -> void:
+	if is_instance_valid(panel) and panel.is_inside_tree():
+		_apply_place(panel)
+
+static func _apply_place(panel: Control) -> void:
+	var args: PackedFloat32Array = panel.get_meta(PLACE_META)
+	if args.size() < 3:
+		return
+	var frame := stage_rect(panel)
+	var h := fitted_height(panel, args[0], args[1], args[2])
+	# THE PANEL MAY BE TALLER THAN WE ASKED FOR, and used to hang out of the world
+	# and onto the letterbox bar when it was: `h` is a request, a panel whose
+	# content needs more grows past it downward, and the quest log (625 tall in a
+	# 484 band) and the map both crossed the bottom edge of the room. Measure what
+	# the box will ACTUALLY be and keep that inside the frame. A modal that cannot
+	# fit the band may cover a HUD lane it was asked to clear; it may not leave the
+	# room, because outside the room there is no game, only letterbox.
+	var real_h := maxf(h, panel.get_combined_minimum_size().y)
+	var room := maxf((frame.size.y - real_h) * 0.5, 0.0)
+	var shift: float = clampf((args[1] - args[2]) * 0.5, -room, room)
+	# These are AUTHORED offsets against centre anchors. A panel that re-heights
+	# itself while it is open (the map, on every zoom step) has already been
+	# through the stage fit by then, so the write goes through the stage when
+	# there is one: it re-applies that panel's own letterbox correction instead
+	# of dropping it on the floor.
+	# Placing a panel can change its layout, which can change its minimum size,
+	# which calls this again: settle for the answer we already have rather than
+	# ringing.
+	if args.size() >= 5 and is_equal_approx(args[3], real_h) and is_equal_approx(args[4], shift):
+		return
+	panel.set_meta(PLACE_META, PackedFloat32Array([args[0], args[1], args[2], real_h, shift]))
+	var st := _root_stage(panel)
+	if st != null:
+		st.author_offset(panel, SIDE_TOP, -real_h * 0.5 + shift)
+		st.author_offset(panel, SIDE_BOTTOM, real_h * 0.5 + shift)
+		return
+	panel.offset_top = -real_h * 0.5 + shift
+	panel.offset_bottom = real_h * 0.5 + shift
 
 ## Rows appear. That is the whole animation.
 ##

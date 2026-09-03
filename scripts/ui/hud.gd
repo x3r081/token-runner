@@ -189,6 +189,9 @@ func _ready() -> void:
 	# exactly once per world and before any panel can exist, is the whole
 	# guarantee: this layer comes up with the room at 100% or it does not come up.
 	_Modal.clear_world_dim(get_tree())
+	# Same guarantee for the modal COUNT, which is an autoload field and so
+	# outlives the scene the panels died with. See UIManager.clear_modals().
+	UIManager.clear_modals()
 	_theme = _GameTheme.create()
 	_build_alert_vignettes()
 	_mount_waypoint()
@@ -996,10 +999,20 @@ func _quest_headline(qid: String, authored: String) -> String:
 ## `text_overrun_behavior = TRIM_ELLIPSIS` to sort it out, so seven of the ten QA
 ## frames printed "→ Head to Localhost — Run the coffee machine in the apartment
 ## kitchen (walk onto i…": a sentence guillotined mid-word, inside a bracket, at
-## whatever glyph the pixel budget happened to land on. 56 characters is what
-## fits at BODY size with the "  ·  12m W" suffix still to come, and the cut now
-## happens where a reader would put it.
-const OBJECTIVE_MAX_CHARS := 56
+## whatever glyph the pixel budget happened to land on. The cut now happens where
+## a reader would put it.
+##
+## THE BUDGET IS THE GAP TO THE ABILITY BAR, and that gap shrank this round. The
+## HUD used to be laid out across the whole window and drawn onto the world rect
+## through a layer scale; it now lays out IN the world rect at 1:1
+## (pixel_stage.gd), so the frame the objective line shares with the centred
+## ability bar is 1280 wide, not 1920. The line starts at x=28 and the bar's left
+## edge is at 640 - ABILITY_BAR_HALF_W = 541: 513px, which at BODY size is about
+## 44 characters once "→ " and the "  ·  12m W" suffix have taken their share.
+## 36 keeps a comfortable margin for a three-digit distance — and "16m NW"
+## printed over ability slot 1 is exactly what the old 56 produced in the first
+## frames of this round.
+const OBJECTIVE_MAX_CHARS := 36
 
 ## The one line that fixes "I don't know what to do": a concrete NEXT ACTION,
 ## how far and which way. Everything that used to sit under it — the quest name,
@@ -1056,7 +1069,28 @@ func _clip_words(text: String, limit: int) -> String:
 	var space := cut.rfind(" ")
 	if space * 2 > limit:
 		cut = cut.substr(0, space)
-	return "%s…" % cut.strip_edges().rstrip(" ,;:·—-")
+	return "%s…" % _drop_dangling(cut.strip_edges().rstrip(" ,;:·—-"))
+
+## Words that cannot end a sentence. Cutting at a word boundary is not enough on
+## its own: the 36-char budget landed the Production objective on "Run the coffee
+## machine in the…", which promises a place and then does not name it — the
+## reader stops on the article and re-reads. Dropping the dangling connective
+## gives "Run the coffee machine…", which says the same amount and reads once.
+const DANGLING_WORDS := ["the", "a", "an", "and", "or", "of", "to", "in", "on",
+	"at", "by", "for", "from", "into", "with", "that", "your", "its", "his",
+	"her", "their", "this", "these", "those"]
+
+func _drop_dangling(text: String) -> String:
+	var out := text
+	while true:
+		var space := out.rfind(" ")
+		if space <= 0:
+			return out
+		var last := out.substr(space + 1).to_lower()
+		if last not in DANGLING_WORDS:
+			return out
+		out = out.substr(0, space).strip_edges().rstrip(" ,;:·—-")
+	return out
 
 ## "  ·  28m NE" when the waypoint has a fix on something, "" otherwise.
 func _where_suffix() -> String:

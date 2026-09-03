@@ -1468,31 +1468,62 @@ func _floor_weave(img: Image, t: FloorTones, alt: bool) -> void:
 					c = grain_hi[i]
 			_px(img, x, y, c)
 
-## CLOUD DISTRICT — steel grating. A 16px lattice of load bars lit on their
-## top-left, a pan recessed between them, and one square drain hole per cell
-## with a lit near lip: the dotted grille of LAW 6. The old 8px rib run was a
-## 16-screen-pixel stripe field over the whole floor — corduroy, not ground.
+## CLOUD DISTRICT — steel deck plate with punched drains.
+##
+## ROUND 14, defect #1: this floor measured 0% quiet — every single 32px block
+## on it. The cause was that the GRILLE was the whole material: a 16px lattice
+## of load bars lit along their top-left, plus a 6x6 drain hole in each of the
+## sixteen cells and a lit lip around it. Two fifths of the tile was bar edge or
+## hole, the holes read as strongly as the plate, and the result underfoot was a
+## dot field rather than ground. LAW 6 asks for a dotted grille; the dots had
+## become the floor.
+##
+## What replaces it is the plate the grille is bolted to. 32px panels, a 1px
+## joint at the dark tone between them, one lit lip along a panel's top edge
+## (light is from the top-left everywhere in this file), a brushed sheen that
+## never leaves the 3% jitter, and ONE small punched drain per panel at the dark
+## tone. 96% of the tile is now plate, which is what a floor is for.
 func _floor_grating(img: Image, t: FloorTones, alt: bool) -> void:
 	for y in 64:
 		for x in 64:
-			var bx := x & 15
-			var by := y & 15
-			var c: Color = t.g(-1.0)
-			if bx < 3 or by < 3:
-				c = t.hi if (bx == 0 or by == 0) else t.g(0.7)
+			var sx := x & 31
+			var sy := y & 31
+			var c: Color = t.seam
+			if sx > 0 and sy > 0:
+				if sy == 1:
+					c = t.hi
+				else:
+					# Brushed steel: 4px streaks along the roll at +/-1.5%, one
+					# 8-bit step either side of the plate. A sheen, not a rib
+					# run — the old 8px ribs were corduroy at 2x.
+					var b: int = ((((x >> 2) * 73856093) ^ (y * 19349663)) >> 5) & 7
+					c = t.base
+					if b == 0:
+						c = t.g(0.5)
+					elif b == 5:
+						c = t.g(-0.5)
 			_px(img, x, y, c)
-	for gy in range(0, 64, 16):
-		for gx in range(0, 64, 16):
-			for oy in range(6, 12):
-				for ox in range(6, 12):
-					_px(img, gx + ox, gy + oy, t.seam)
-			for i in range(5, 12):
-				_px(img, gx + i, gy + 5, t.lip)
-				_px(img, gx + 5, gy + i, t.lip)
-	if alt:
-		for i in 4:
-			_px(img, 44 + i, 27, t.hi)
-			_px(img, 44 + i, 28, t.lip)
+	# One drain per panel and no more, at a different offset in each of the four
+	# panels and at four other offsets in the B tile — a mark that lands in the
+	# same place in every cell is a lattice, whatever shape it is (the lesson the
+	# sludge pools were taught). Every hole sits clear of its panel's joints.
+	var drains_a: Array[Vector2i] = [Vector2i(11, 21), Vector2i(23, 9),
+		Vector2i(7, 13), Vector2i(19, 25)]
+	var drains_b: Array[Vector2i] = [Vector2i(20, 10), Vector2i(9, 22),
+		Vector2i(24, 26), Vector2i(13, 8)]
+	var drains: Array[Vector2i] = drains_b if alt else drains_a
+	# The five pixels of a punched hole, as offsets from its centre: a plus, which
+	# is what a round hole looks like at three pixels across.
+	var hole: Array[Vector2i] = [Vector2i(0, 0), Vector2i(-1, 0), Vector2i(1, 0),
+		Vector2i(0, -1), Vector2i(0, 1)]
+	for i in drains.size():
+		var d: Vector2i = drains[i]
+		var ox := 32 * (i & 1)
+		var oy := 32 * (i >> 1)
+		for o: Vector2i in hole:
+			_px(img, ox + d.x + o.x, oy + d.y + o.y, t.seam)
+		# The hole's lower wall, in shadow under a top-left light.
+		_px(img, ox + d.x, oy + d.y + 2, t.lip)
 
 ## OPEN SOURCE WILDLANDS — loam and moss, and the point of it is that soil has
 ## no module: no grid, no bevel, no seam. The structure is CLODDING, built from
@@ -1534,9 +1565,17 @@ func _floor_loam(img: Image, t: FloorTones, alt: bool) -> void:
 ## Which carpet cell catches the light: one of the four 32px cells in a 64px
 ## tile, at a different corner in each variant. The builder asks for B on 38%
 ## of cells, so about a quarter of the floor carries a lit edge and no two
-## neighbours agree on where it is.
+## neighbours agree on where it is. CARPET_RUN is where along that cell's top
+## edge the lit run starts and how long it is — a SHORT segment, never the side.
 const CARPET_LIT_A := Vector2i(1, 1)
 const CARPET_LIT_B := Vector2i(0, 0)
+const CARPET_RUN_A := Vector2i(9, 13)
+const CARPET_RUN_B := Vector2i(16, 11)
+## The carpet join, as a fraction of the base tone: 43/255. A carpet tile is
+## BUTTED, not grouted, so its join is a shallow shadow rather than the mortar
+## joint the stone floors get — but it is a dark line, which is the whole point
+## of this round's third defect.
+const CARPET_JOIN := 0.62
 
 ## CORPORATE ENTERPRISE — contract carpet tile, quarter-turned, with the loop
 ## pile running with the turn.
@@ -1545,27 +1584,31 @@ const CARPET_LIT_B := Vector2i(0, 0)
 ## cy == 1` painted a full 1px BRIGHT cross inside every tile, and the floor
 ## measured p90 96-102 against a base of 65-68. Graph paper.
 ##
-## LAW 6's highlight is *small* — a lit edge on ONE side of ONE tile, not a
-## line that runs the whole room. So the bright cross is gone and the highlight
-## survives on the top-left corner of a single cell per tile, which is what a
-## floor of dropped-in carpet tiles looks like when one of them catches the
-## light. The seam stays and stays DARK: a carpet tile has a visible join.
+## ROUND 14, defect #3: the frame STILL shows a continuous pale lattice over the
+## whole floor. Round 13 kept the highlight as a full cell SIDE, so the one lit
+## cell per tile still draws a 31px line down and a 31px line across, and once
+## the builder has stamped three hundred of them the room is drawn in light grey
+## lines on grey — an interlocking lattice, brighter than the ground it sits on,
+## which is exactly the thing LAW 6 forbids: the seam is the DARK tone and the
+## highlight is *small*.
+##
+## So the join is dark on all four sides of every cell, and the highlight is a
+## SHORT run of 11-13px along the top edge of ONE cell per tile, at a different
+## cell and a different offset in each variant. The builder asks for B on 38% of
+## cells, so about a quarter of the floor carries a lit edge, no two of them
+## line up, and nothing on this floor forms a line longer than a carpet tile.
 ##
 ## What is left reads the tile boundary the way carpet actually reads it — the
 ## dark join, and the pile turning 90 degrees across it. It is meant to be
 ## forgettable, and that is what makes the room on top of it readable.
 func _floor_carpet(img: Image, t: FloorTones, alt: bool) -> void:
-	var lit: Vector2i = CARPET_LIT_B if alt else CARPET_LIT_A
+	var join := _at_luma(t.base, _luma255(t.base) * CARPET_JOIN)
 	for y in 64:
 		for x in 64:
 			var cx := x & 31
 			var cy := y & 31
-			var c: Color = t.base
-			if cx == 0 or cy == 0:
-				c = t.seam
-			elif Vector2i(x >> 5, y >> 5) == lit and (cx == 1 or cy == 1):
-				c = t.hi
-			else:
+			var c: Color = join
+			if cx > 0 and cy > 0:
 				var turned := (((x >> 5) + (y >> 5)) & 1) == 1
 				var u: int = cx if turned else cy
 				var w: int = cy if turned else cx
@@ -1574,6 +1617,13 @@ func _floor_carpet(img: Image, t: FloorTones, alt: bool) -> void:
 				# is a tooth underfoot rather than a texture on screen.
 				c = t.g(0.6 if (((u >> 1) + (w >> 3)) & 1) == 0 else -0.6)
 			_px(img, x, y, c)
+	# The one lit edge: a short segment on one cell, and the B tile's is on a
+	# different cell at a different offset so two neighbouring tiles can never
+	# continue each other's highlight.
+	var lit: Vector2i = CARPET_LIT_B if alt else CARPET_LIT_A
+	var run: Vector2i = CARPET_RUN_B if alt else CARPET_RUN_A
+	for i in run.y:
+		_px(img, lit.x * 32 + run.x + i, lit.y * 32 + 1, t.hi)
 
 ## GPU MINES — scorched deck plate. 32px plates, a hard seam, a lit near bevel,
 ## four rivet heads per plate and a brushed grain running with the roll. The B
@@ -1631,36 +1681,69 @@ func _floor_gold(img: Image, t: FloorTones, alt: bool) -> void:
 		for i in 7:
 			_px(img, 12 + i, 22 - absi(i - 3), t.seam)
 
-## PRODUCTION — poured concrete with sawn expansion joints on a 32px grid. A
-## 2px joint (that is what a saw cut looks like), a lit near lip and aggregate
-## speckle inside the jitter ceiling. The B tile carries one patch repair.
+## The shaded wall of a saw cut, as a fraction of the base tone: 62/255. It is
+## a half-step and not the seam on purpose — see the note below on what a 2px
+## joint costs. Which cell carries the one spalled arris, and where along it.
+const CONCRETE_FLANK := 0.88
+const SPALL_CELL_A := Vector2i(0, 1)
+const SPALL_RUN_A := Vector2i(6, 11)
+const SPALL_CELL_B := Vector2i(1, 0)
+const SPALL_RUN_B := Vector2i(17, 9)
+
+## PRODUCTION — a poured slab with sawn control joints on a 32px grid.
+##
+## ROUND 14, defect #2: 0% quiet, and for two reasons that compound. The
+## aggregate was a speckle on 31% of the field at the FULL 3% jitter — a noise
+## floor of exactly the kind LAW 4 puts at zero, "aggregate" being a nicer word
+## for mottle. And the joint was 2px of the dark tone crossed with a 1px lit
+## lip, which is 124 dark pixels and 62 bright ones in every 32px block: an
+## eighth of the block sitting below the bulk, so the gate's p10 landed ON the
+## joint everywhere on the floor and the block's spread was measured against the
+## joint instead of against the concrete.
+##
+## A saw cut is a groove, not a painted line, so it is drawn as one: 1px of the
+## dark tone for the cut and 1px of a shaded flank at 88% of base for the wall
+## of it that faces away from the light. It still reads two pixels wide — four
+## screen pixels — and it costs 63 dark pixels a block instead of 124. The
+## aggregate drops to +/-2% on ~11% of the field, and the only highlight left is
+## one short spalled arris under one cell's joint per tile.
 func _floor_concrete(img: Image, t: FloorTones, alt: bool) -> void:
+	var flank := _at_luma(t.base, _luma255(t.base) * CONCRETE_FLANK)
 	for y in 64:
 		for x in 64:
 			var jx := x & 31
 			var jy := y & 31
-			var c: Color = t.base
-			if jx <= 1 or jy <= 1:
-				c = t.seam
-			elif jx == 2 or jy == 2:
-				c = t.hi
-			else:
-				var h: int = (((x * 73856093) ^ (y * 19349663)) >> 5) & 15
-				var k := 0.0
-				if h < 2:
-					k = 1.0
-				elif h > 13:
-					k = -1.0
-				elif h == 7:
-					k = 0.35
-				c = t.g(k)
+			var c: Color = t.seam
+			if jx > 0 and jy > 0:
+				if jx == 1 or jy == 1:
+					c = flank
+				else:
+					var h: int = (((x * 73856093) ^ (y * 19349663)) >> 5) & 15
+					var k := 0.0
+					if h == 3:
+						k = 0.67
+					elif h == 11:
+						k = -0.67
+					c = t.g(k)
 			_px(img, x, y, c)
+	# The third tone: one short run where the saw chipped the arris. One per
+	# tile, on a different cell in each variant.
+	var cell: Vector2i = SPALL_CELL_B if alt else SPALL_CELL_A
+	var run: Vector2i = SPALL_RUN_B if alt else SPALL_RUN_A
+	for i in run.y:
+		_px(img, cell.x * 32 + run.x + i, cell.y * 32 + 2, t.hi)
 	if alt:
-		for i in 8:
-			_px(img, 38 + i, 38, t.lip)
-			_px(img, 38, 38 + i, t.lip)
-			_px(img, 45, 38 + i, t.lip)
-			_px(img, 38 + i, 45, t.lip)
+		# The one inset detail: a trowelled patch repair, a touch lighter than
+		# the pour around it and edged by the same flank tone as the joints.
+		for py in range(38, 47):
+			for pxx in range(37, 50):
+				_px(img, pxx, py, t.g(0.9))
+		for i in 13:
+			_px(img, 37 + i, 38, flank)
+			_px(img, 37 + i, 46, flank)
+		for i in 9:
+			_px(img, 37, 38 + i, flank)
+			_px(img, 49, 38 + i, flank)
 
 ## One soft round mark, wrapped so it never straddles the tile seam. The whole
 ## vocabulary of "inset detail" is this, and stacking two or three of them

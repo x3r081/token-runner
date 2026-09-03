@@ -239,8 +239,9 @@ func _ready() -> void:
 ## --- the pixel stage -------------------------------------------------------
 
 ## Re-fit every screen-space layer whenever the letterbox moves (window resize,
-## and once at startup). The layers are not re-created and no Control is touched:
-## a CanvasLayer transform maps the whole UI onto the world's rect at once.
+## and once at startup). Each layer's root Controls are re-anchored onto the
+## world's rect; see pixel_stage.gd for why that is a re-layout and not a
+## transform.
 func _on_stage_changed(_rect: Rect2) -> void:
 	_fit_ui()
 
@@ -270,8 +271,30 @@ func _exit_tree() -> void:
 func _on_node_added(n: Node) -> void:
 	if n is CanvasLayer:
 		call_deferred("_adopt_layer", n)
+	elif n is Control and n.get_parent() is CanvasLayer:
+		call_deferred("_fit_late_control", n)
 	elif n is CanvasItem and n.get_parent() == self:
 		call_deferred("_reclaim_world_child", n)
+
+## A ROOT CONTROL THAT ARRIVES AFTER THE FIT STILL HAS TO BE IN THE WORLD.
+##
+## Since the fit re-anchors root Controls instead of scaling their layer
+## (pixel_stage.gd), a panel mounted on the HUD later — the pause menu, the death
+## screen, [J], [B], [M], a toast lane, a scrim — no longer inherits the
+## letterbox from its parent: it would anchor to the WINDOW, which on the 3840
+## screen is 1280px of empty desktop away from the room it belongs to. Deferred,
+## so the panel's own `_ready` (which is where every one of them sets its anchors
+## and calls `place_centred`) has finished first.
+func _fit_late_control(c: Node) -> void:
+	if not is_instance_valid(c) or stage == null or not is_inside_tree():
+		return
+	var ctrl := c as Control
+	if ctrl == null or not ctrl.is_inside_tree():
+		return
+	var layer := ctrl.get_parent() as CanvasLayer
+	if layer == null or not layer.has_meta(PixelStage.LAYER_META):
+		return
+	stage.fit_control(ctrl)
 
 ## The mirror image of _adopt_layer. A handful of nodes in the project spawn
 ## WORLD-space visuals into `get_tree().current_scene` — token_pickup.gd's "+5"
@@ -774,8 +797,37 @@ func _on_debt_incident(_kind: String) -> void:
 	e.enemy_type = "bug"
 	e.max_hp = 16
 	enemies.add_child(e)
-	var ang := randf() * TAU
-	e.global_position = player.global_position + Vector2(cos(ang), sin(ang)) * randf_range(180.0, 260.0)
+	e.global_position = _incident_spot(player.global_position)
+
+## Where a debt incident's bug arrives: a ring around the player, but INSIDE the
+## room. The angle used to be a bare `randf() * TAU`, so an incident that fired
+## while the player stood near a wall — the whole south edge, the portal alcoves,
+## either end of a rig bank — put the bug 180-260 units into the masonry, where it
+## depenetrates against a static collider and can neither reach the player nor be
+## walked up to. A debt incident is meant to be felt; a bug stuck in a wall is
+## just a kill count that never closes.
+##
+## The camera limits are the room, set from the builder's own `size` in
+## `_apply_camera_bounds`, so nothing here has to know a region's dimensions.
+func _incident_spot(from: Vector2) -> Vector2:
+	const INSET := 130.0
+	var lo := Vector2(float(camera.limit_left) + INSET, float(camera.limit_top) + INSET)
+	var hi := Vector2(float(camera.limit_right) - INSET, float(camera.limit_bottom) - INSET)
+	var dist := randf_range(180.0, 260.0)
+	if hi.x <= lo.x or hi.y <= lo.y:
+		# No usable bounds (a test rig with no camera limits): keep the old ring.
+		var a := randf() * TAU
+		return from + Vector2(cos(a), sin(a)) * dist
+	# Eight bearings from a random start, so the choice is still a ring and not a
+	# preferred side; the first one that lands in the room wins.
+	var start := randf() * TAU
+	for i in 8:
+		var a: float = start + float(i) * TAU / 8.0
+		var p: Vector2 = from + Vector2(cos(a), sin(a)) * dist
+		if p.x >= lo.x and p.x <= hi.x and p.y >= lo.y and p.y <= hi.y:
+			return p
+	# Boxed in on every bearing (a room smaller than the ring): clamp inward.
+	return Vector2(clampf(from.x, lo.x, hi.x), clampf(from.y, lo.y, hi.y))
 
 func _on_player_died(msg: String = "") -> void:
 	get_tree().paused = false

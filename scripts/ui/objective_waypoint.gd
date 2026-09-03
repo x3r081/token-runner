@@ -261,7 +261,7 @@ func _ready() -> void:
 	var qp := get_parent().get_node_or_null("QuestPanel") if get_parent() else null
 	if qp is Control:
 		(qp as Control).item_rect_changed.connect(func() -> void:
-			_refresh_exclusions(get_viewport_rect().size)
+			_refresh_exclusions(size)
 		)
 	set_process(true)
 
@@ -448,7 +448,11 @@ func _refresh_exclusions(view: Vector2) -> void:
 	_ex_quest = Rect2(28.0, view.y - 96.0, 760.0, 56.0)
 	var qp := get_parent().get_node_or_null("QuestPanel") if get_parent() else null
 	if qp is Control and (qp as Control).visible:
+		# Into THIS Control's space: it is a sibling on the same layer, but this
+		# Control no longer starts at the layer's origin — it starts at the
+		# world rect's corner.
 		var r: Rect2 = (qp as Control).get_global_rect()
+		r.position -= global_position
 		if r.size.x > 1.0 and r.size.y > 1.0:
 			_ex_quest = r
 	# Toast line, bottom-centre. MUST track hud.gd's TOAST_BOTTOM / TOAST_W /
@@ -498,7 +502,12 @@ func _place() -> void:
 	if vp == null:
 		_show(false)
 		return
-	var view := get_viewport_rect().size
+	# THE FRAME IS THIS CONTROL, NOT THE WINDOW. Since the stage fit re-anchors
+	# root Controls onto the world's letterbox (pixel_stage.gd), this full-rect
+	# Control IS the world rect — 1280x720 — while the window it sits in may be
+	# 3840 wide. Measuring the margins off the window put the pinned chevron and
+	# every exclusion box 1280px out on the ultrawide.
+	var view := size
 	if view != _view_size:
 		_refresh_exclusions(view)
 	var sp: Vector2 = _world_to_ui(_target.global_position + Vector2(0, -SP_NUDGE), vp)
@@ -649,17 +658,19 @@ func _push_rect_out(c: Vector2, s: Vector2, r: Rect2) -> Vector2:
 ## WORLD -> UI. This chevron is a HUD element pointing at a world object, and
 ## since round 11 the two live in different viewports: the world renders inside
 ## the 640x360 pixel stage (pixel_stage.gd) while this Control lays out in window
-## units on a CanvasLayer that has been fitted onto the stage's letterbox rect.
+## pixels, re-anchored by the stage fit so its own rect IS the letterbox.
 ## `PixelStage.world_to_ui` is the single conversion that joins them — the old
 ## `vp.get_canvas_transform()` now reads the MAIN viewport, which has no camera
 ## and would pin the chevron to the world's raw coordinates.
 ##
 ## The fallback is the pre-stage path, so a test rig that mounts this Control
 ## without a world still behaves.
+## The result is in THIS Control's own space — `world_to_ui` answers in window
+## pixels, and this Control's origin is the world rect's corner, not the window's.
 func _world_to_ui(world_pos: Vector2, vp: Viewport) -> Vector2:
 	var st := PixelStage.find(get_tree())
 	if st != null:
-		return st.world_to_ui(world_pos)
+		return st.world_to_ui(world_pos) - global_position
 	return vp.get_canvas_transform() * world_pos
 
 ## Camera zoom, as the factor that turns world units into UI pixels. Every

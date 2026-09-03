@@ -345,9 +345,27 @@ func _ready() -> void:
 	_wake_delay = randf_range(0.05, 0.75)
 	_wake_t = _wake_delay
 	aggro_radius *= randf_range(0.86, 1.10)
-	# Bosses own their arena — they always engage once you're in the room.
+	# Bosses own their ARENA, and wake the instant you step into it — no ragged
+	# wake timer, no staggered pack.
+	#
+	# It used to be 900, i.e. most of the room's diagonal, and that number quietly
+	# undid the whole arrival-frame composition. region_builder stages every boss
+	# at y 906 so that a 128-unit body clears the bottom HUD band (y 730..840) at
+	# spawn; the plaza is at (640,480) and the five boss posts are 500..525 away.
+	# At 900 the boss was therefore aggroed on the frame the player LANDED, and
+	# marched straight up into the band it had been placed to stay out of —
+	# measured on arrival + 1.5s: cloud_bill 906 -> 787 and infinite_context
+	# 906 -> 786, both inside the band, with the Stack Overflow beast, the
+	# architect and the monolith showing their heads through the ability bar in
+	# the captured frames. The staging was correct and unreachable.
+	#
+	# 440 is under every one of those approach distances and over the 374 a
+	# jittered trash enemy can reach, so the boss holds the clearing its bollards
+	# and floor ring were drawn around until the player walks into it — and it is
+	# also within BOSS_INTRO_RANGE (480), so the entrance still plays on the same
+	# approach rather than after a cross-room walk.
 	if is_boss:
-		aggro_radius = 900.0
+		aggro_radius = 440.0
 		_wake_delay = 0.0
 		_wake_t = 0.0
 		_summons_left = 6

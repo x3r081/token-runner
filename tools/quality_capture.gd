@@ -40,7 +40,7 @@ func _run() -> void:
 		player.can_move = true
 	await _shot("region_localhost.png")
 	_prove_grid(world, player, "region_localhost.png")
-	await _wide_shot(world)
+	await _wide_shot(world, player)
 
 	# Dialogue surface.
 	DialogueManager.start_dialogue("roommate_ai")
@@ -69,6 +69,7 @@ func _run() -> void:
 		world.call("_open_pause")
 		await _settle(0.6)
 		await _shot("ui_pause.png")
+		_report_modal(world, "PauseMenu", world.get_node_or_null("PixelStage"))
 		var pause: Node = world.get("hud").get_node_or_null("PauseMenu")
 		if pause:
 			pause.queue_free()
@@ -227,20 +228,64 @@ func _report_runs(label: String, runs: PackedInt32Array, k: int, assertive: bool
 		push_error("GRID PROOF %s FAIL — %d interior runs are not multiples of %d" % [label, bad, k])
 		print("GRID PROOF  %s  FAIL — %d interior runs are not multiples of %d" % [label, bad, k])
 
-## One frame on an ultrawide window, to prove the UI stays inside the world's
-## letterbox rather than running off to the window corners 960px away. The size
-## is restored afterwards so every later shot matches the rest of the set.
-func _wide_shot(world: Node) -> void:
+## THE ULTRAWIDE PASS, on this machine's own screen shape.
+##
+## The world is letterboxed into the middle of a 3840-wide window and the UI is
+## re-anchored onto it (pixel_stage.gd), so the two things worth photographing
+## here are the HUD — which must be laid out identically to the 1920 frame, at
+## full size, not at the half size the old layer-scale fit produced — and a
+## modal, which must still be centred on the world and not on the desktop. The
+## grid proof runs at this size too: K is the same 2, and if the blit ever went
+## fractional on a window this shape the runs would say so.
+##
+## The size is restored afterwards so every later shot matches the rest of the set.
+func _wide_shot(world: Node, player: Node) -> void:
 	var was := DisplayServer.window_get_size()
 	DisplayServer.window_set_size(Vector2i(3840, 1040))
 	await _settle(0.8)
 	await _shot("region_localhost_wide.png")
+	_prove_grid(world, player, "region_localhost_wide.png")
 	var stage: Node = world.get_node_or_null("PixelStage")
 	if stage:
 		print("WIDE  K=%d  world_rect=%s  window=%s"
 			% [int(stage.get("stage_k")), str(stage.get("world_rect")), str(DisplayServer.window_get_size())])
+	if world.has_method("_open_pause"):
+		world.call("_open_pause")
+		await _settle(0.6)
+		await _shot("ui_pause_wide.png")
+		_report_modal(world, "PauseMenu", stage)
+		var pause: Node = world.get("hud").get_node_or_null("PauseMenu")
+		if pause:
+			pause.queue_free()
+		get_tree().paused = false
+		GameManager.state = GameManager.GameState.PLAYING
+		await _settle(0.4)
 	DisplayServer.window_set_size(was)
 	await _settle(0.8)
+
+## Where a modal actually landed, against where the world actually is. Two rects
+## printed side by side is the whole evidence that "centred in the world rect"
+## is true rather than believed.
+func _report_modal(world: Node, panel_name: String, stage: Node) -> void:
+	var hud: Node = world.get("hud")
+	if hud == null or stage == null:
+		return
+	var panel := hud.get_node_or_null(panel_name) as Control
+	if panel == null:
+		return
+	var wr: Rect2 = stage.get("world_rect")
+	print("MODAL %s  root=%s  world_rect=%s  window=%s"
+		% [panel_name, str(panel.get_global_rect()), str(wr), str(DisplayServer.window_get_size())])
+	# The root is the full-rect host; the BOX the player sees is the panel inside
+	# it, and "centred" is a claim about that box.
+	var body := panel.get_node_or_null("Panel") as Control
+	if body == null:
+		return
+	var b: Rect2 = body.get_global_rect()
+	print("MODAL %s  box=%s  left/right gap=%d/%d  top/bottom gap=%d/%d"
+		% [panel_name, str(b),
+			int(b.position.x - wr.position.x), int(wr.end.x - b.end.x),
+			int(b.position.y - wr.position.y), int(wr.end.y - b.end.y)])
 
 ## Random events fire on a timer, pause the tree and cover the frame — none of
 ## which belongs in a visual QA capture.
