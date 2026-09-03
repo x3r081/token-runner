@@ -181,6 +181,19 @@ Each of these cost a debugging cycle. They will bite you too.
     pipeline. Two of the four biggest visual defects found in this effort were
     measurement/pipeline errors, not art errors. Measure before you judge.
 
+15. **A Control parented to a CanvasLayer anchors against the WINDOW, not the
+    layer.** Scaling the layer to fit a letterboxed world rect while the
+    Controls still lay out across the full window makes the UI render at the
+    wrong size — invisibly correct at one window size and half-size at another.
+    Correct fix: keep the layer transform identity and correct each root
+    Control's per-side offsets.
+
+16. **Regenerate assets in a separate process from the capture.** Godot imports
+    textures at boot, so a run that regenerates and then screenshots in the
+    same process photographs the PREVIOUS generation. Generate, let the engine
+    re-import, then capture in a second process — otherwise every art fix is
+    judged one round late.
+
 ---
 
 ## 5. State as of this handover
@@ -193,6 +206,17 @@ Committed on the branch, newest first:
   under a pausing event; floors re-lit via REGION_AMBIENT (64–78 measured);
   bazaar floor rebuilt; modals opaque with the stage dimmed behind them.
   Cold critic: 5.2.
+- `7dc8f51` — **final restraint pass**: the ultrawide HUD bug root-caused (a
+  Control parented to a CanvasLayer anchors against the WINDOW, not the layer,
+  so the layer transform and the Controls' layout measured different rects);
+  the last three floors rebuilt (all ten regions now >= 88% quiet, 62-79
+  luminance); boss aggro_radius 900 -> 440, which is what had been pulling
+  bosses out of their staged arenas into the HUD band on arrival.
+- `ab5cc2c` — floors: seams are the DARK tone. A single `or` in two materials
+  drew a bright 1px cross down two sides of every cell, joined end to end into
+  a lattice. Also fixed the quietness gate, which used a min-to-max block
+  statistic and so scored 0.00 for ANY floor with LAW 6's mandatory dark seam —
+  it was rewarding flat ground and punishing structure.
 - `823a408` — **restraint pass 4**: the pixel-perfect pipeline above; boss
   card gating; placeholder quads, bunting and off-grid cables removed.
 - `c56d07a` — **restraint pass 3**: readable floors — one material per region
@@ -202,7 +226,8 @@ Committed on the branch, newest first:
   room's own accent, unified enemy language, legible font.
 - `3ce576a` — **restraint round**: `docs/VISUAL_BIBLE_V2.md` ("Restraint", ten
   laws), −11k lines of noise. Triggered by the user calling the game "AI slop".
-  Scored by a **cold Fable critic** reading frames only: 3.6 → 4.75 → 4.9 → 5.0 → 5.2.
+  Scored by a **cold Fable critic** reading frames only: 3.6 → 4.75 → 4.9 → 5.0 → 5.2. The final pass was
+  reviewed by me directly (the critic model was rate-limited).
 
 - `111f1a5` — **round 5**: deep graphics + gameplay pass (47 agents across 3
   workflows). Per-type enemy behaviours with telegraphs, multi-phase bosses,
