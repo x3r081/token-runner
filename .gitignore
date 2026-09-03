@@ -1,6 +1,10 @@
 # Godot
 .godot/
 *.import
+# EXCEPTION: the audio .import files are the only place compress/mode=2 (Quite
+# OK Audio) is recorded. Without them a clean checkout re-imports the 41 WAVs at
+# the default compress/mode=0 and the web .pck goes 12 MB -> 54 MB.
+!assets/audio/*.wav.import
 export/
 export_presets.cfg.bak
 *.translation
@@ -16,7 +20,10 @@ Thumbs.db
 *.swo
 
 # Build artifacts
-build/
+# build/* rather than build/ so the .gdignore below stays trackable: it stops
+# Godot's resource scanner importing the exported web icons back into the pck.
+build/*
+!build/.gdignore
 dist/
 *.exe
 *.pck
