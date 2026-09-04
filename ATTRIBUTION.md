@@ -14,6 +14,12 @@
 - **Used for:** Archived reference only — player now uses procedural vibe-coder sprite (see below)
 - **Location:** `assets/external/kenney/roguelike/roguelikeChar_transparent.png`
 
+### Kenney — Game Assets All-in-1 (3D kits)
+- **Source:** [Kenney](https://kenney.nl/assets) — Mini Characters, Mini Dungeon, Mini Arena, Mini Market, Mini Forest, Graveyard Kit, Cube Pets, Tower Defense Kit, Space Station Kit, Modular Space Kit, Modular Cave Kit, Factory Kit, City Kit (Commercial, Industrial), Retro Urban Kit, Castle Kit, Prototype Kit, Food Kit, Furniture Kit, Nature Kit
+- **License:** [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/) (per-pack License.txt vendored alongside)
+- **Used for:** the 3D world — characters, enemies, regions, props (see docs/3D_BIBLE.md)
+- **Location:** `assets/external/kenney3d/<pack>/` (GLB + colormap), index in `manifest.json`
+
 Attribution to Kenney.nl is appreciated but not required under CC0.
 
 ## Procedurally Generated (Internal)

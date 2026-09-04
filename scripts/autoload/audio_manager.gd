@@ -25,6 +25,19 @@ const DUCK_LINEAR := 0.501  # -6 dB
 const SFX_COOLDOWN_MS := 70
 const FOOTSTEP_COOLDOWN_MS := 140
 const FOOTSTEP_INTERVAL := 0.26
+## "The body is moving", as velocity SQUARED, in each world's own units.
+##
+## 2D velocity is MAP PIXELS per second and 900 is (30 px/s)². The 3D world runs
+## the same coordinate law at 1 unit per 64 px tile (Map3D.PX), so the identical
+## physical speed is a number 64x smaller and its square 4096x smaller — compare
+## a CharacterBody3D against 900 and the player has to sprint at 30 units/s
+## (1920 px/s) before a single footstep plays.
+const FOOTSTEP_MOVE_SQ_2D := 900.0
+const FOOTSTEP_MOVE_SQ_3D := 900.0 / (64.0 * 64.0)
+## How long an externally-driven footstep (see `play_footstep`) suppresses the
+## velocity poll. Comfortably longer than a stride at any speed, short enough
+## that a player who drops back to the 2D world mid-session gets its poll back.
+const EXTERNAL_FOOTSTEP_HOLD_MS := 1200
 
 ## Conservative defaults — silent > startling.
 var master_vol: float = 0.6
@@ -74,6 +87,9 @@ var _amb_tween: Tween
 var _last_sfx_ms: Dictionary = {}
 var _footstep_idx := 0
 var _footstep_accum := 0.0
+## When something outside this manager last played a footstep. Starts far enough
+## in the past that the very first poll is never suppressed.
+var _footstep_extern_ms := -EXTERNAL_FOOTSTEP_HOLD_MS * 10
 var _player_ref: Node = null
 var _watchdog_accum := 0.0
 
@@ -254,9 +270,19 @@ func play_sfx(name: String) -> void:
 			p.play()
 			return
 
-## Round-robin footstep, driven by the velocity poll in _process. Public so a
-## future animation-frame hook can call it too.
+## Round-robin footstep. Public so an animation-frame hook can call it — which
+## the 3D player does (3D_BIBLE §4), since a rigged walk cycle knows when a foot
+## actually lands and this manager's velocity poll only knows that a body is
+## moving. An external call therefore ALSO tells the poll to stand down for
+## EXTERNAL_FOOTSTEP_HOLD_MS, so the two cadences can never lay steps over each
+## other. Nothing in the 2D game calls this from outside `_poll_footsteps`, which
+## goes through `_step()` instead — so 2D is untouched.
 func play_footstep() -> void:
+	_footstep_extern_ms = Time.get_ticks_msec()
+	_step()
+
+## The round-robin itself, with no "someone else is driving this" side effect.
+func _step() -> void:
 	play_sfx("footstep_%d" % _footstep_idx)
 	_footstep_idx = (_footstep_idx + 1) % 4
 
@@ -424,6 +450,7 @@ func _on_region_changed(region_id: String) -> void:
 func _on_game_started() -> void:
 	_footstep_idx = 0
 	_footstep_accum = 0.0
+	_footstep_extern_ms = -EXTERNAL_FOOTSTEP_HOLD_MS * 10
 	_set_ambience(_ambience_family_for(GameManager.current_region))
 
 func _on_game_won(_results: Dictionary) -> void:
@@ -468,22 +495,40 @@ func _process(delta: float) -> void:
 
 ## Footsteps come from watching the player group's velocity — no call sites in
 ## player.gd needed. Cadence lives here; play_sfx's cooldown is only the guard.
+##
+## The player in group "player" is a CharacterBody2D in the 2D world and a
+## CharacterBody3D in the 3D one (3D_BIBLE §4); `velocity.length_squared()` reads
+## the same on both, only the units differ (see FOOTSTEP_MOVE_SQ_*). The old
+## single `as CharacterBody2D` cast returned null for the 3D body and this whole
+## poll silently returned — a game with no footsteps and nothing logged.
 func _poll_footsteps(delta: float) -> void:
 	if get_tree().paused or GameManager.state != GameManager.GameState.PLAYING:
 		_footstep_accum = 0.0
+		return
+	# Someone with a real walk cycle is driving the cadence; don't double up.
+	if Time.get_ticks_msec() - _footstep_extern_ms < EXTERNAL_FOOTSTEP_HOLD_MS:
+		_footstep_accum = FOOTSTEP_INTERVAL * 0.7
 		return
 	if not (is_instance_valid(_player_ref) and _player_ref.is_inside_tree()):
 		_player_ref = get_tree().get_first_node_in_group("player")
 		if _player_ref == null:
 			return
-	var body := _player_ref as CharacterBody2D
-	if body == null:
+	var body2 := _player_ref as CharacterBody2D
+	var body3 := _player_ref as CharacterBody3D
+	var moving := false
+	if body2 != null:
+		moving = body2.velocity.length_squared() > FOOTSTEP_MOVE_SQ_2D
+	elif body3 != null:
+		moving = body3.velocity.length_squared() > FOOTSTEP_MOVE_SQ_3D
+	else:
 		return
-	if body.velocity.length_squared() > 900.0:
+	if moving:
 		_footstep_accum += delta
 		if _footstep_accum >= FOOTSTEP_INTERVAL:
 			_footstep_accum = 0.0
-			play_footstep()
+			# `_step()`, not `play_footstep()`: the public entry point marks the
+			# cadence as externally driven, and this poll IS the cadence.
+			_step()
 	else:
 		# Pre-load so the first step lands right as movement starts.
 		_footstep_accum = FOOTSTEP_INTERVAL * 0.7

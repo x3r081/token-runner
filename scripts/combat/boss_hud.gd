@@ -327,7 +327,7 @@ func _poll_engagement(delta: float) -> void:
 		_engage()
 		return
 	if not is_instance_valid(_player):
-		_player = get_tree().get_first_node_in_group("player") as Node2D
+		_player = (get_tree().get_first_node_in_group("player_proxy") if get_tree().get_first_node_in_group("player_proxy") else get_tree().get_first_node_in_group("player")) as Node2D
 		if _player == null:
 			return
 	var d := _host.global_position.distance_to(_player.global_position)

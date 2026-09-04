@@ -31,6 +31,14 @@ const REGION_ORDER: Array[String] = [
 	"token_vault",
 ]
 
+## The playable world. 3D when the conversion is on disk (3D_BIBLE.md), the
+## 2D scene otherwise — tests instantiate world.tscn directly, so both stay.
+const WORLD_SCENE_3D := "res://scenes/world3d/world3d.tscn"
+const WORLD_SCENE_2D := "res://scenes/world/world.tscn"
+
+static func world_scene() -> String:
+	return WORLD_SCENE_3D if ResourceLoader.exists(WORLD_SCENE_3D) else WORLD_SCENE_2D
+
 var state: GameState = GameState.MENU
 var current_region: String = "localhost"
 var current_act: int = 1
@@ -139,13 +147,13 @@ func start_new_game() -> void:
 	_FxLib.release_hit_stop()
 	state = GameState.PLAYING
 	game_started.emit()
-	_change_scene("res://scenes/world/world.tscn")
+	_change_scene(world_scene())
 
 func continue_game() -> void:
 	if SaveManager.load_game():
 		show_opening_sequence = false
 		state = GameState.PLAYING
-		_change_scene("res://scenes/world/world.tscn")
+		_change_scene(world_scene())
 	else:
 		start_new_game()
 

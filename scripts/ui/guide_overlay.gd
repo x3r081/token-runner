@@ -699,13 +699,32 @@ func _cheapest_next() -> Dictionary:
 
 # ------------------------------------------------------------ scene lookups ----
 
+## WHERE THE PLAYER IS, IN MAP PIXELS. `_bearing()` divides by STEP_PX (64, one
+## floor tile) and `_combat_nearby()` compares against COMBAT_RADIUS, so every
+## caller here wants map pixels — which in the 3D world the player node cannot
+## give, being a CharacterBody3D rather than a Node2D. 3D_BIBLE §5's shadow proxy
+## (group "player_proxy", a hidden Node2D synced to `Map3D.to_map(...)`) is that
+## number; without one — i.e. in every 2D run — this resolves exactly as before.
 func _player() -> Node2D:
 	if not is_inside_tree():
 		return null
-	var p: Node = get_tree().get_first_node_in_group("player")
+	var p: Node = get_tree().get_first_node_in_group("player_proxy")
+	if not (p is Node2D):
+		p = get_tree().get_first_node_in_group("player")
 	if p is Node2D:
 		return p as Node2D
 	return null
+
+## The player's BODY, whatever dimension it lives in. Only for flags that sit on
+## the body itself — `can_move`, which gates the idle nudge during a cutscene.
+## In 2D this is the same node `_player()` returns; in 3D it is the Node3D, and
+## it is the only one carrying the flag (the proxy mirrors position and identity
+## fields, not state). Reading `_player()` here would have let the nudge toast
+## talk over the opening sequence in the 3D world.
+func _player_body() -> Node:
+	if not is_inside_tree():
+		return null
+	return get_tree().get_first_node_in_group("player")
 
 func _find_npc(npc_id: String) -> Node2D:
 	if not is_inside_tree():
@@ -820,7 +839,7 @@ func _busy() -> bool:
 		return true
 	# Cutscenes and the one-time intro card own the screen; standing still during
 	# those is obedience, not confusion.
-	var p := _player()
+	var p := _player_body()
 	if p != null and "can_move" in p and not bool(p.get("can_move")):
 		return true
 	if _intro_card_up():

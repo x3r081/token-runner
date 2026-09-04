@@ -199,6 +199,15 @@ Each of these cost a debugging cycle. They will bite you too.
 ## 5. State as of this handover
 
 Committed on the branch, newest first:
+- **3D conversion** — the game runs in 3D on Kenney kits (`docs/3D_BIBLE.md`).
+  `GameManager.world_scene()` picks `scenes/world3d/world3d.tscn` when present.
+  New: `scripts/world3d/` (Map3D, ActorProxy, KenneyAnim, ScreenLabels, Fx3D,
+  world/camera/environment, builders, actors), `assets/external/kenney3d/`,
+  `tools/capture3d.tscn` → `docs/screenshots/qa3d/`, `tests/world3d_test.tscn`.
+  Traps learned: never bind a possibly-freed object to a typed var before
+  `is_instance_valid`; never type a parameter that may receive a freed instance.
+  VISUAL_BIBLE_V2 (restraint) governs the 3D look; 3D_BIBLE §7's louder recipe is
+  superseded where they conflict.
 
 - `2c07dd6` — **restraint pass 5**: stale boss HUD across regions fixed at the
   source (world.gd purged adopted layers before the tree's delete queue

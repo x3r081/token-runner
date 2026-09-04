@@ -45,6 +45,7 @@ jobs:
 
       - name: Run region-build regression test
         run: godot --headless --path . --scene tests/region_test.tscn
+        run: godot --headless --path . --scene tests/world3d_test.tscn
 
       - name: Run model-selection regression test
         run: godot --headless --path . --scene tests/model_test.tscn

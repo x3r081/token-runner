@@ -58,6 +58,34 @@ extends Control
 ##      scale to opacity for the same reason — a chevron scaled by 0.94 has
 ##      fractional vertices, which is the other way to grow soft edges.
 ##
+## ROUND 12 — IN 3D THE PORTAL WEARS ITS NAME ON TOP OF ITS HEAD.
+##
+## Both of this round's defects are the same defect seen from two sides, and
+## both are visible in docs/screenshots/qa3d/region_stackoverflow_ruins.png:
+##
+##   1. TWO DESTINATIONS, THREE TEXTS. The readout says "Localhost · 14m", the
+##      gate under it says "→ Dependency District", and a cold viewer reads two
+##      different answers to one question. The ROUTING was always right — the
+##      objective is in Localhost and Dependency District is the door on the way
+##      — but the line never said so out loud, so the only way to know was to
+##      already know the map. The cross-region line now names the relationship:
+##      "Localhost · 14m · via this portal". One line, SMALL, still TEXT_DIM.
+##   2. THE CHEVRON THROUGH THE GLYPHS. Measured in that frame: the chevron
+##      occupies y 398-428 and the gate's own label y 408-447, so the marker's
+##      lower half is printed across the top of the destination text. This is
+##      NOT a failure of `_portal_clearance` — that function is correct, and its
+##      docstring says why it was enough: in 2D the portal's label hangs BELOW
+##      the mouth (region_portal.gd LABEL_TOP), so clearing the art clears the
+##      text by construction. In the 3D world the gate's label hangs ABOVE the
+##      frame instead, which puts it exactly where the beacon floats. So in 3D —
+##      and ONLY in 3D, detected by the "stage3d" node the projection already
+##      looks up — the beacon takes PORTAL_LABEL_CLEAR_3D of extra lift, which
+##      carries the readout hanging off it up as well.
+##
+## Both changes are additive and both are gated on the 3D world: with no
+## "stage3d" node in the tree this file computes and prints exactly what it
+## printed before, to the byte.
+##
 ## Everything else STRUCTURAL is untouched, because all of it was load-bearing:
 ##   * the on-screen / off-screen split and the edge-pin geometry
 ##   * the panel exclusion rects, so the marker never parks on a readout
@@ -160,6 +188,28 @@ const GUIDE_BAND_BOTTOM := 190.0
 ## the only version of the number that can be checked against a frame.
 const PORTAL_BEACON_CLEAR := 40.0
 const NPC_LABEL_CLEAR := 44.0
+## EXTRA lift, in screen px, for a portal in the THREE-DIMENSIONAL world only.
+##
+## `PORTAL_BEACON_CLEAR` clears the portal's ART, and in 2D that is the whole
+## job: region_portal.gd hangs the destination text BELOW the mouth, so the
+## beacon and the label sit on opposite sides of the doorway and cannot meet.
+## The 3D gate carries the same text ABOVE its frame — a screen-space label
+## (scripts/world3d/screen_labels.gd) whose BOTTOM edge sits on the projection
+## of portal3d.gd's LABEL_Y (GATE_HEIGHT + 0.2 = 2.3 world units), which is the
+## one place the beacon was guaranteed to be. Measured in
+## docs/screenshots/qa3d/region_stackoverflow_ruins.png: the chevron's tip sat
+## at y 427 and the old Label3D "→ Dependency District" covered y 408-447, a
+## 20px collision (region_gpu_mines.png: tip 447 over label 426-463). Run
+## through the camera rig's framing (FOV 40, pitch -56, distance 29) at that
+## depth, one world unit of HEIGHT is ~55 screen px, so the 2.3u anchor lands
+## at ~438 in the ruins frame and a SMALL (14) line spans ~419-438 — the
+## unlifted tip would still cut through it. 36 puts the tip at ~391 (±4 of
+## bob): 24px clear of the screen label in the ruins frame, 21px in GPU Mines,
+## and it carries the readout above it up by the same amount. Added on TOP of
+## the art clearance rather than folded into it, so the 2D number and the 3D
+## number can never be confused for one another. Re-measure if LABEL_Y moves
+## above ~2.6u: the tip is ~55px per unit closer for every unit the anchor rises.
+const PORTAL_LABEL_CLEAR_3D := 36.0
 ## Fallbacks for the two measurements, used only when the live node cannot be
 ## read: region_portal.gd's BODY_RADIUS, and npc.gd's nameplate top
 ## (NAME_BOTTOM_Y -86 less a line of 14px type).
@@ -186,6 +236,14 @@ const OCTANT := PI * 0.25
 
 ## Dry consolation prize for when the quest system has nothing for you.
 const IDLE_TARGET_NAME := "Way out"
+## The cross-region line's third clause, in the 3D world only. It exists because
+## the 3D gate captions itself with ITS OWN destination, which is not where you
+## are going — "Localhost · 14m" over a door labelled "→ Dependency District"
+## reads as a contradiction rather than as a route. Naming the portal's part in
+## the journey turns the two texts into one sentence. Three words, no
+## imperative: the chevron is already pointing, so the line only has to say what
+## the door is FOR.
+const VIA_PORTAL := "via this portal"
 
 var _marker: Node2D
 var _outline: Polygon2D
@@ -230,6 +288,11 @@ var _player_cache: Node2D = null
 var _last_label_name := ""
 var _last_label_metres := -1
 var _last_label_cross := false
+## Whether the last printed line carried the VIA_PORTAL clause. Part of the
+## readout's cache key: the clause is 3D-only, and the "stage3d" node enters the
+## tree AFTER this Control does, so the first line printed in a 3D run can be
+## computed before there is a stage to ask.
+var _last_label_via := false
 
 ## HUD elements the marker must never sit on top of. Recomputed only when the
 ## viewport size changes, so the per-frame cost is two Rect2 point tests.
@@ -555,6 +618,11 @@ func _place() -> void:
 		var lift := BEACON_LIFT
 		if _target_is_portal:
 			lift = maxf(lift, _portal_clearance(vp, sp, s))
+			# ...and in 3D, clear of the gate's own NAME as well: that label
+			# hangs above the frame there, not below the mouth. Added after the
+			# maxf so it is genuinely EXTRA air rather than a floor the art
+			# clearance can swallow, and 0 in every 2D run.
+			lift += _portal_label_clearance()
 		elif _target_is_npc:
 			lift = maxf(lift, _npc_clearance(vp))
 		var bob := sin(_t * 2.6) * 4.0
@@ -655,6 +723,30 @@ func _push_rect_out(c: Vector2, s: Vector2, r: Rect2) -> Vector2:
 		c.x = g.end.x + s.x * 0.5
 	return c
 
+## THE 3D WORLD'S PROJECTOR, when there is one (3D_BIBLE §2.6, §3). `Stage3D`
+## (group "stage3d") answers the same two questions PixelStage does — where a
+## MAP-PIXEL position lands in window pixels, and how many window pixels one map
+## pixel spans — for a world drawn by a Camera3D instead of a Camera2D.
+##
+## That is the ENTIRE 3D port of this file. Every number below is quoted in map
+## pixels and the shadow proxies (§5) keep the targets' `global_position` in map
+## pixels too, so the geometry, the clearances, the octant snapping and the
+## exclusion rects all hold unchanged; only the projection had a dimension in it.
+##
+## Duck-typed on purpose: this file must not preload a script from a track that
+## may not have landed yet, and a `has_method` pair is a tighter contract than a
+## class check anyway. Two dictionary lookups, once or twice a frame.
+func _stage3d() -> Node:
+	if not is_inside_tree():
+		return null
+	var tree := get_tree()
+	if tree == null:
+		return null
+	var st := tree.get_first_node_in_group("stage3d")
+	if st != null and st.has_method("world_to_ui") and st.has_method("world_to_ui_scale"):
+		return st
+	return null
+
 ## WORLD -> UI. This chevron is a HUD element pointing at a world object, and
 ## since round 11 the two live in different viewports: the world renders inside
 ## the 640x360 pixel stage (pixel_stage.gd) while this Control lays out in window
@@ -667,7 +759,15 @@ func _push_rect_out(c: Vector2, s: Vector2, r: Rect2) -> Vector2:
 ## without a world still behaves.
 ## The result is in THIS Control's own space — `world_to_ui` answers in window
 ## pixels, and this Control's origin is the world rect's corner, not the window's.
+##
+## Stage3D is tried FIRST because in a 3D run there is no PixelStage at all (and
+## in a 2D run there is no "stage3d"), so the two branches are mutually exclusive
+## and neither world pays for the other's lookup beyond one group probe.
 func _world_to_ui(world_pos: Vector2, vp: Viewport) -> Vector2:
+	var s3 := _stage3d()
+	if s3 != null:
+		var at: Vector2 = s3.call("world_to_ui", world_pos)
+		return at - global_position
 	var st := PixelStage.find(get_tree())
 	if st != null:
 		return st.world_to_ui(world_pos) - global_position
@@ -679,6 +779,10 @@ func _world_to_ui(world_pos: Vector2, vp: Viewport) -> Vector2:
 ## Inside the stage the chain is zoom (0.5) x stage-to-UI, which is what
 ## `world_to_ui_scale()` returns.
 func _zoom_of(vp: Viewport) -> float:
+	var s3 := _stage3d()
+	if s3 != null:
+		var f3: float = s3.call("world_to_ui_scale")
+		return f3 if f3 > 0.01 else 1.0
 	var st := PixelStage.find(get_tree())
 	if st != null:
 		var f := st.world_to_ui_scale()
@@ -711,11 +815,28 @@ func _portal_radius() -> float:
 ##
 ## The portal's own destination label lives BELOW the mouth (region_portal.gd
 ## LABEL_TOP), so clearing the art clears the text by construction — the beacon
-## and the label are on opposite sides of the doorway and cannot meet.
+## and the label are on opposite sides of the doorway and cannot meet. That is
+## a fact about the 2D gate ONLY; the 3D one wears its name above the frame, and
+## `_portal_label_clearance()` is what buys the air for it.
 func _portal_clearance(vp: Viewport, sp: Vector2, mag: float) -> float:
 	var top: float = _world_to_ui(
 		_target.global_position + Vector2(0, -_portal_radius()), vp).y
 	return sp.y - (top - PORTAL_BEACON_CLEAR - CHEVRON_REACH * mag)
+
+## AM I DRAWING OVER A 3D WORLD? One group probe, the same one the projection
+## already makes — a 2D run has no "stage3d" node and can never take either of
+## the two branches gated on this, so its output is unchanged to the byte.
+##
+## Re-asked rather than cached: the 3D stage enters the tree after the HUD
+## mounts this Control, so a value latched in `_ready` would be false forever.
+func _is_3d() -> bool:
+	return _stage3d() != null
+
+## The 3D-only extra lift that keeps the beacon off the gate's own destination
+## label — see PORTAL_LABEL_CLEAR_3D. Zero in the 2D world, where the portal's
+## text hangs below its mouth and the art clearance already covers it.
+func _portal_label_clearance() -> float:
+	return PORTAL_LABEL_CLEAR_3D if _is_3d() else 0.0
 
 ## How far above an NPC the beacon floats: NPC_LABEL_CLEAR above the TOP of
 ## their nameplate.
@@ -758,15 +879,28 @@ func _apply_accent() -> void:
 ## also the least useful third of it, because the chevron is already pointing at
 ## the door and the door is already captioned. One line, one arrow, and the
 ## portal keeps its own name (LAW 4: wayfinding first, and once).
+##
+## ROUND 12 adds the one clause that is not an instruction: in 3D the door's own
+## name is a DIFFERENT region's, so the line has to say that the door is on the
+## way rather than at the end of it. Still one line, still SMALL, still TEXT_DIM
+## — "Localhost · 14m · via this portal" is a route, not a second cue.
 func _update_label_text() -> void:
+	# ROUND 12: in the 3D world the cross-region line names the portal's part in
+	# the trip. `_is_3d()` is only asked on the cross-region path, so the common
+	# case still costs one comparison. See VIA_PORTAL.
+	var via := _cross_region and _target_is_portal and _is_3d()
 	if _target_name == _last_label_name and _metres == _last_label_metres \
-			and _cross_region == _last_label_cross:
+			and _cross_region == _last_label_cross and via == _last_label_via:
 		return
 	_last_label_name = _target_name
 	_last_label_metres = _metres
 	_last_label_cross = _cross_region
+	_last_label_via = via
 	if _cross_region:
-		_label.text = "%s · %dm" % [_target_name, _metres]
+		if via:
+			_label.text = "%s · %dm · %s" % [_target_name, _metres, VIA_PORTAL]
+		else:
+			_label.text = "%s · %dm" % [_target_name, _metres]
 	elif _target_name == "":
 		_label.text = "%dm" % _metres
 	elif _metres <= 3:
@@ -858,10 +992,21 @@ func _resolve_fallback() -> void:
 	_cross_region = false
 	_target_name = IDLE_TARGET_NAME
 
+## THE PLAYER, IN MAP PIXELS — which in the 3D world is not the player.
+##
+## Everything below measures distances and bearings against `global_position` in
+## MAP PIXELS, and in the 3D conversion the node in group "player" is a
+## CharacterBody3D: not a Node2D, so the old lookup returned null and every
+## readout collapsed to "0m" with no compass. 3D_BIBLE §5 answers it with the
+## shadow proxy — a hidden Node2D in group "player_proxy" that the body keeps at
+## `Map3D.to_map(global_position)` every frame. Prefer it; fall through to the
+## real node when there is no proxy, which is every 2D run, unchanged.
 func _player() -> Node2D:
 	if is_instance_valid(_player_cache):
 		return _player_cache
-	var p := get_tree().get_first_node_in_group("player")
+	var p := get_tree().get_first_node_in_group("player_proxy")
+	if not (p is Node2D):
+		p = get_tree().get_first_node_in_group("player")
 	if p is Node2D:
 		_player_cache = p as Node2D
 	else:

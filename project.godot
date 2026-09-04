@@ -145,6 +145,12 @@ guide={
 2d_physics/layer_4="interactables"
 2d_physics/layer_5="projectiles"
 2d_physics/layer_6="walls"
+3d_physics/layer_1="player"
+3d_physics/layer_2="enemies"
+3d_physics/layer_3="tokens"
+3d_physics/layer_4="interactables"
+3d_physics/layer_5="projectiles"
+3d_physics/layer_6="walls"
 
 [rendering]
 

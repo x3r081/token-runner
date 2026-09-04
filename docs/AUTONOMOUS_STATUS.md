@@ -850,3 +850,25 @@ radiate across the gpu_mines/token_vault floors; a cyan four-corner bracket in
 Production frames empty floor; a dark glyph box overlaps the first word of the
 "Do not open. Heat." caption; destination text at portals is dim against the
 vortex glow; the non-localhost regions still share a broadly similar footprint.
+
+### 3D conversion — Token Runner in 3D on Kenney kits (≈45 agents, 4 workflows + 2 critics)
+- The whole game now boots into a 3D world (`GameManager.world_scene()` →
+  `scenes/world3d/world3d.tscn`; the 2D scenes stay for the 28 legacy suites and
+  as fallback). Contract: `docs/3D_BIBLE.md`. Gameplay brain untouched: all 15
+  autoloads, JSON content, quests, dialogue, economy, HUD, modals, boss HUD,
+  audio reused as-is. Managers keep speaking map pixels; Kenney's 1 unit = 1
+  tile maps the entire authored layout 1:1 (`Map3D`).
+- Assets: 20 Kenney packs / 1,795 GLB models / 57 MB vendored CC0 under
+  `assets/external/kenney3d/` with a bounds+animation manifest. Every rigged
+  character shares one 32-clip set → one driver (`KenneyAnim`).
+- Shadow proxies (`ActorProxy`) keep the guidance system, waypoint and guide
+  overlay working unchanged; world text is screen-space (`ScreenLabels`),
+  clamped and stacked, in the aliased UI font.
+- Rounds: build (8 tracks) → v2 restraint grade (grade/camera, builders,
+  actors, fx) → cold critic 2.6/6 → polish (screen text, floors/void/props,
+  waypoint wording, fx glyphs). 29/29 suites green (28 legacy + world3d 61
+  asserts), zero runtime errors in a windowed capture, frames in
+  `docs/screenshots/qa3d/`, capture tool `tools/capture3d.tscn`.
+- Runtime bugs caught centrally: enemies/props z-order (n/a in 3D), a freed
+  Label bound to a typed var in ScreenLabels._process, a typed `detach(lbl:
+  Label)` rejecting a freed instance at the call boundary — both untyped now.
