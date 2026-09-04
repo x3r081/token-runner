@@ -872,3 +872,9 @@ vortex glow; the non-localhost regions still share a broadly similar footprint.
 - Runtime bugs caught centrally: enemies/props z-order (n/a in 3D), a freed
   Label bound to a typed var in ScreenLabels._process, a typed `detach(lbl:
   Label)` rejecting a freed instance at the call boundary — both untyped now.
+- Follow-up polish (2 rounds, 16 agents, 2 cold critics): cold score 2.6 → 3.4
+  between rounds; then combat-text keep-clear zone, portal caption/waypoint
+  dedupe, visible HOSTILE tells + AABB floor-anchoring on enemies, per-region
+  floor geometry, hue-leak and density cuts, emission caps ≤ 1.2, lit BASE
+  ground beyond every room, shadow filter quality raised (dither fringe).
+  29/29 suites, zero runtime errors windowed.

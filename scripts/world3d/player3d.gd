@@ -242,6 +242,19 @@ const LAMP_FLOW := 0.8
 ## and is switched off in `_style_prompt`.
 const PROMPT_HEIGHT := 1.0
 
+## The prompt's ScreenLabels priority — the LOWEST thing in the world, below an
+## ambient nameplate (0) and a portal's caption (1). Round 2 gave it 4, "above
+## every nameplate, marker and portal caption", and the frame that came back had
+## "[E] node_modules" as one of five texts stacked on the player's own head with
+## the waypoint chevron drawn through them. The prompt is the most REPLACEABLE
+## line on screen: the HUD's hint strip already says "[E] interact" permanently,
+## so when it competes with the player's silhouette it loses, and ScreenLabels'
+## keep-clear disc is what makes it lose.
+const PROMPT_PRIORITY := 2
+
+## Where a glyph about the player is anchored (see `_head`).
+const GLYPH_LIFT := 1.2
+
 ## Projectile3D lands from a sibling track, so it is load()ed on first use and
 ## exists()-guarded — never preload()ed (3D_BIBLE, iron rules).
 const PROJECTILE_PATH := "res://scenes/world3d/projectile3d.tscn"
@@ -395,8 +408,15 @@ func _center() -> Vector3:
 	return global_position + Vector3(0.0, 0.45, 0.0)
 
 ## Just above the head — damage numbers and refusal callouts.
+##
+## GLYPH_LIFT, not the model's actual crown: the point of this anchor is that a
+## number about the PLAYER never lands ON the player. 1.05 put "-10" and "+5"
+## inside his silhouette in `combat_dependency_district.png`; 1.2 clears the head
+## outright, and ScreenLabels' keep-clear disc lifts whatever is left of the
+## overlap the rest of the way. Every Fx3D.glyph call this file makes is about
+## the player, so they all come through here.
 func _head() -> Vector3:
-	return global_position + Vector3(0.0, 1.05, 0.0)
+	return global_position + Vector3(0.0, GLYPH_LIFT, 0.0)
 
 ## World-space XZ direction for a map-space Vector2.
 func _world_dir(d: Vector2) -> Vector3:
@@ -1282,9 +1302,17 @@ func respawn(pos: Vector2) -> void:
 ## popping so it reads as UI rather than a strobe.
 func _update_prompt(delta: float) -> void:
 	var closest := _closest_interactable()
+	# A prompt is an offer to press a key, so it is worthless the moment the key
+	# does nothing: mid-dialogue, or with any modal open (the quest log, the map,
+	# the Dream App, the pause menu). Those all take the screen, and a world
+	# caption burning through underneath them is the "boxes around boxes" of
+	# LAW 8 with an extra layer. Same three tests `_should_hide()` in
+	# objective_waypoint.gd runs, in the same order.
 	var wants: bool = closest is Node3D and can_move \
 		and GameManager.state == GameManager.GameState.PLAYING \
-		and not EventManager.has_active_event()
+		and not EventManager.has_active_event() \
+		and not DialogueManager.is_active \
+		and not UIManager.has_blocking_ui()
 	var target: Node3D = null
 	if wants:
 		target = closest as Node3D
@@ -1298,10 +1326,10 @@ func _update_prompt(delta: float) -> void:
 		var text := "Interact"
 		if target.has_method("get_prompt"):
 			text = str(target.get_prompt())
-		# Priority 4: above every nameplate, marker and portal caption — the same
-		# order the retired Label3D held with render_priority 4.
+		# PROMPT_PRIORITY, and see its comment: lowest in the world, so this is
+		# the first caption to yield when the frame gets crowded.
 		_prompt_label = ScreenLabels.attach(target, "[E] %s" % text,
-			ScreenLabels.SMALL, GameTheme.TEXT, PROMPT_HEIGHT, 4)
+			ScreenLabels.SMALL, GameTheme.TEXT, PROMPT_HEIGHT, PROMPT_PRIORITY)
 		_prompt_label.modulate = Color(1.0, 1.0, 1.0, _prompt_a)
 	# The owner can be freed under us (a prop that despawns, a region rebuild);
 	# ScreenLabels frees the label with it, so both are checked before either is

@@ -161,4 +161,7 @@ anti_aliasing/quality/msaa_2d=0
 environment/defaults/default_clear_color=Color(0.055, 0.047, 0.078, 1)
 viewport/hdr_2d=true
 renderer/rendering_method="forward_plus"
+lights_and_shadows/directional_shadow/size=4096
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
 renderer/rendering_method.web="gl_compatibility"

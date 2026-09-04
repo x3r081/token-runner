@@ -18,8 +18,9 @@ extends Node3D
 ## gate a fifth, in every room of the game. The destination is still advertised
 ## in the one place it costs nothing: the line of text over the arch. What WAS
 ## shouting in the frames was the gate itself — an untextured near-white arch,
-## the brightest object in all ten — so the masonry goes dark (GATE_TINT), the
-## swirl stays small, and nothing here wears a halo, a ring or a ground disc.
+## the brightest object in all ten — so the masonry is graded like a prop in the
+## ROOM's own BASE hue (GATE_TINT_VALUE), the swirl stays small, and nothing
+## here wears a halo, a ring or a ground disc.
 
 ## The fx3d track's shader, if it has landed. Never preload(): sibling tracks
 ## land concurrently, and a missing preload is a parse error, not a fallback.
@@ -43,10 +44,35 @@ const LABEL_Y := GATE_HEIGHT + 0.2
 ## The masonry's multiply (Map3D.tint's contract). Kenney's mini-dungeon gate is
 ## an untextured near-white lavender, and at the region ambient every frame we
 ## captured had it as the BRIGHTEST OBJECT ON SCREEN — a ~230-luminance arch in
-## rooms whose floors sit at 64-84. This is the dark stone measured off the
-## bible's BASE column: a shade under a third, cool, so the frame keeps its
-## silhouette and gives up its glare. LAW 3 spends brightness on the swirl.
-const GATE_TINT := Color(0.32, 0.34, 0.42)
+## rooms whose floors sit at 64-84. Round 2 answered that with a FIXED cool grey
+## (0.32, 0.34, 0.42), which fixed the glare and introduced a hue: in
+## `region_api_bazaar.png` and `combat_dependency_district.png` the same NAVY
+## arch stands in a magenta room and in a green one, a fourth saturated hue in
+## both and the second most eye-catching object in the frame.
+##
+## So the tint carries the ROOM's own BASE — LAW 2's dark, the colour of its
+## walls and its out-of-bounds — as a HUE, graded like every other prop in the
+## room (LAW 7: "desaturated toward the region BASE"). The single copy of that
+## table is environment3d.gd's REGION_BASE (`base_color()`, which also owns the
+## fallback for a region that is not in it), so nothing here restates the bible.
+##
+## GRADED, not lifted. Round 3's first cut multiplied BASE by 2.4, which put the
+## multiplier at 0.09-0.17 per channel — a quarter of region_builder3d.gd's
+## TINT_MIN (0.45, its pass-4 HIGH rule: below that, every texel darker than the
+## model's mean falls off the bottom of the grade and the prop goes to black).
+## An arch at that multiplier is not dark stone, it is a hole with a swirl in it.
+## So: BASE normalised to its hue (brightest channel 1.0), scaled to
+## GATE_TINT_VALUE, and floored per channel at GATE_TINT_MIN — the same floor the
+## builder gives a crate. On Kenney's ~0.87 gate that displays around 100-110,
+## the top of the builder's prop band and under the floor's own highlight
+## (96-116): a grey arch with a breath of the room's hue, brighter than the tile
+## it stands on and dimmer than the swirl in its mouth. LAW 3: 0.5 x 0.87 is well
+## under the 60% ceiling. LAW 3 spends the brightness budget on the swirl; the
+## masonry only has to hold its silhouette.
+const GATE_TINT_VALUE := 0.5
+## region_builder3d.gd's TINT_MIN, quoted rather than imported: that file is a
+## builder, not a shared helper, and the number is the contract.
+const GATE_TINT_MIN := 0.45
 
 ## LAW 4: a portal is FINDABLE, not dominant. 2.8 at range 7 lit half a region
 ## in the destination's hue and put a coloured wash across every floor tile
@@ -63,6 +89,18 @@ const DISC_ENERGY := 1.5
 ## LAW 4's particle budget, spent once: twelve slow motes, not sixteen quick ones.
 const MOTE_COUNT := 12
 
+## The one copy of LAW 2's BASE column (see GATE_TINT_VALUE). world3d.gd preloads
+## this same script; environment3d.gd has landed and declares no `class_name`
+## (its header says why), so a const preload is how it is reached.
+const _Environment3D := preload("res://scripts/world3d/environment3d.gd")
+
+## How often the caption asks whether the HUD is already naming this door. Four
+## times a second: the answer only changes when the objective does.
+const CAPTION_POLL := 0.25
+## The group objective_waypoint.gd joins so a gate can ask it what it is aiming
+## at without the two files knowing each other's types.
+const WAYPOINT_GROUP := "objective_waypoint"
+
 @export var target_region: String = "localhost"
 @export var portal_label: String = "Portal"
 
@@ -77,6 +115,9 @@ var _proxy: ActorProxy
 var _seed := 0.0
 var _phase := 0.0
 var _clock := 0.0
+## Caption state: the poll accumulator and whether the line is currently printed.
+var _caption_t := 0.0
+var _caption_on := true
 
 ## One 128px swirl texture for every portal in the game.
 static var _vortex_tex: Texture2D = null
@@ -112,16 +153,35 @@ func _accent() -> Color:
 
 # ------------------------------------------------------------------ building --
 
-## The doorway. Real geometry, and DARK: see GATE_TINT. Nothing else is added —
-## no halo ring, no ground disc, no second frame. The swirl in its mouth is the
-## whole of the portal's brightness budget.
+## The doorway. Real geometry, graded grey: see GATE_TINT_VALUE. Nothing else is
+## added — no halo ring, no ground disc, no second frame. The swirl in its mouth
+## is the whole of the portal's brightness budget.
 func _build_gate() -> void:
 	var gate := Map3D.model(GATE_MODEL)
 	if gate == null:
 		return
 	Map3D.fit_height(gate, GATE_MODEL, GATE_HEIGHT)
-	Map3D.tint(gate, GATE_TINT)
+	Map3D.tint(gate, _gate_tint())
 	add_child(gate)
+
+## The room's BASE as a hue at prop value (see GATE_TINT_VALUE). Built
+## component-wise with an explicit alpha rather than with `Color * float`, which
+## would scale the ALPHA too — and Map3D.tint multiplies the model's albedo,
+## alpha included, so a scaled alpha is a transparency bug in the one channel
+## nobody looks at. Read at build time from the region being populated, exactly
+## as `_accent()` reads the other half of LAW 2's table. A BASE that is somehow
+## black normalises to plain grey rather than dividing by zero.
+func _gate_tint() -> Color:
+	var b: Color = _Environment3D.base_color(GameManager.current_region)
+	var peak: float = maxf(maxf(b.r, b.g), b.b)
+	if peak < 0.001:
+		return Color(GATE_TINT_VALUE, GATE_TINT_VALUE, GATE_TINT_VALUE, 1.0)
+	var k: float = GATE_TINT_VALUE / peak
+	return Color(
+		clampf(b.r * k, GATE_TINT_MIN, GATE_TINT_VALUE),
+		clampf(b.g * k, GATE_TINT_MIN, GATE_TINT_VALUE),
+		clampf(b.b * k, GATE_TINT_MIN, GATE_TINT_VALUE),
+		1.0)
 
 ## The swirl. ONE disc, either way — with the fx track's shader it draws the
 ## whole vortex (bands, eye and rim); without it, one additive quad carries the
@@ -299,8 +359,71 @@ func _build_motes() -> void:
 ## stacked off every other caption in the room, so the door says its name in one
 ## line that cannot leave the frame and cannot land on the guidance.
 func _build_label() -> void:
-	_label = ScreenLabels.attach(self, "→ %s" % portal_label, ScreenLabels.SMALL,
+	_label = ScreenLabels.attach(self, _caption(), ScreenLabels.SMALL,
 		GameTheme.TEXT_DIM, LABEL_Y, 1)
+
+func _caption() -> String:
+	return "→ %s" % portal_label
+
+## SAY IT ONCE. Round 3's frames still carried the destination twice within
+## forty pixels: the HUD's waypoint reads "Localhost · 4m · via this portal" and
+## the door under it reads "→ Localhost". The waypoint line is strictly the
+## better of the two — it names the destination, the distance AND this gate's
+## part in the route — so while it is aiming at THIS door the door says nothing,
+## and the moment the objective moves elsewhere the caption comes back for the
+## players who need to know where the other exit goes.
+##
+## ONLY when the two lines would say the same thing. objective_waypoint.gd's own
+## ROUND 12 note is the reason the 3D line reads "via this portal": the door it
+## aims at is often a HOP whose name is a different region's, and then the two
+## texts are a route and a destination, not a duplicate — `region_api_bazaar.png`
+## has "Localhost · 12m · via this portal" over a gate that reads "→ Stack
+## Overflow Ruins", and dropping the second would leave the player not knowing
+## where the door they are told to take actually goes. Likewise the idle "Way
+## out" fallback aims at a door without naming it. So the gate yields when the
+## waypoint is aiming at it AND names this gate's destination (see
+## `_waypoint_names_me`), and keeps its name in every other case.
+##
+## The two files never learn each other's types: objective_waypoint.gd joins
+## WAYPOINT_GROUP and answers `target_node()`, which in 3D is this portal's
+## ActorProxy (§5), and `destination_region()`, the region id the line is
+## naming. Hiding is done by EMPTYING the text, not by touching `visible` —
+## ScreenLabels rewrites visibility every frame and skips empty labels, so
+## anything else here would fight it.
+func _sync_caption() -> void:
+	var want := not _waypoint_names_me()
+	if want == _caption_on:
+		return
+	_caption_on = want
+	ScreenLabels.set_text(_label, _caption() if want else "")
+
+## Is any waypoint currently aiming at this gate AND printing this gate's
+## destination? Both halves matter: aimed-at alone is the hop case above, where
+## the caption is the only thing naming where the door goes. A waypoint that
+## cannot say what it is naming (no `destination_region`) is treated as not
+## naming it — the caption stays, which is the quiet-safe failure: one line too
+## many beats a door with no name.
+##
+## Untyped locals throughout: a group member or a returned target can be a freed
+## instance, and binding one to a typed variable is the error before the guard,
+## not after it.
+func _waypoint_names_me() -> bool:
+	if not is_instance_valid(_proxy):
+		return false
+	for wp in get_tree().get_nodes_in_group(WAYPOINT_GROUP):
+		if not is_instance_valid(wp):
+			continue
+		# The cast happens AFTER the validity check, never at the loop variable.
+		var node := wp as Node
+		if node == null or not node.has_method("target_node") \
+				or not node.has_method("destination_region"):
+			continue
+		var t = node.call("target_node")
+		if t == null or not is_instance_valid(t) or t != _proxy:
+			continue
+		if str(node.call("destination_region")) == target_region:
+			return true
+	return false
 
 # -------------------------------------------------------------------- frame --
 
@@ -313,6 +436,10 @@ func _process(delta: float) -> void:
 	_clock += delta
 	if _proxy:
 		_proxy.sync()
+	_caption_t += delta
+	if _caption_t >= CAPTION_POLL:
+		_caption_t = 0.0
+		_sync_caption()
 	var near := 0.0
 	var player := get_tree().get_first_node_in_group("player")
 	if player is Node3D:

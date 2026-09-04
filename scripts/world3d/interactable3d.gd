@@ -26,8 +26,22 @@ extends Node3D
 ## monitor bank at 650, the floor button at 760, the fridge, the bed...) and
 ## counts its own lights, so a prop that ALSO drew its §7 model there would put a
 ## second fridge through the first one and a second deploy button on top of the
-## real one. In that room this node is a hotspot: the 2D brain, the proxy, and a
-## floor ring that lights up as you close — no model, no light.
+## real one. In that room this node is INVISIBLE: the 2D brain and the proxy, and
+## nothing in the frame at all.
+##
+## It used to draw a thin accent hoop on the floor there instead. LAW 3 ends
+## "Floors do not glow", and the cold read of pass 3 found the hoops first: "a
+## pale-blue torus ring lies on the floor beside a saucer with nothing attached".
+## A ring is an editor gizmo — it marks a spot without being an object in the
+## place — and the [E] prompt over the prop's head already says everything the
+## ring was trying to say, without putting a lit circle on the ground.
+##
+## This node now casts NO LIGHT of any kind either. Every prop used to be allowed
+## a small accent omni "because a monitor is a light" — but LAW 4 budgets a room
+## at six PointLights and region_builder3d.gd counts and clamps exactly six, so
+## every pool a prop added on top of that was a light nobody had budgeted,
+## landing as an unexplained coloured wash on the floor around it (the pink
+## puddle under the api_bazaar monitor in pass 3). The room lights the room.
 
 const DELEGATE_SCENE := "res://scenes/world/generic_interactable.tscn"
 
@@ -129,66 +143,80 @@ const REGION_BASE := {
 	"production": Color("#14080A"),
 	"token_vault": Color("#14100A"),
 }
-const DEFAULT_BASE := Color("#0B0E1C")
+## Unknown region: localhost's BASE. A literal off the LAW 2 table is a fourth
+## hue waiting to happen, so the fallback is a row of the table, not a new dark.
+const DEFAULT_BASE := Color("#0E0C14")
 
 ## LAW 7's ONE exception for a prop: "only screens/lamps carry ACCENT or WARM,
-## and only on their lit surface". So this is no longer a light table — it is
-## how hard a SCREEN FACE is switched on, capped (below), and it is applied only
-## to the parts of an assembly whose node name says they are a screen (see
-## `_is_screen_part`). Round 1 put `emission = accent` on EVERY surface of every
-## prop at a floor of 0.55 and lifted the whole object to 1.45 as the player
-## approached: that is a crate that glows, a gravestone that glows, a shelf of
-## bags that glows, and it is most of why the dependency_district frame is a
-## field of luminous yellow boxes.
-## CAP: 1.6, and nothing in this game is allowed over it. A screen face is the
-## ONE emissive surface a prop may have (LAW 7), and at 1.8-2.0 it stopped being
-## a lit surface and became a lamp with a picture on it — the ad board in
-## api_bazaar was blowing out its own frame.
-const SCREEN_EMIT_MAX := 1.6
+## and only on their lit surface". So this is not a light table — it is how hard
+## a SCREEN FACE is switched on, capped (below), and it reaches only the part of
+## an assembly that `_is_screen_part` can prove is a screen SUB-mesh.
+##
+## CAP: 1.2, down from 1.6, and nothing in this game is allowed over it. At 1.6
+## an emission of a full-value accent lands past 1.0 on top of the surface's own
+## albedo, and past 1.0 there is exactly one colour: white. Pass 3 measured it —
+## cloud_district's monitor face peaked at 252 and api_bazaar's at 224 with the
+## magenta washed out of it. A screen is a lit surface, not a headlight.
+##
+## A row here is an INTENT, not a promise. Of the ids below only the three whose
+## model is an assembly — `deploy_button` (a cap on a base plate) and
+## `dream_app_terminal` / `prop_monitors` (a computerScreen standing on a desk) —
+## currently pass SCREEN_PART_MAX_SHARE and light up. The rest name a Kenney
+## appliance that is one mesh from cabinet to picture, and one mesh cannot be
+## half switched on, so they stay dark until they are modelled with a face of
+## their own. The rows stay because the id's intent has not changed.
+const SCREEN_EMIT_MAX := 1.2
 const SCREEN_EMIT := {
-	"deploy_button": 1.6,
-	"broken_service": 1.6,
-	"free_tokens_ad": 1.6,
-	"agent_terminal": 1.6,
-	"dream_app_terminal": 1.6,
-	"prop_status_page": 1.6,
-	"prop_dashboard": 1.6,
-	"prop_kanban": 1.4,
-	"prop_accepted": 1.2,
-	"backup_server": 1.4,
-	"prop_pager": 1.4,
-	"prop_monitors": 1.4,
-	"prop_terminal": 1.4,
-	"prop_server": 1.2,
-	"prop_router": 1.0,
+	"deploy_button": 1.2,
+	"broken_service": 1.2,
+	"free_tokens_ad": 1.2,
+	"agent_terminal": 1.2,
+	"dream_app_terminal": 1.2,
+	"prop_status_page": 1.2,
+	"prop_dashboard": 1.2,
+	"prop_kanban": 1.05,
+	"prop_accepted": 0.9,
+	"backup_server": 1.05,
+	"prop_pager": 1.05,
+	"prop_monitors": 1.05,
+	"prop_terminal": 1.05,
+	"prop_server": 0.9,
+	"prop_router": 0.75,
 }
 
-## The handful of props that are a MOTIVATED LIGHT in the fiction — a monitor
-## bank, an ad board, a failing service's alarm. LAW 3 allows a frame two of
-## these and LAW 4 puts every world light in the 0.4-0.9 band with a soft
-## radius, so a room with three interactables now spends about as much light in
-## total as ONE of the old 3.4-energy, range-6 prop lamps did. A prop not in
-## this table is lit by the room, like every other object in it.
-const PROP_POOL := {
-	"deploy_button": 0.55,
-	"broken_service": 0.70,
-	"free_tokens_ad": 0.80,
-	"agent_terminal": 0.70,
-	"dream_app_terminal": 0.70,
-	"prop_status_page": 0.70,
-	"prop_dashboard": 0.70,
-	"prop_kanban": 0.60,
-	"prop_accepted": 0.60,
-	"backup_server": 0.60,
-	"prop_pager": 0.50,
-}
-const POOL_RANGE := 3.5
+## And the colour it burns: the region ACCENT held to 0.85 value. The accents are
+## authored at full value (#6BC7FF, #FF2D95 and #A8FF3E all peak at 1.0), so an
+## emission in the raw accent starts a screen at the top of the range before the
+## energy multiplier has touched it. Backing the colour off first is what keeps
+## the HUE in the frame: a magenta screen at 0.85 x 1.2 still reads magenta,
+## where the same screen at 1.0 x 1.6 reads white with pink edges.
+const SCREEN_VALUE := 0.85
 
 ## Node names that mean "this part of the assembly is the lit surface". Kenney
 ## names its meshes after the thing they are (`computerScreen`, `display-wall`,
 ## `button-floor-round`), and Map3D.model() keeps that name on the instance, so
 ## a desk stays a desk while the screen standing on it is the part that is on.
 const SCREEN_HINTS := ["screen", "display", "monitor", "computer", "button", "panel", "terminal"]
+## ...and the names that match a hint by accident. `computerKeyboard` contains
+## "computer", so for three rounds the battlestation's keyboard was as lit as the
+## two monitors above it. A keyboard is not a screen.
+const NOT_SCREEN := ["keyboard", "mouse", "chair", "drawer", "door", "leg", "stand", "mug"]
+
+## A screen face may be at most this share of the assembly it belongs to, by
+## bounding volume. This is the rule that stops "the screen glows" from meaning
+## "the appliance glows": half the Kenney space-station kit (`display-wall`,
+## `display-wall-wide`, `computer-wide`, `computer-screen`) is ONE mesh with ONE
+## `colormap` material covering cabinet, bezel, buttons and picture alike, so
+## switching "the screen" on there switches the whole box on — which is precisely
+## the pink-white slab and the blue-white slab the pass-3 read picked out. There
+## is no sub-mesh to isolate, so those props get NO emission: a dark appliance in
+## a lit room is correct, a light box with a picture on it is not. Where the
+## screen IS a separate piece (a computerScreen standing on a desk, the cap of a
+## floor button) it comes in far under this share and burns as intended.
+const SCREEN_PART_MAX_SHARE := 0.40
+## Floor thickness for the volume test, so a screen authored as a flat quad has a
+## volume at all instead of dividing by zero.
+const PART_EPS := 0.02
 
 ## generic_interactable.gd's proximity highlight, converted at the coordinate
 ## edge (GLOW_RADIUS 110 map px / 64).
@@ -201,17 +229,24 @@ const GATE_RATE := 4.0
 ## single loudest thing on screen. The [E] prompt over its head is the actual
 ## affordance; this is only the confirmation that the prompt means THIS one.
 const HIGHLIGHT_LIFT := 0.10
-## The hotspot ring (dressed rooms only): a thin flat hoop on the floor around
-## the thing the builder already placed, in the prop's accent, that fades in
-## with the same gate the emissive highlight uses everywhere else.
-const RING_INNER := 0.34
-const RING_OUTER := 0.42
-const RING_Y := 0.02
-## Under 1.0, so the hoop is a mark on the floor rather than a lit one: at 1.6
-## it crossed the §7 glow threshold and bloomed a ring of accent around every
-## hotspot in the apartment. LAW 5 spends bloom on LAW 3's five things only.
-const RING_GAIN := 0.9
-const RING_ALPHA := 0.55
+
+## LAW 3: "Everything else is ≤ 60% value." A prop is never one of the five
+## things allowed to be bright, so its albedo is capped here — AFTER the mute,
+## because the mute cannot reach a white.
+##
+## It cannot reach a white because of how the Kenney kits are painted: a
+## space-station model's material is a white `albedo_color` MULTIPLIER over a
+## `colormap` texture that holds every hue the model has. Desaturating that
+## multiplier toward grey does nothing (white is already grey) and the texture's
+## white texels come through at full strength — which is where "a white tub prop"
+## came from, and it was never emissive at all, just white paint under a light.
+## Scaling the multiplier is the one operation that reaches the texture, so the
+## cap goes on the multiplier and every texel comes down with it.
+##
+## 0.55 rather than 0.60: the near-player highlight lifts ten per cent toward
+## white on top of it (0.55 -> 0.595), so the lit state is what has to fit under
+## LAW 3's ceiling, not the resting one.
+const PROP_VALUE_MAX := 0.55
 
 @export var interact_id: String = ""
 @export var interact_text: String = "Interact"
@@ -231,11 +266,9 @@ var _mat_base: Array[Color] = []
 ## Which of those materials belong to the lit surface of a screen.
 var _mat_screen: Array[bool] = []
 var _base := DEFAULT_BASE
-var _light: OmniLight3D
-var _ring: MeshInstance3D
-var _ring_mat: StandardMaterial3D
-var _light_base := 0.0
-var _emit_floor := 0.0
+## How hard this prop's screen face burns, already clamped to SCREEN_EMIT_MAX.
+## Zero for the great majority of props, which have no screen at all.
+var _screen_emit := 0.0
 var _gate := 0.0
 var _clock := 0.0
 var _used := false
@@ -246,16 +279,15 @@ func _ready() -> void:
 	_build_delegate()
 	_accent = _accent_for(interact_id)
 	_base = REGION_BASE.get(GameManager.current_region, DEFAULT_BASE)
-	_emit_floor = minf(float(SCREEN_EMIT.get(interact_id, 0.0)), SCREEN_EMIT_MAX)
+	_screen_emit = minf(float(SCREEN_EMIT.get(interact_id, 0.0)), SCREEN_EMIT_MAX)
 	# region_portal.gd's guarantee holds here too: `GameManager.current_region`
 	# is already the room being populated by the time a prop enters the tree.
 	if GameManager.current_region in DRESSED_REGIONS:
 		dressed = true
-	if dressed:
-		_build_ring()
-	else:
+	# In a dressed room this node draws nothing: the builder's own furniture is
+	# the art, and the [E] prompt is the affordance.
+	if not dressed:
 		_build_prop()
-		_build_light()
 	_proxy = ActorProxy.attach(self, ["interactable"], {
 		"interact_id": interact_id,
 		"interact_text": interact_text,
@@ -330,8 +362,13 @@ func _build_prop() -> void:
 		box.size = Vector3(0.5, 0.5, 0.5)
 		mi.mesh = box
 		mi.position.y = 0.25
-		# LAW 7: a stand-in is still a prop, and props do not glow.
-		mi.material_override = Map3D.matte(_muted(_accent), 0.0)
+		# LAW 7: a stand-in is still a prop, and props do not glow. A SURFACE
+		# override, not material_override: _collect_materials reads the active
+		# material back, mutes it and installs its own surface override, and a
+		# material_override would sit on top of that and hide both the mute and
+		# the near-player highlight. The accent goes in raw here; the mute below
+		# is the one that desaturates and caps it.
+		mi.set_surface_override_material(0, Map3D.matte(_accent, 0.0))
 		holder.add_child(mi)
 		_collect_materials(self)
 		return
@@ -359,125 +396,138 @@ static func _anchor_offset(key: String) -> Vector3:
 		-minf(float(mn[1]), 0.0),
 		-(float(mn[2]) + float(mx[2])) * 0.5)
 
-## The dressed-room cue: a flat hoop on the floor, additive and unshaded in the
-## prop's accent, invisible at rest and lifted over the glow threshold by the
-## gate as you close. It says "lever" without adding a second object to a room
-## the builder already finished.
-func _build_ring() -> void:
-	_ring = MeshInstance3D.new()
-	_ring.name = "HotspotRing"
-	var t := TorusMesh.new()
-	t.inner_radius = RING_INNER
-	t.outer_radius = RING_OUTER
-	t.rings = 40
-	t.ring_segments = 6
-	_ring.mesh = t
-	_ring_mat = StandardMaterial3D.new()
-	_ring_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_ring_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_ring_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	_ring_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_ring_mat.disable_receive_shadows = true
-	_ring_mat.albedo_color = Color(_accent.r * RING_GAIN, _accent.g * RING_GAIN,
-		_accent.b * RING_GAIN, 0.0)
-	_ring.material_override = _ring_mat
-	_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# TorusMesh lies in the XZ plane already (its axis is +Y); no rotation.
-	_ring.position = Vector3(0.0, RING_Y, 0.0)
-	_ring.visible = false
-	add_child(_ring)
-
 ## Duplicate every surface material into an override we own, mute it toward the
-## region's BASE (LAW 7), and switch on emission ONLY where the assembly says
-## there is a screen. `_mat_base` keeps the resting albedo so the proximity
-## highlight is always computed from it, never accumulated onto it.
+## region's BASE and under LAW 3's value ceiling (LAW 7), and switch on emission
+## ONLY on a part the assembly proves is a screen SUB-mesh. `_mat_base` keeps the
+## resting albedo so the proximity highlight is always computed from it, never
+## accumulated onto it.
 func _collect_materials(node: Node) -> void:
-	if node is MeshInstance3D:
-		var mi := node as MeshInstance3D
-		var lit := _emit_floor > 0.0 and _is_screen_part(mi)
-		if mi.mesh:
-			for i in mi.mesh.get_surface_count():
-				var src: Material = mi.get_active_material(i)
-				var mat: StandardMaterial3D
-				if src is StandardMaterial3D:
-					mat = (src as StandardMaterial3D).duplicate()
-				else:
-					mat = StandardMaterial3D.new()
-					mat.roughness = 0.9
-					mat.metallic = 0.0
-				var muted := _muted(mat.albedo_color)
-				mat.albedo_color = muted
-				if lit:
-					# LAW 7's one exception, on the one surface it applies to.
-					mat.emission_enabled = true
-					mat.emission = _accent
-					mat.emission_energy_multiplier = _emit_floor
-				else:
-					mat.emission_enabled = false
-					mat.emission_energy_multiplier = 0.0
-				mi.set_surface_override_material(i, mat)
-				_mats.append(mat)
-				_mat_base.append(muted)
-				_mat_screen.append(lit)
+	var parts: Array[MeshInstance3D] = []
+	_gather_meshes(node, parts)
+	# The whole assembly's box, in this node's own space, so a part can be
+	# measured against the object it belongs to rather than against a constant.
+	var whole := AABB()
+	var first := true
+	for mi: MeshInstance3D in parts:
+		var b := _part_box(mi)
+		if first:
+			whole = b
+			first = false
+		else:
+			whole = whole.merge(b)
+	# Never zero: _box_volume floors every axis at PART_EPS.
+	var whole_vol := _box_volume(whole)
+	for mi: MeshInstance3D in parts:
+		var share := _box_volume(_part_box(mi)) / whole_vol
+		var lit := _screen_emit > 0.0 and share <= SCREEN_PART_MAX_SHARE \
+			and _is_screen_part(mi)
+		for i in mi.mesh.get_surface_count():
+			var src: Material = mi.get_active_material(i)
+			var mat: StandardMaterial3D
+			if src is StandardMaterial3D:
+				mat = (src as StandardMaterial3D).duplicate()
+			else:
+				mat = StandardMaterial3D.new()
+				mat.roughness = 0.9
+				mat.metallic = 0.0
+			var muted := _muted(mat.albedo_color)
+			mat.albedo_color = muted
+			if lit:
+				# LAW 7's one exception, on the one surface it applies to.
+				mat.emission_enabled = true
+				mat.emission = _at_value(_accent, SCREEN_VALUE)
+				mat.emission_energy_multiplier = _screen_emit
+			else:
+				mat.emission_enabled = false
+				mat.emission_energy_multiplier = 0.0
+			mi.set_surface_override_material(i, mat)
+			_mats.append(mat)
+			_mat_base.append(muted)
+			_mat_screen.append(lit)
+
+## Every drawable MeshInstance3D under `node`, in tree order. A MeshInstance3D
+## with no mesh is skipped: it has no surfaces to override and no bounds to
+## measure, and `get_aabb()` on one would fold an empty box into the assembly.
+static func _gather_meshes(node: Node, out: Array[MeshInstance3D]) -> void:
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null:
+		out.append(node as MeshInstance3D)
 	for c in node.get_children():
-		_collect_materials(c)
+		_gather_meshes(c, out)
+
+## A part's bounds expressed in THIS node's space. Built by walking the parent
+## chain rather than through `global_transform`, so the measurement is the same
+## whether a builder positioned this node before or after adding it to the tree,
+## and is unaffected by where in the room the prop ended up standing.
+func _rel_xform(mi: MeshInstance3D) -> Transform3D:
+	var xf := Transform3D.IDENTITY
+	var n: Node = mi
+	while n != null and n != self:
+		if n is Node3D:
+			xf = (n as Node3D).transform * xf
+		n = n.get_parent()
+	return xf
+
+func _part_box(mi: MeshInstance3D) -> AABB:
+	return _rel_xform(mi) * mi.get_aabb()
+
+## Volume with a floor under each axis, so a flat screen quad measures as a thin
+## slab instead of as nothing and the assembly can never measure as zero.
+static func _box_volume(b: AABB) -> float:
+	return maxf(b.size.x, PART_EPS) * maxf(b.size.y, PART_EPS) * maxf(b.size.z, PART_EPS)
+
+## `c` rescaled so its brightest channel is `v` — hue and saturation intact, the
+## value pinned. Only ever darkens: an accent already below `v` is left alone
+## rather than pumped up to meet it.
+static func _at_value(c: Color, v: float) -> Color:
+	var m: float = maxf(maxf(c.r, c.g), c.b)
+	if m <= 0.0001:
+		return c
+	var k: float = minf(1.0, v / m)
+	return Color(c.r * k, c.g * k, c.b * k, c.a)
 
 ## LAW 7: "props desaturated toward the region BASE". Half the chroma out of
 ## Kenney's colormap, then a quarter of the way into the room's own dark — the
 ## prop keeps its material identity (wood is still warmer than steel) and stops
-## being a second saturated hue in a scene that is allowed three.
+## being a second saturated hue in a scene that is allowed three — and then LAW
+## 3's value ceiling, which is the step that turns off the whites (PROP_VALUE_MAX).
 func _muted(c: Color) -> Color:
 	var grey: float = (c.r + c.g + c.b) / 3.0
 	var flat := Color(grey, grey, grey, c.a)
 	var toward := Color(_base.r, _base.g, _base.b, c.a)
-	return c.lerp(flat, 0.5).lerp(toward, 0.25)
+	return _at_value(c.lerp(flat, 0.5).lerp(toward, 0.25), PROP_VALUE_MAX)
 
 ## Is this mesh part of the assembly's lit surface? Walks from the mesh up to
 ## this node, so a `computerScreen` standing on a `desk` is a screen and the
-## desk under it is furniture.
+## desk under it is furniture. A name on NOT_SCREEN settles it immediately, at
+## whatever level it appears: the keyboard beside the monitor is not the monitor
+## merely because Kenney calls it a `computerKeyboard`.
+##
+## Saying yes here is necessary but not sufficient — `_collect_materials` then
+## checks that the part is small enough to BE a face rather than the whole
+## appliance (SCREEN_PART_MAX_SHARE).
 func _is_screen_part(mi: MeshInstance3D) -> bool:
 	var n: Node = mi
+	var hit := false
 	while n != null and n != self:
 		var nm := n.name.to_lower()
-		for hint: String in SCREEN_HINTS:
-			if nm.contains(hint):
-				return true
+		for veto: String in NOT_SCREEN:
+			if nm.contains(veto):
+				return false
+		if not hit:
+			for hint: String in SCREEN_HINTS:
+				if nm.contains(hint):
+					hit = true
+					break
 		n = n.get_parent()
-	return false
-
-## The pool a motivated prop casts. LAW 4's band (0.4-0.9) at a radius that
-## reaches the floor around it and stops — not the 3.4-at-range-6 spot-halo that
-## put a coloured wash across four tiles of every room it stood in.
-##
-## MOTIVATED means the player can see what is casting it: the pool is only
-## built when `_collect_materials` actually switched a screen face on. A prop
-## in PROP_POOL whose assembly has no screen part (broken_service is a bare
-## container-tall; prop_accepted is a gravestone) would be a coloured pool on
-## the floor with nothing above it emitting — the unexplained light LAW 3 says
-## is too bright by definition.
-func _build_light() -> void:
-	if not PROP_POOL.has(interact_id):
-		return
-	if not _mat_screen.has(true):
-		return
-	_light_base = float(PROP_POOL[interact_id])
-	_light = OmniLight3D.new()
-	_light.name = "PropLight"
-	_light.light_color = _accent
-	_light.light_energy = _light_base
-	_light.omni_range = POOL_RANGE
-	_light.omni_attenuation = 1.6
-	_light.shadow_enabled = false
-	_light.position = Vector3(0.0, 0.75, 0.25)
-	add_child(_light)
+	return hit
 
 # --------------------------------------------------------------------- frame --
 
-## generic_interactable.gd's step-up-and-hold highlight, in ALBEDO: the prop
-## lifts ten per cent as you come into range and holds while you are there, and
-## the screen face (if it has one) keeps burning at exactly the level it was
-## already burning at. LAW 9's 6% flicker rides on the lamp and nothing else.
-## The [E] prompt (player-side) fades in on top of it.
+## generic_interactable.gd's step-up-and-hold highlight, in ALBEDO and in albedo
+## ONLY: the prop lifts ten per cent as you come into range and holds while you
+## are there, and the screen face (if it has one) keeps burning at exactly the
+## level it was already burning at. LAW 9's 6% flicker rides on that face and
+## nothing else. The [E] prompt (player-side) fades in on top of it.
 func _process(delta: float) -> void:
 	_clock += delta
 	if _proxy:
@@ -495,12 +545,7 @@ func _process(delta: float) -> void:
 		var m: StandardMaterial3D = _mats[i]
 		m.albedo_color = _mat_base[i].lightened(HIGHLIGHT_LIFT * _gate)
 		if _mat_screen[i]:
-			m.emission_energy_multiplier = _emit_floor * flicker
-	if _light:
-		_light.light_energy = _light_base * (flicker + _gate * 0.15)
-	if _ring_mat:
-		_ring_mat.albedo_color.a = _gate * flicker * RING_ALPHA
-		_ring.visible = _gate > 0.001
+			m.emission_energy_multiplier = _screen_emit * flicker
 
 # ------------------------------------------------------------------ interact --
 

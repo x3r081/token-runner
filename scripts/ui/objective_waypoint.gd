@@ -136,6 +136,21 @@ const SP_NUDGE := 14.0
 const VIEW_PAD_X := 44.0
 const VIEW_PAD_TOP := 104.0
 const VIEW_PAD_BOTTOM := 84.0
+## ACTOR KEEP-CLEAR, 3D only. The readout may not print across the player or
+## across an enemy: `combat_dependency_district.png` has "Localhost · 4m · via
+## this portal" through the player's face (he is standing at the door it points
+## at), and `region_api_bazaar.png` has the same line across two bees. The box an
+## actor occupies, in MAP pixels around its projected point. Stage3D projects a
+## map position at 0.5 world units — mid-body — so the box reaches further UP
+## (to the top of a 1.1u head, 44 map px at 64 per unit) than DOWN (to the feet,
+## 32). Scaled by the live zoom, so it tracks the camera like every clearance
+## here. Zero in 2D: the 2D layout is tested and untouched (`_is_3d()` gates it).
+const ACTOR_BOX_MAP := Rect2(-24.0, -44.0, 48.0, 76.0)
+## A scale-2 hovering boss (enemy3d's UFOs) covers about this much more screen.
+const ACTOR_BOX_BOSS := 1.8
+## Enemies considered per frame. A region fields a dozen at most; the cap only
+## bounds a summoner's worst case, and the player's box is never the one dropped.
+const ACTOR_BOX_MAX := 12
 
 ## Padding around the readout's own text box. There is no plate any more, so
 ## this is pure spacing between the chevron and the words.
@@ -245,6 +260,13 @@ const IDLE_TARGET_NAME := "Way out"
 ## the door is FOR.
 const VIA_PORTAL := "via this portal"
 
+## The group this beacon joins so world objects can ask it what it is aiming at.
+## Round 3's frames printed the destination twice within forty pixels — this
+## line's "Localhost · 4m · via this portal" and, under it, the gate's own
+## "→ Localhost" — and the only way for the gate to know that was for the beacon
+## to be askable. See `target_node()`.
+const WAYPOINT_GROUP := "objective_waypoint"
+
 var _marker: Node2D
 var _outline: Polygon2D
 var _body: Polygon2D
@@ -256,6 +278,13 @@ var _label: Label
 var _target: Node2D = null
 var _had_target := false
 var _target_name := ""
+## The REGION the line is naming when it names one — the objective's region on
+## the cross-region path, the node_id of a "region" objective — and "" for every
+## in-room target and for the idle "Way out". Exposed by `destination_region()`
+## so a 3D gate can tell "the HUD is printing my destination" apart from "the HUD
+## is pointing at me as a hop", which is the difference between a duplicate line
+## and a route (see the ROUND 12 note on `_update_label_text`).
+var _target_region_id := ""
 var _objective: Dictionary = {}
 ## True when we are pointing at the way out because there is no objective at all.
 var _fallback := false
@@ -299,9 +328,16 @@ var _last_label_via := false
 var _view_size := Vector2.ZERO
 var _ex_quest := Rect2()
 var _ex_toast := Rect2()
+## The actors the readout must stay off this frame (see ACTOR_BOX_MAP). Rebuilt
+## every `_place` in 3D — they move — and always empty in 2D.
+var _ex_actors: Array[Rect2] = []
 
 func _ready() -> void:
 	name = "ObjectiveWaypoint"
+	# ADDITIVE, and inert in 2D: nothing in the 2D game reads this group. It
+	# exists so a 3D object can ask the HUD whether the HUD is already naming it
+	# (see `target_node`) without either file knowing the other's type.
+	add_to_group(WAYPOINT_GROUP)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	# A MARKER THAT STOPS TICKING MUST STILL BE ABLE TO HIDE ITSELF. Everything
@@ -437,6 +473,7 @@ func _on_quest_signal(_a = null, _b = null) -> void:
 func _on_region_change(_region_id: String = "") -> void:
 	_target = null
 	_had_target = false
+	_target_region_id = ""
 	_target_is_portal = false
 	_target_is_npc = false
 	_show(false)
@@ -651,6 +688,7 @@ func _place() -> void:
 		plate_anchor = _marker.position
 		back = (RING_REACH if _cross_region else CHEVRON_REACH) * s
 
+	_refresh_actor_exclusions(vp)
 	_place_plate(plate_anchor, plate_dir, view, back + PLATE_GAP)
 
 	var alpha := 1.0
@@ -688,12 +726,19 @@ func _place_plate(anchor: Vector2, dir: Vector2, view: Vector2, clear: float) ->
 	# edge is what dropped a readout onto a boss entrance banner.
 	if p.y < GUIDE_BAND_BOTTOM:
 		p.y = clampf(p.y, GUIDE_BAND_TOP, maxf(GUIDE_BAND_BOTTOM - s.y, GUIDE_BAND_TOP))
-	# Then off the HUD's own lines.
+	# Then off the HUD's own lines — and, in 3D, off the player and the enemies
+	# (`_ex_actors` is empty in every 2D run, so the inner loop is a no-op there).
 	var c := p + s * 0.5
 	for _i in 2:
 		c = _push_rect_out(c, s, _ex_quest)
 		c = _push_rect_out(c, s, _ex_toast)
+		for r: Rect2 in _ex_actors:
+			c = _push_off_actor(c, s, r, view)
 	p = c - s * 0.5
+	# An actor escape can leave the readout straddling the guidance band's lower
+	# edge; the wholly-inside-or-wholly-below rule above is re-applied for it.
+	if not _ex_actors.is_empty() and p.y < GUIDE_BAND_BOTTOM:
+		p.y = clampf(p.y, GUIDE_BAND_TOP, maxf(GUIDE_BAND_BOTTOM - s.y, GUIDE_BAND_TOP))
 	p.x = clampf(p.x, PLATE_EDGE_PAD, maxf(view.x - s.x - PLATE_EDGE_PAD, PLATE_EDGE_PAD))
 	# The floor is MARGIN_BOTTOM, not the screen edge: below it live the ability
 	# slots and the key legend, and a last-resort clamp must not be the one thing
@@ -701,6 +746,58 @@ func _place_plate(anchor: Vector2, dir: Vector2, view: Vector2, clear: float) ->
 	p.y = clampf(p.y, GUIDE_BAND_TOP, maxf(view.y - MARGIN_BOTTOM - s.y, GUIDE_BAND_TOP))
 	# Whole pixels: a half-pixel origin softens aliased text (LAW 1).
 	_plate.position = p.round()
+
+## The boxes the readout keeps off this frame (ACTOR_BOX_MAP): the player, then
+## every enemy proxy on screen, in 3D only. Boxes are built in THIS Control's
+## space through the same `_world_to_ui` that places the chevron. A box that
+## lies wholly outside the frame is dropped — a proxy behind the camera projects
+## to a mirrored point, and a box there could only push the readout for nothing.
+##
+## Untyped loop var on purpose: a group member can be a freed instance, and
+## binding one to a typed variable is the error before the guard, not after it.
+func _refresh_actor_exclusions(vp: Viewport) -> void:
+	_ex_actors.clear()
+	if not _is_3d():
+		return
+	var zoom := _zoom_of(vp)
+	var frame := Rect2(Vector2.ZERO, size)
+	var p := _player()
+	if is_instance_valid(p):
+		var pb := _actor_box(p.global_position, zoom, 1.0, vp)
+		if frame.intersects(pb):
+			_ex_actors.append(pb)
+	for n in get_tree().get_nodes_in_group("enemy"):
+		if _ex_actors.size() >= ACTOR_BOX_MAX:
+			break
+		if not is_instance_valid(n) or not (n is Node2D):
+			continue
+		var k := 1.0
+		if "is_boss" in n and bool(n.is_boss):
+			k = ACTOR_BOX_BOSS
+		var eb := _actor_box((n as Node2D).global_position, zoom, k, vp)
+		if frame.intersects(eb):
+			_ex_actors.append(eb)
+
+## ACTOR_BOX_MAP around a map-pixel position, projected and scaled by `k`.
+func _actor_box(map_pos: Vector2, zoom: float, k: float, vp: Viewport) -> Rect2:
+	var sp := _world_to_ui(map_pos, vp)
+	return Rect2(sp + ACTOR_BOX_MAP.position * zoom * k, ACTOR_BOX_MAP.size * zoom * k)
+
+## Escape an ACTOR's box: UP first — text belongs over its subject, and up is
+## where the readout already hangs — and SIDEWAYS toward the screen centre when
+## up would leave the guidance band (a readout pushed above the band is clamped
+## straight back down onto the face it just left, so it must not be sent there).
+## Never DOWN: under an actor is its feet and the next actor.
+func _push_off_actor(c: Vector2, s: Vector2, r: Rect2, view: Vector2) -> Vector2:
+	var g := r.grow(AVOID_PAD)
+	if not g.intersects(Rect2(c - s * 0.5, s)):
+		return c
+	var up := g.position.y - s.y * 0.5
+	if up - s.y * 0.5 >= GUIDE_BAND_TOP:
+		return Vector2(c.x, up)
+	if c.x > view.x * 0.5:
+		return Vector2(g.position.x - s.x * 0.5, c.y)
+	return Vector2(g.end.x + s.x * 0.5, c.y)
 
 ## Rect-vs-rect version of `_push_out`: the readout is a box, not a point, so it
 ## has to escape by its own half-extent or it leaves a corner behind.
@@ -928,6 +1025,7 @@ func _resolve() -> void:
 	_fallback = false
 	_cross_region = false
 	_target_name = ""
+	_target_region_id = ""
 	_objective = QuestManager.get_current_objective()
 	if _objective.is_empty():
 		_resolve_fallback()
@@ -939,6 +1037,7 @@ func _resolve() -> void:
 		# The objective lives somewhere else: point at the door, not the void.
 		_target = _portal_toward(region)
 		_target_name = QuestManager.pretty_name(region)
+		_target_region_id = region
 		_cross_region = _target != null
 	else:
 		var node_id := str(_objective.get("node_id", ""))
@@ -958,6 +1057,7 @@ func _resolve() -> void:
 			"region":
 				_target = _portal_toward(node_id)
 				_target_name = QuestManager.pretty_name(node_id)
+				_target_region_id = node_id
 				_cross_region = _target != null
 	if _target == null:
 		_resolve_fallback()
@@ -986,8 +1086,10 @@ func _resolve_fallback() -> void:
 	if p == null:
 		_target = null
 		_target_name = ""
+		_target_region_id = ""
 		return
 	_target = p
+	_target_region_id = ""
 	_fallback = true
 	_cross_region = false
 	_target_name = IDLE_TARGET_NAME
@@ -1150,6 +1252,28 @@ func is_fallback() -> bool:
 ## True when the objective is in another region and this is the portal to it.
 func is_cross_region() -> bool:
 	return _cross_region
+
+## The node we are pointing at, or null. In a 3D run this is the target's
+## ActorProxy (the hidden Node2D of 3D_BIBLE §5), which is what a 3D object
+## compares itself against — `portal3d.gd` uses it to drop its own destination
+## caption while this line is already naming that door. Returns `Node` rather
+## than `Node2D` so a caller cannot bind a freed instance to a narrower type;
+## the validity check happens HERE, before anything is handed out.
+func target_node() -> Node:
+	if is_instance_valid(_target):
+		return _target
+	return null
+
+## The region id the readout is NAMING, or "" when it names none: an in-room
+## target ("Tokens", an NPC's name) or the idle "Way out". With `target_node()`
+## this is the whole of what a 3D gate needs to know whether the HUD is already
+## saying its line — aimed at me AND naming my destination — as opposed to
+## pointing at it as a hop on the way somewhere else, where the gate's own
+## "→ <where it goes>" is the only text that says so.
+func destination_region() -> String:
+	if is_instance_valid(_target):
+		return _target_region_id
+	return ""
 
 ## World position of whatever we are pointing at.
 func target_position() -> Vector2:

@@ -203,6 +203,11 @@ const GLYPH_MAX_TIME := 0.80
 ## about forty pixels of drift over the life of the text, which reads as "this
 ## number came off that enemy" and stops well short of a banner.
 const GLYPH_MAX_RISE := 0.45
+## The sideways half of that drift, alternating per call (see `_glyph_flip`).
+## Two hits in the same second used to rise along the SAME column and overwrite
+## each other pixel for pixel; a fan of up-left / up-right separates them
+## without adding motion — the rise is unchanged, it is merely tilted.
+const GLYPH_DRIFT := 0.30
 
 const DISSOLVE_PATH := "res://assets/shaders3d/dissolve3d.gdshader"
 const PORTAL_PATH := "res://assets/shaders3d/portal_vortex.gdshader"
@@ -229,6 +234,10 @@ static var _box: BoxMesh
 static var _ramp: GradientTexture1D
 static var _white: Texture2D
 static var _shaders: Dictionary = {}
+## Which way the NEXT glyph leans. Purely cosmetic, so it is deliberately not
+## reset on a scene change: the only thing a stale value can do is start the
+## next fan on its other side.
+static var _glyph_flip := false
 
 # --------------------------------------------------------------- plumbing ----
 
@@ -948,14 +957,20 @@ static func glyph(host: Node, pos: Vector3, text: String, color: Color, size: in
 	# on the same pixel; ScreenLabels' own stacking takes it from there.
 	anchor.global_position = pos + Vector3(randf_range(-0.12, 0.12), 0.0, randf_range(-0.08, 0.08))
 	# LAW 1: two sizes in the world, 14 and 18, and no others — the 26 of a
-	# heading belongs to the region name and nothing else. Callers ask for
-	# anything from 12 to 30; the number they pass is only evidence of which of
-	# the two they meant, so the split is at the midpoint of the gap.
-	var fs: int = ScreenLabels.BODY if size >= 17 else ScreenLabels.SMALL
-	# Height 0 — the anchor is already where the text should point. Priority 1
-	# puts a damage number above an ambient nameplate for the 0.8s it lives,
-	# which is the right order of importance during a fight and reverts itself.
-	var lbl := ScreenLabels.attach(anchor, text, fs, _glyph_color(color), 0.0, 1)
+	# heading belongs to the region name and nothing else. Which of the two is
+	# decided by the CONTENT first — a NUMBER is 14 and a WORD is 18 — with the
+	# `size` a caller passed demoted to the tie-breaker it always was. In
+	# `combat_dependency_district.png` that ordering is exactly backwards: "-10"
+	# is set larger than the sentence beside it, which is why a transient number
+	# reads as the loudest thing on the player.
+	var fs: int = _glyph_size(text, size)
+	# Height 0 — the anchor is already where the text should point.
+	# KEEP_CLEAR_PRIORITY is the point of this number: a glyph is the one world
+	# text that may stay inside the disc ScreenLabels keeps clear around the
+	# player, and it is lifted out of that disc rather than dropped, so a hit
+	# you took is always readable while the ambient captions around it are not.
+	var lbl := ScreenLabels.attach(anchor, text, fs, _glyph_color(color), 0.0,
+		ScreenLabels.KEEP_CLEAR_PRIORITY)
 	if lbl == null:
 		anchor.queue_free()
 		return
@@ -976,10 +991,64 @@ static func glyph(host: Node, pos: Vector3, text: String, color: Color, size: in
 	var tw := anchor.create_tween()
 	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	tw.tween_property(anchor, "global_position",
-		anchor.global_position + Vector3.UP * lift, dur).set_ease(Tween.EASE_OUT)
+		anchor.global_position + Vector3.UP * lift + _glyph_drift(bin), dur) \
+		.set_ease(Tween.EASE_OUT)
 	tw.parallel().tween_method(fade, 1.0, 0.0, dur * 0.5) \
 		.set_delay(dur * 0.5).set_ease(Tween.EASE_IN)
 	tw.tween_callback(anchor.queue_free)
+
+## 14 for a NUMBER, 18 for a WORD (LAW 1 allows exactly those two sizes in the
+## world, and the frames had them the wrong way round — "-10" set larger than
+## the sentence beside it).
+##
+## A word is any string containing a LETTER: "CRIT", "cache miss", "session
+## expired". A number is a string with a digit and no letters: "-10", "+5",
+## "429". A string that is neither — the bare "!" and "?" of a telegraph — has
+## no content to judge, so the caller's `hint` decides, split at the midpoint of
+## the 12..30 range the thirty-odd call sites pass.
+##
+## Letters are detected with `to_lower() != to_upper()`, which is true of cased
+## characters in every alphabet Godot's String handles and false for digits,
+## signs, punctuation and the middle dot.
+static func _glyph_size(text: String, hint: int) -> int:
+	var digits := false
+	for i in text.length():
+		var c := text[i]
+		if c.to_lower() != c.to_upper():
+			return ScreenLabels.BODY
+		if c >= "0" and c <= "9":
+			digits = true
+	if digits:
+		return ScreenLabels.SMALL
+	return ScreenLabels.BODY if hint >= 17 else ScreenLabels.SMALL
+
+## The sideways component of the rise: up-LEFT then up-RIGHT, alternating per
+## call. "Left" and "right" are the CAMERA's, taken from the live rig's basis, so
+## the fan is a fan on screen and not a diagonal that changes meaning with the
+## isometric yaw. With no camera (a headless test, a scene mid-swap) the drift is
+## simply zero — the glyph still rises, which is all the callers promise.
+##
+## `host` is untyped: the iron rule is never to type a parameter that could
+## receive a freed instance, because the binding itself is the error and it
+## happens before any guard inside can run.
+static func _glyph_drift(host) -> Vector3:
+	_glyph_flip = not _glyph_flip
+	if not is_instance_valid(host):
+		return Vector3.ZERO
+	# The cast happens AFTER the validity check, never at the parameter.
+	var node := host as Node
+	if node == null or not node.is_inside_tree():
+		return Vector3.ZERO
+	var vp := node.get_viewport()
+	if vp == null:
+		return Vector3.ZERO
+	var cam := vp.get_camera_3d()
+	if cam == null:
+		return Vector3.ZERO
+	var side := cam.global_transform.basis.x
+	if side.length_squared() < 0.000001:
+		return Vector3.ZERO
+	return side.normalized() * (GLYPH_DRIFT if _glyph_flip else -GLYPH_DRIFT)
 
 # ----------------------------------------------------------- afterimages ----
 

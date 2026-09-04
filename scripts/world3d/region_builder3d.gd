@@ -96,12 +96,24 @@ const LIGHT_ATTEN := 1.5
 ## glow threshold is 1.0, so 0.8-1.6 still blooms and is still the brightest
 ## thing in the room; it just reads as a COLOUR now instead of as a hole in the
 ## exposure. Nothing this file draws is white.
+## RE-SIZED AGAIN for pass 4. At 1.6 the Dependency install-bay readout measured
+## 247/255 — white — and the critic counted two more blown slabs in the Bazaar
+## and two pink ones across the top of Production. The ceiling is 1.2 now, and
+## `panel()` no longer draws the colour it is handed: it draws that colour's HUE
+## at EMISSIVE_V, so an ACCENT slab is an ACCENT slab at every energy in the
+## window and nothing this file emits can reach white.
 const PANEL_E_MIN := 0.8
-const PANEL_E_MAX := 1.6
+const PANEL_E_MAX := 1.2
 
 ## Signage is dimmer again, because a sign is not a screen (LAW 3 says so twice)
 ## and the north-wall bank was blowing out behind the HUD's region title.
-const SIGN_E_MAX := 1.2
+const SIGN_E_MAX := 1.0
+
+## The VALUE (HSV V — the largest channel) every emissive surface in this file is
+## drawn at. A hue at 1.0 plus an energy over 1 clips the ACES shoulder and comes
+## back white whatever it started as; at 0.85 the same energy blooms as the
+## colour it was authored in, which is the whole of "nothing white".
+const EMISSIVE_V := 0.85
 
 ## LAW 2 — BASE per region: the dark. Walls, shadow, out-of-bounds. NOT the
 ## floor (LAW 6, and HANDOVER §4.12: writing BASE onto the ground is what gave
@@ -422,6 +434,31 @@ const SWATCH_DEFAULT := Color(0.55, 0.55, 0.55)
 ## is not, and clips to a flat colour instead of a material.
 const TINT_MAX := 1.6
 
+## The floor under a PROP's tint (pass 4, HIGH). `_tint_to` divides a target by
+## a model's own mean, so a kit authored bright (the nature logs read 0.97, 0.85,
+## 0.77) lands a 0.30 target on a 0.33 multiplier, and every texel darker than
+## that model's mean then falls off the bottom of the grade.
+##
+## APPLIED AS A GAIN, NOT AS A PER-CHANNEL CLAMP, and the difference matters
+## twice over in this pass. Raising each channel to 0.45 independently turns
+## every multiplier into a near-neutral grey — which would quietly undo the two
+## hue corrections the same report asks for a paragraph later, because a tint of
+## (0.45, 0.49, 0.45) leaves a teal leaf teal and a green parasol green. So the
+## whole multiplier is scaled until its BRIGHTEST channel clears the floor: the
+## hue survives, and nothing can be crushed to black for want of gain. The
+## per-channel guard below it is a fraction of the floor rather than the floor
+## itself, so a deliberately red or green tint keeps its shape and still returns
+## an ambient response on every face.
+##
+## (The black silhouettes themselves were never a tint problem at all — see
+## `_matte_ify`. This is the belt to that fix's braces.)
+##
+## PROPS ONLY. The border ring, the backdrop band and the floor are aimed at
+## values BELOW this on purpose (they are the dark the three hues are read
+## against), so the floor is passed explicitly rather than defaulted.
+const TINT_MIN := 0.45
+const TINT_FLOOR_RATIO := 0.35
+
 ## LAW 6, as ONE number: the sRGB luminance the bare floor tile must display at.
 ## The window is 64-84 and 0.28 is 71/255 — middle of it, with the A/B variant
 ## and the walkway lift stacking to 1.1025 and still landing the brightest tile
@@ -437,10 +474,9 @@ const TINT_MAX := 1.6
 ## floor keeps the hex's HUE and is normalised onto this value (`_floor_tone`).
 const FLOOR_TARGET_L := 0.28
 
-## The A/B tile pair, and the walkway/plaza lift over the field. LAW 6 caps a
-## variant at 6% and per-tile jitter at 3%; two 5% steps stack to 1.10, which
-## keeps the brightest tile in the room at ~80 and inside the window.
-const FLOOR_VARIANT := 1.05
+## The walkway/plaza lift over the field. LAW 6 caps a variant at 6%; this and
+## the tone ladder (FLOOR_LADDER) stack to about 1.08, which keeps the brightest
+## cell in the room near 77 and inside the 64-84 window.
 const FLOOR_WALK_LIFT := 1.05
 
 ## The seam under the floor, as a fraction of the floor tone. LAW 6 wants a
@@ -452,15 +488,15 @@ const FLOOR_WALK_LIFT := 1.05
 ## thing a floor may never have.
 const FLOOR_SEAM_TONE := 0.68
 
-## The two inset details, on roughly a tenth and a twentieth of the tiles (LAW
-## 6: "one subtle inset detail on ~10% of tiles; nothing else on the floor").
-## Both are a step DOWN from the tile — a recess, a plate joint — because on a
-## floor the dark tone is the one that reads as structure and the light one
-## reads as a mark somebody left.
+## The inset detail, on roughly a tenth of the cells (LAW 6: "one subtle inset
+## detail on ~10% of tiles; nothing else on the floor"), and the BAR tone the
+## grille, the cracks and the expansion joints are all drawn at. Both are a step
+## DOWN from the cell — a recess, a plate joint — because on a floor the dark
+## tone is the one that reads as structure and the light one reads as a mark
+## somebody left.
 const FLOOR_DETAIL_TONE := 0.88
 const FLOOR_DETAIL_SIZE := 0.34
 const FLOOR_GROOVE_TONE := 0.78
-const FLOOR_GROOVE_SIZE := Vector2(0.62, 0.09)
 
 ## How far the out-of-bounds ground is lifted off the region BASE before it is
 ## painted. BASE itself renders at ~4/255 through the ACES toe, which is the
@@ -469,6 +505,24 @@ const FLOOR_GROOVE_SIZE := Vector2(0.62, 0.09)
 ## ground beyond the walls and the sky behind it are one continuous dark, and
 ## there is no hole in the frame at any yaw.
 const VOID_LIFT := 0.06
+
+## ...and, pass 4, the gain applied BEFORE that lift, plus the plane's size and
+## height. The brief: "a LIT StandardMaterial3D in BASE lifted x1.5, >= 200u
+## square, y = -0.02, under every region". The height matters as much as the
+## colour — at -0.06 the floor tiles stood 0.06u proud of the surround and their
+## 0.05u edge caught the moon as a bright rim, which is the "hard-cut floor slab"
+## line in the report. At -0.02 the tile bottoms and the surround are within a
+## couple of centimetres and the cut disappears.
+const VOID_GAIN := 1.5
+const VOID_SIZE := 220.0
+const VOID_Y := -0.02
+
+## The low band that closes the map edge: how far it runs outward from each wall
+## in world units, and how tall it stands. A cliff in the rock regions and a kerb
+## in the built ones; either way the frame's edge is a SILHOUETTE rather than a
+## cut. Shorter than BAND_OUT_MIN, so the backdrop still reads behind it.
+const SKIRT_OUT := 3.0
+const SKIRT_H := 0.55
 
 ## The value band a prop's albedo is COMPRESSED into once `place()` has
 ## desaturated it. Luminance, sRGB, and both ends are load-bearing:
@@ -491,6 +545,18 @@ const PROP_SW_HI := 0.95
 ## The one height ceiling this file names out loud, because two regions build a
 ## rack bank and they have to agree about how tall a server is.
 const RACK_H := 1.8
+
+## The AMBIENT dust layer's colour — TEXT_DIM, LAW 4 verbatim ("one ambient dust
+## layer, <= 16 particles, slow, TEXT_DIM at 25% alpha").
+##
+## It used to be the region's WARM, and the pass-4 critic read the result three
+## times over: "tiny saturated orange-red squares sprinkled across the floor" in
+## the Dependency District, the Ruins and the Mines. Those squares are these
+## motes — 6cm unshaded quads in a saturated ember on a dark floor. Dust is
+## something a light CATCHES; it does not have a hue of its own. The set-piece
+## emitters (the campfire's embers, the heat pit's) still carry WARM, because
+## those really are sparks.
+const DUST := Color("#7C8BB0")
 
 ## How far a desaturated prop leans off neutral grey toward the region's BASE
 ## hue. Enough that a room's props agree with its dark; not so far that they
@@ -661,12 +727,29 @@ static func _swatch(key: String) -> Color:
 ## converts albedo_color sRGB -> linear on upload and the texture is already
 ## linear by then, so lin(tint) * lin(swatch) == lin(target) exactly, on
 ## average, and the texture's local tones survive as ratios around it.
-static func _tint_to(target: Color, key: String, lift: float = 1.0) -> Color:
+##
+## `floor_ch` is the level the multiplier's BRIGHTEST channel is lifted to when
+## it falls short (TINT_MIN for a prop, 0 for the dark surfaces that are meant to
+## be dark). See TINT_MIN for why this is a gain rather than a clamp.
+static func _tint_to(target: Color, key: String, lift: float = 1.0,
+		floor_ch: float = 0.0) -> Color:
 	var sw := _swatch(key).srgb_to_linear()
 	var want := _mul(target, lift).srgb_to_linear()
 	var t := Color(want.r / maxf(sw.r, 0.002), want.g / maxf(sw.g, 0.002),
 		want.b / maxf(sw.b, 0.002), 1.0).linear_to_srgb()
+	if floor_ch > 0.0:
+		var top := maxf(maxf(t.r, t.g), maxf(t.b, 0.0001))
+		if top < floor_ch:
+			var k := floor_ch / top
+			t = Color(t.r * k, t.g * k, t.b * k, 1.0)
+		var least := floor_ch * TINT_FLOOR_RATIO
+		t = Color(maxf(t.r, least), maxf(t.g, least), maxf(t.b, least), 1.0)
 	return Color(minf(t.r, TINT_MAX), minf(t.g, TINT_MAX), minf(t.b, TINT_MAX), 1.0)
+
+## `c`'s HUE at EMISSIVE_V — the only colour any emissive surface in this file is
+## allowed to be drawn at. See EMISSIVE_V.
+static func _emissive(c: Color) -> Color:
+	return _mul(_hue_of(c), EMISSIVE_V)
 
 ## sRGB relative luminance. The one number LAW 6 is written in.
 static func _lum(c: Color) -> float:
@@ -726,8 +809,29 @@ static func _tinted_mesh(mesh: Mesh, tint: Color, fallback: Color) -> Mesh:
 			m.albedo_color = m.albedo_color * tint
 		else:
 			m = Map3D.matte(fallback)
+		_matte_ify(m)
 		dup.surface_set_material(i, m)
 	return dup
+
+## Force `m` off metal and onto a Kenney-flat response. THE PASS-4 HIGH FIX, and
+## it is one number in the kits rather than anything this file was doing:
+##
+##   * the NATURE pack authors all 688 of its materials at metallicFactor 1.0,
+##     and RETRO-URBAN all 240 of its (measured out of the GLBs, not guessed).
+##   * a fully metallic surface has NO diffuse term. It shows the reflection of
+##     its surroundings and nothing else. So a nature log lying on the ground
+##     reflects the ground — near-black — while the rock standing beside it
+##     reflects the sky and reads grey, which is precisely what the critic
+##     measured: "pure-black unlit silhouettes with dithered edges beside the
+##     grey rock props" in the Wildlands and the Mines. No albedo multiplier
+##     could ever have fixed it, because the albedo was never being read.
+##
+## Every surface this file draws — prop, ring tile, backdrop, floor — goes
+## through here, so nothing in a region is metal and nothing is unshaded.
+static func _matte_ify(m: StandardMaterial3D) -> void:
+	m.metallic = 0.0
+	m.roughness = maxf(m.roughness, 0.85)
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 
 ## The albedo `place()` draws model `key` at, given what the caller asked for.
 ##
@@ -794,14 +898,42 @@ static func place(parent: Node3D, key: String, px: Vector2, yaw: float = 0.0,
 	# its emission colour is the hue the fiction asked for, at the energy asked
 	# for. Everything else is drawn at `_prop_target`.
 	if emission > 0.0:
-		Map3D.tint(n, tint, emission)
+		_paint(n, _emissive(tint), clampf(emission, PANEL_E_MIN, PANEL_E_MAX))
 	elif raw:
-		if tint != Color.WHITE:
-			Map3D.tint(n, tint, 0.0)
+		_paint(n, tint, 0.0)
 	else:
-		Map3D.tint(n, _tint_to(_prop_target(key, tint), key), 0.0)
+		_paint(n, _tint_to(_prop_target(key, tint), key, 1.0, TINT_MIN), 0.0)
 	parent.add_child(n)
 	return n
+
+## Repaint every surface under `node`: albedo multiplied by `tint`, emission set
+## when asked for, and the material forced off metal (`_matte_ify` — read the
+## note there, it is the pass-4 HIGH fix and it is why this exists instead of
+## Map3D.tint, which multiplies an albedo the GPU was never going to sample).
+##
+## `raw` callers reach here with Color.WHITE and still get repainted: a backdrop
+## pine that is not tinted is still a nature model and still metal.
+static func _paint(node: Node, tint: Color, emission: float) -> void:
+	if node is MeshInstance3D:
+		var mi := node as MeshInstance3D
+		var mesh: Mesh = mi.mesh
+		if mesh != null:
+			for i in mesh.get_surface_count():
+				var src: Material = mi.get_active_material(i)
+				var mat: StandardMaterial3D
+				if src is StandardMaterial3D:
+					mat = (src as StandardMaterial3D).duplicate()
+				else:
+					mat = StandardMaterial3D.new()
+				mat.albedo_color = mat.albedo_color * tint
+				if emission > 0.0:
+					mat.emission_enabled = true
+					mat.emission = tint
+					mat.emission_energy_multiplier = emission
+				_matte_ify(mat)
+				mi.set_surface_override_material(i, mat)
+	for c in node.get_children():
+		_paint(c, tint, emission)
 
 ## Stop `node` and everything under it casting a shadow. The backdrop band uses
 ## it, and it is the single largest thing that was wrong with the frames: the
@@ -901,12 +1033,15 @@ static func light(ctx: Dictionary, px: Vector2, color: Color, energy: float,
 static func panel(parent: Node3D, px: Vector2, size: Vector3, color: Color,
 		energy: float, yaw: float = 0.0, y: float = 1.6,
 		e_max: float = PANEL_E_MAX) -> MeshInstance3D:
-	energy = clampf(energy, PANEL_E_MIN, e_max)
+	energy = clampf(energy, PANEL_E_MIN, minf(e_max, PANEL_E_MAX))
+	# The HUE the call site asked for, at EMISSIVE_V. A slab does not get to be
+	# whiter than the colour it was authored in just because the energy is up.
+	var lit := _emissive(color)
 	var bm := BoxMesh.new()
 	bm.size = size
 	var mi := MeshInstance3D.new()
 	mi.mesh = bm
-	mi.material_override = Map3D.matte(color, energy)
+	mi.material_override = Map3D.matte(lit, energy)
 	mi.position = Map3D.to3d(px, y)
 	mi.rotation = Vector3(0.0, yaw, 0.0)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -1048,14 +1183,16 @@ static func _mm(parent: Node3D, key: String, xforms: Array, tint: Color = Color.
 		# on every surface and the shared import is never mutated. A mesh that
 		# cannot be duplicated that way gets a whole-instance override at the
 		# tone the multiply would have produced against the model's swatch.
-		if tint != Color.WHITE:
-			var sw := _swatch(key)
-			var flat := Color(tint.r * sw.r, tint.g * sw.g, tint.b * sw.b, 1.0)
-			var tinted := _tinted_mesh(mesh, tint, flat)
-			if tinted != null:
-				mm.mesh = tinted
-			else:
-				mmi.material_override = Map3D.matte(flat)
+		# ALWAYS, even for an untinted call: `_tinted_mesh` is also where the
+		# kits' metallicFactor 1.0 is beaten out of a surface (`_matte_ify`), and
+		# an un-repainted nature cliff is a black cliff.
+		var sw := _swatch(key)
+		var flat := Color(tint.r * sw.r, tint.g * sw.g, tint.b * sw.b, 1.0)
+		var tinted := _tinted_mesh(mesh, tint, flat)
+		if tinted != null:
+			mm.mesh = tinted
+		else:
+			mmi.material_override = Map3D.matte(flat)
 		parent.add_child(mmi)
 		made += 1
 	return made
@@ -1274,18 +1411,54 @@ static func _build_void(parent: Node3D, ctx: Dictionary) -> void:
 	var h: float = ctx["h"]
 	var base: Color = ctx["base"]
 	var pm := PlaneMesh.new()
-	pm.size = Vector2(190.0, 190.0)
+	pm.size = Vector2(VOID_SIZE, VOID_SIZE)
 	var mi := MeshInstance3D.new()
 	mi.name = "Void"
 	mi.mesh = pm
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = base.lightened(VOID_LIFT)
+	# BASE x 1.5 AND the toe lift. Pass 3 lifted it and pass 4's critic still
+	# measured "a hard-cut floor slab on black void along the whole left side" in
+	# the Wildlands and the Mines: at BASE.lightened(0.06) alone this plane is
+	# still a stop under the room's own darkest tile, so the tile's 0.05 edge
+	# reads as a cliff into nothing. Multiplied first it lands a clear step under
+	# the floor and a clear step OVER black, which is a ground.
+	mat.albedo_color = _mul(base, VOID_GAIN).lightened(VOID_LIFT)
 	mat.roughness = 1.0
 	mat.metallic = 0.0
 	mi.material_override = mat
-	mi.position = Map3D.to3d(Vector2(w * 0.5, h * 0.5), -0.06)
+	mi.position = Map3D.to3d(Vector2(w * 0.5, h * 0.5), VOID_Y)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mi)
+
+	# The cut itself, closed: a low band standing in the room's dark tone along
+	# each of the four edges, on the OUTSIDE of the border, so the eye never
+	# reads a floating slab. It is a cliff in the two rock regions and a kerb in
+	# the seven built ones; either way it is one silhouette, shadowless, and the
+	# darkest thing in the frame after the sky.
+	var floor_c: Color = ctx["floor"]
+	var band := _mul(_band_tone(base, floor_c), 0.9)
+	# The SOUTH band is the one the camera stands behind (pitch -56, ~3.6u past
+	# that wall), so it is built at RING_S_SCALE like the border ring on the same
+	# side — a kerb rather than a cliff, and never a bar across the near edge of
+	# the frame. [centre px, size px, height].
+	var t := SKIRT_OUT
+	for edge: Array in [
+			[Vector2(w * 0.5, -t * 0.5 * PX), Vector2(w + 2.0 * t * PX, t * PX), SKIRT_H],
+			[Vector2(w * 0.5, h + t * 0.5 * PX), Vector2(w + 2.0 * t * PX, t * PX),
+				SKIRT_H * RING_S_SCALE],
+			[Vector2(-t * 0.5 * PX, h * 0.5), Vector2(t * PX, h), SKIRT_H],
+			[Vector2(w + t * 0.5 * PX, h * 0.5), Vector2(t * PX, h), SKIRT_H]]:
+		var p: Vector2 = edge[0]
+		var s: Vector2 = edge[1]
+		var band_h: float = edge[2]
+		var bm := BoxMesh.new()
+		bm.size = Vector3(s.x / PX, band_h, s.y / PX)
+		var band_mi := MeshInstance3D.new()
+		band_mi.mesh = bm
+		band_mi.material_override = Map3D.matte(band)
+		band_mi.position = Map3D.to3d(p, band_h * 0.5 + VOID_Y)
+		band_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(band_mi)
 
 ## LAW 6, and the pass-3 rewrite of it.
 ##
@@ -1305,12 +1478,15 @@ static func _build_void(parent: Node3D, ctx: Dictionary) -> void:
 ##   albedo — measured, not assumed: the regions whose swatch happened to be
 ##   right (Dependency, Cloud, Production) landed inside 3 points of their hex.
 ##
-##   STRUCTURE. An A/B tile pair FLOOR_VARIANT apart, chosen per tile by the
-##   same deterministic hash the 2D room uses, so the ground has grain without
-##   having a pattern; the walkway artery and arrival plaza one further step up,
-##   which is the room's wayfinding drawn in the floor; and one small inset
-##   detail on about a tenth of the tiles. Nothing else. LAW 4 puts floor
+##   STRUCTURE. A tone ladder of two to four steps spanning FLOOR_LADDER, chosen
+##   per cell by the same deterministic hash the 2D room uses, so the ground has
+##   grain without having a pattern; the walkway artery and arrival plaza one
+##   further step up, which is the room's wayfinding drawn in the floor; and one
+##   inset detail on about a tenth of the cells. Nothing else. LAW 4 puts floor
 ##   overlays at zero and this obeys it.
+##
+##   ...and, since pass 4, a per-region BOND on top of all that (FLOOR_PLANS,
+##   just below): the value discipline is shared, the geometry is not.
 ##
 ##   SEAMS. Each tile is a 0.05u slab inset by FLOOR_SEAM about its own centre,
 ##   standing on a seam plane a step DARKER than the tile (FLOOR_SEAM_TONE). The
@@ -1318,18 +1494,85 @@ static func _build_void(parent: Node3D, ctx: Dictionary) -> void:
 ##   depth to it — a groove the moon shades, not a line painted on.
 const FLOOR_SEAM := 0.985
 const FLOOR_TILE_T := 0.05
-const FLOOR_SEAM_Y := -0.02
+const FLOOR_SEAM_Y := -0.012
+
+## PASS 4, q6: "every floor is the same square-grid tile with a hue swap".
+##
+## It was, and the hue swap was the only thing separating nine rooms' ground.
+## LAW 6 asks for a MATERIAL per region, and a material is a BOND — a unit cell,
+## the way the cells are offset against each other, a tone ladder and one inset
+## detail. Nine bonds now, no two alike, and all of them generated at
+## FLOOR_TARGET_L so no kit texture's own 4:1 range can drag a room out of the
+## 64-84 window (which is what happened the last time this file drew the ground
+## with somebody else's tile — see the note above `_floor_tone`).
+##
+## Keys:
+##   cell    unit cell in WORLD UNITS (1u == 1 tile == 64 map px)
+##   bond    how far each row is shifted along X, as a fraction of the cell
+##   weave   basket-woven 2x1 slabs instead of a row bond (Dependency)
+##   split   1 in N cells is broken into four quarters (the Ruins' irregular joints)
+##   tones   how many tones the ladder has (2, 3 or 4), all within 5% end to end
+##   checker tone chosen by (column + row) parity rather than by hash
+##   detail  "inset" | "grille" | "crack" | "joint" | "rivet" | "none"
+##   joint   expansion-joint pitch in units, for detail "joint"
+##   stones  how many ground stones the floor itself carries (Wildlands only)
+const FLOOR_PLANS := {
+	# node_modules sludge, poured in big woven slabs. Diagonal in feel without
+	# being a rotated grid the room's rectangle would fight.
+	"dependency_district": {"cell": Vector2(2.0, 1.0), "weave": true, "tones": 2,
+		"detail": "inset"},
+	# Cracked sandstone: full slabs with one in five broken into quarters, so the
+	# joints are irregular the way a ruin's are.
+	"stackoverflow_ruins": {"cell": Vector2(1.0, 1.0), "split": 5, "tones": 3,
+		"detail": "inset"},
+	# Flagstone in running bond: half-depth courses, each shifted half a stone.
+	"api_bazaar": {"cell": Vector2(1.0, 0.5), "bond": 0.5, "tones": 2, "detail": "none"},
+	# Steel decking: a grille bar across every panel, both ways.
+	"cloud_district": {"cell": Vector2(1.0, 1.0), "tones": 2, "detail": "grille"},
+	# Loam and moss: four patch tones, no man-made detail at all, six stones.
+	"open_source_wildlands": {"cell": Vector2(1.0, 1.0), "tones": 4, "detail": "none",
+		"stones": 6},
+	# Carpet tiles: a strict checker, the two tones one legal step apart.
+	"corporate_enterprise": {"cell": Vector2(1.0, 1.0), "tones": 2, "checker": true,
+		"detail": "none"},
+	# Cave floor: 4x4 plates, cracked.
+	"gpu_mines": {"cell": Vector2(4.0, 4.0), "tones": 2, "detail": "crack"},
+	# Poured concrete with an expansion joint every four units.
+	"production": {"cell": Vector2(1.0, 1.0), "tones": 2, "detail": "joint", "joint": 4.0},
+	# Gold plate, riveted on about a tenth of the plates.
+	"token_vault": {"cell": Vector2(1.0, 1.0), "tones": 2, "detail": "rivet"},
+}
+const FLOOR_PLAN_DEFAULT := {"cell": Vector2(1.0, 1.0), "tones": 2, "detail": "inset"}
+
+## The whole tone ladder spans 5% end to end whatever its step count, which is
+## inside LAW 6's 6% variant cap with the walkway lift still to stack on top.
+const FLOOR_LADDER := 0.05
+
+## The ground stones the Wildlands floor carries, as unit offsets from the room
+## centre. Fixed, not scattered: `_build_floor` runs before the dressing passes
+## and a draw taken here would move every enemy in the room.
+const FLOOR_STONES := [
+	Vector2(-6.4, -3.1), Vector2(4.9, -4.2), Vector2(-3.8, 3.6),
+	Vector2(6.1, 2.4), Vector2(1.2, -5.0), Vector2(-7.1, 4.4),
+]
+const FLOOR_STONE_KEYS := ["nature/rock_largeA", "mini-forest/rocks-low",
+	"nature/rock_largeD"]
 
 static func _build_floor(parent: Node3D, ctx: Dictionary) -> void:
 	var w: float = ctx["w"]
 	var h: float = ctx["h"]
 	var seed_v: int = ctx["seed"]
 	var floor_c: Color = ctx["floor"]
+	var plan: Dictionary = FLOOR_PLANS.get(str(ctx["id"]), FLOOR_PLAN_DEFAULT)
+	var tones: int = maxi(int(plan.get("tones", 2)), 1)
+	var detail := str(plan.get("detail", "none"))
+	var uw := w / PX
+	var uh := h / PX
 
-	# The joint the tiles show between them: room-sized, under the tile tops and
-	# above the void plane, and always darker than the tile (LAW 6: 36-48).
+	# The joint the cells show between them: room-sized, above the surround and
+	# under the cell tops, and always darker than the cell (LAW 6: 36-48).
 	var seam_mesh := PlaneMesh.new()
-	seam_mesh.size = Vector2(w / PX, h / PX)
+	seam_mesh.size = Vector2(uw, uh)
 	var seam := MeshInstance3D.new()
 	seam.name = "Seams"
 	seam.mesh = seam_mesh
@@ -1338,45 +1581,173 @@ static func _build_floor(parent: Node3D, ctx: Dictionary) -> void:
 	seam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(seam)
 
-	# Six buckets: three zones (field / artery / plaza) x the A/B pair. The zone
-	# lift is the wayfinding; the A/B step is the grain.
+	# One unit box, scaled per cell: the bonds below hand out cells of four
+	# different footprints and they all draw through this.
 	var tile := BoxMesh.new()
 	tile.size = Vector3(1.0, FLOOR_TILE_T, 1.0)
-	var buckets: Array = [[], [], [], [], [], []]
+	var buckets: Array = []
+	for i in 3 * tones:
+		var fresh: Array = []
+		buckets.append(fresh)
 	var details: Array = []
-	var grooves: Array = []
-	var inset := Basis().scaled(Vector3(FLOOR_SEAM, 1.0, FLOOR_SEAM))
-	for tz in RegionBuilder.REGION_SIZE.y:
-		for tx in RegionBuilder.REGION_SIZE.x:
-			var px := Vector2(float(tx) * PX + PX * 0.5, float(tz) * PX + PX * 0.5)
-			var zi := _zone(px, w, h, seed_v)
-			var hash_v := RegionBuilder._cell_hash(tx, tz)
-			var bi := zi * 2 + int(hash_v % 2)
-			var bucket: Array = buckets[bi]
-			bucket.append(Transform3D(inset,
-				Vector3(float(tx) + 0.5, -FLOOR_TILE_T * 0.5, float(tz) + 0.5)))
-			# One inset detail on about a tenth of them, a plate joint on about a
-			# twentieth. Two coprime moduli, so the two never land on one tile.
-			if hash_v % 11 == 3:
-				details.append(Transform3D(Basis(),
-					Vector3(float(tx) + 0.5, 0.002, float(tz) + 0.5)))
-			elif hash_v % 19 == 5:
-				grooves.append(Transform3D(Basis(Vector3.UP, float(hash_v % 2) * PI * 0.5),
-					Vector3(float(tx) + 0.5, 0.002, float(tz) + 0.5)))
-	for bi2 in 6:
-		var bucket2: Array = buckets[bi2]
+	var bars: Array = []
+
+	for cell_entry: Array in _floor_cells(plan, uw, uh):
+		var c: Vector2 = cell_entry[0]
+		var s: Vector2 = cell_entry[1]
+		var key: int = cell_entry[2]
+		var px := Vector2(c.x * PX, c.y * PX)
+		var zi := _zone(px, w, h, seed_v)
+		var ti := key % tones
+		var bucket: Array = buckets[zi * tones + ti]
+		bucket.append(Transform3D(
+			Basis().scaled(Vector3(s.x * FLOOR_SEAM, 1.0, s.y * FLOOR_SEAM)),
+			Vector3(c.x, -FLOOR_TILE_T * 0.5, c.y)))
+		match detail:
+			"inset":
+				if key % 11 == 3:
+					details.append(Transform3D(Basis(), Vector3(c.x, 0.002, c.y)))
+			"rivet":
+				# Four rivet heads near the plate's corners, on about a tenth of
+				# the plates. A fifth of FLOOR_DETAIL_SIZE, so a rivet is 7cm and
+				# not the 68cm dish the full detail plane would be.
+				if key % 10 == 4:
+					for q in 4:
+						var rx := c.x + (float(q % 2) - 0.5) * s.x * 0.62
+						var rz := c.y + (float(q >> 1) - 0.5) * s.y * 0.62
+						details.append(Transform3D(
+							Basis().scaled(Vector3(0.2, 1.0, 0.2)),
+							Vector3(rx, 0.002, rz)))
+			"grille":
+				# Two bars across every panel: the decking's own structure, and
+				# the only floor in the game that has a direction to it.
+				bars.append(Transform3D(
+					Basis().scaled(Vector3(s.x * 0.86, 1.0, 0.07)),
+					Vector3(c.x, 0.003, c.y - s.y * 0.22)))
+				bars.append(Transform3D(
+					Basis().scaled(Vector3(s.x * 0.86, 1.0, 0.07)),
+					Vector3(c.x, 0.003, c.y + s.y * 0.22)))
+			"crack":
+				if key % 3 == 0:
+					var yaw := float(key % 4) * PI * 0.25
+					bars.append(Transform3D(
+						Basis(Vector3.UP, yaw).scaled(Vector3(s.x * 0.7, 1.0, 0.06)),
+						Vector3(c.x, 0.003, c.y)))
+	# The expansion joints are a ROOM feature rather than a cell one: a poured
+	# slab is cut on a grid that ignores whatever bond is drawn on top of it.
+	if detail == "joint":
+		var pitch := float(plan.get("joint", 4.0))
+		var jx := pitch
+		while jx < uw:
+			bars.append(Transform3D(Basis().scaled(Vector3(0.07, 1.0, uh)),
+				Vector3(jx, 0.003, uh * 0.5)))
+			jx += pitch
+		var jz := pitch
+		while jz < uh:
+			bars.append(Transform3D(Basis().scaled(Vector3(uw, 1.0, 0.07)),
+				Vector3(uw * 0.5, 0.003, jz)))
+			jz += pitch
+
+	for bi in buckets.size():
+		var bucket2: Array = buckets[bi]
 		if bucket2.is_empty():
 			continue
-		var lift := 1.0 if bi2 < 2 else FLOOR_WALK_LIFT
-		if bi2 % 2 == 1:
-			lift *= FLOOR_VARIANT
+		var lift := 1.0 if bi < tones else FLOOR_WALK_LIFT
+		lift *= _floor_tone_step(bi % tones, tones)
 		_mm_mesh(parent, tile, bucket2, Map3D.matte(_mul(floor_c, lift)))
 	var det := PlaneMesh.new()
 	det.size = Vector2(FLOOR_DETAIL_SIZE, FLOOR_DETAIL_SIZE)
 	_mm_mesh(parent, det, details, Map3D.matte(_mul(floor_c, FLOOR_DETAIL_TONE)))
-	var groove := PlaneMesh.new()
-	groove.size = FLOOR_GROOVE_SIZE
-	_mm_mesh(parent, groove, grooves, Map3D.matte(_mul(floor_c, FLOOR_GROOVE_TONE)))
+	# Bars are the DARK tone: on a floor the recess reads as structure and the
+	# highlight reads as a mark somebody left (LAW 6).
+	var bar := BoxMesh.new()
+	bar.size = Vector3(1.0, 0.012, 1.0)
+	_mm_mesh(parent, bar, bars, Map3D.matte(_mul(floor_c, FLOOR_GROOVE_TONE)))
+
+	# The Wildlands' ground stones — part of the FLOOR, not of the dressing, so
+	# they are placed off a fixed table rather than off the region generator.
+	var stones: int = int(plan.get("stones", 0))
+	if stones > 0:
+		var clear: Array = ctx["clear"]
+		var i2 := 0
+		for off: Vector2 in FLOOR_STONES:
+			if i2 >= stones:
+				break
+			var at := Vector2(w * 0.5, h * 0.5) + off * PX
+			if not _free(at, clear):
+				i2 += 1
+				continue
+			var key2 := str(FLOOR_STONE_KEYS[i2 % FLOOR_STONE_KEYS.size()])
+			place(parent, key2, at, float(i2) * 0.9, _cap(key2, 0.3))
+			i2 += 1
+
+## Where tone `i` of a `n`-step ladder sits, as a multiplier on the floor tone.
+## The ladder always spans FLOOR_LADDER end to end, so two tones are 5% apart and
+## four tones are 1.7% apart — LAW 6's variant cap holds however many there are.
+static func _floor_tone_step(i: int, n: int) -> float:
+	if n <= 1:
+		return 1.0
+	return 1.0 + (float(i) / float(n - 1) - 0.5) * FLOOR_LADDER
+
+## The cells of one region's bond, as [centre (units), size (units), key].
+##
+## Every cell is CLIPPED to the room rectangle, so a 4-unit cave plate or a
+## half-shifted flagstone course can never hang a slab out over the surround —
+## which is the other half of the "hard-cut floor slab" the critic measured.
+static func _floor_cells(plan: Dictionary, uw: float, uh: float) -> Array:
+	var out: Array = []
+	var cell: Vector2 = plan.get("cell", Vector2.ONE)
+	if bool(plan.get("weave", false)):
+		# Basket weave: 2x2 blocks, laid as two long slabs turned a quarter from
+		# the block next to them. A depot floor, and not a grid.
+		var bz := 0
+		while float(bz) * 2.0 < uh:
+			var bx := 0
+			while float(bx) * 2.0 < uw:
+				var ox := float(bx) * 2.0
+				var oz := float(bz) * 2.0
+				var k := RegionBuilder._cell_hash(bx, bz)
+				if (bx + bz) % 2 == 0:
+					_floor_cell(out, Vector2(ox + 1.0, oz + 0.5), Vector2(2.0, 1.0), k, uw, uh)
+					_floor_cell(out, Vector2(ox + 1.0, oz + 1.5), Vector2(2.0, 1.0), k + 1,
+						uw, uh)
+				else:
+					_floor_cell(out, Vector2(ox + 0.5, oz + 1.0), Vector2(1.0, 2.0), k, uw, uh)
+					_floor_cell(out, Vector2(ox + 1.5, oz + 1.0), Vector2(1.0, 2.0), k + 1,
+						uw, uh)
+				bx += 1
+			bz += 1
+		return out
+	var bond := float(plan.get("bond", 0.0))
+	var split := int(plan.get("split", 0))
+	var checker := bool(plan.get("checker", false))
+	var rz := 0
+	while float(rz) * cell.y < uh:
+		var cz := float(rz) * cell.y + cell.y * 0.5
+		var shift := fposmod(float(rz) * bond, 1.0) * cell.x
+		var col := 0
+		var cx := -shift + cell.x * 0.5
+		while cx - cell.x * 0.5 < uw:
+			var k := (col + rz) if checker else RegionBuilder._cell_hash(col, rz)
+			if split > 0 and RegionBuilder._cell_hash(col, rz) % split == 0:
+				for q in 4:
+					var qx := cx + (float(q % 2) - 0.5) * cell.x * 0.5
+					var qz := cz + (float(q >> 1) - 0.5) * cell.y * 0.5
+					_floor_cell(out, Vector2(qx, qz), cell * 0.5, k + q, uw, uh)
+			else:
+				_floor_cell(out, Vector2(cx, cz), cell, k, uw, uh)
+			cx += cell.x
+			col += 1
+		rz += 1
+	return out
+
+## One cell, clipped to the room. Cells that fall entirely outside are dropped.
+static func _floor_cell(out: Array, centre: Vector2, size: Vector2, key: int,
+		uw: float, uh: float) -> void:
+	var r := Rect2(centre - size * 0.5, size).intersection(Rect2(0.0, 0.0, uw, uh))
+	if r.size.x <= 0.02 or r.size.y <= 0.02:
+		return
+	out.append([r.position + r.size * 0.5, r.size, absi(key)])
 
 ## The room's edge: solid slabs matching the 2D wall rects exactly, plus the
 ## kit's own wall/fence/cliff pieces standing in the strip they block.
@@ -1657,20 +2028,29 @@ static func _build_cover(parent: Node3D, ctx: Dictionary) -> void:
 	var region_id: String = ctx["id"]
 	var kit: Dictionary = ctx["kit"]
 	var rng: RandomNumberGenerator = ctx["rng"]
-	var key := str(kit.get("cover", "prototype/crate"))
 	# A barrier is CARGO at cargo size (LAW: `_cap`). The kit tables used to name
 	# a scale here and every one of them was over 1.0, which is how Production
 	# ended up with what the critic counted as "seven red sofas": twenty-one
 	# `factory/box-large` at 1.0-1.35, i.e. 1.1u-wide fire-engine-orange blocks.
 	# They are 0.6u crates in the region's own dark now.
-	var s := _cap(key, float(kit.get("cover_h", 0.6)))
-	var top := _height_of(key) * s
-	# Kenney origins are not always footprint-centred (a bookcase grows from
-	# its corner); subtracting the model's own centre keeps the pair inside
-	# the 76x34 collider instead of hanging a crate's width off one end.
-	var off := _centre_px(key, s)
+	#
+	# PASS 4: a kit may name a LIST here, and the block index picks from it.
+	# Eight cover blocks times two or three pieces is the single biggest source
+	# of repetition in a room, and the critic counted the consequences by name —
+	# "twenty-plus identical shelf units" in the Bazaar, "ten scattered olive
+	# barrels" in the Cloud, "barrel x8" in the Vault. The pick is by INDEX and
+	# not by draw, because the enemy staging runs off the same generator and one
+	# extra number here would move every enemy in the region.
+	var keys: Array = _cover_keys(kit)
 	var idx := 0
 	for cp: Vector2 in RegionBuilder._region_cover(region_id):
+		var key := str(keys[idx % keys.size()])
+		var s := _cap(key, float(kit.get("cover_h", 0.6)))
+		var top := _height_of(key) * s
+		# Kenney origins are not always footprint-centred (a bookcase grows from
+		# its corner); subtracting the model's own centre keeps the pair inside
+		# the 76x34 collider instead of hanging a crate's width off one end.
+		var off := _centre_px(key, s)
 		_solid(parent, cp, COVER_PX, 1.15)
 		# Two pieces side by side inside the collider's own 76x34 footprint and
 		# one stacked on top, so a barrier reads as cargo somebody left there
@@ -1682,6 +2062,15 @@ static func _build_cover(parent: Node3D, ctx: Dictionary) -> void:
 			place(parent, key, cp + Vector2(2, -5) - off * 0.75, rng.randf_range(-0.35, 0.35),
 				s * 0.75, Color.WHITE, top)
 		idx += 1
+
+## The cover models a kit offers, always as a list. A kit may name one string
+## (every barrier in the region is that thing) or an array (the block index
+## rotates through them).
+static func _cover_keys(kit: Dictionary) -> Array:
+	var raw: Variant = kit.get("cover", "prototype/crate")
+	if raw is Array and not (raw as Array).is_empty():
+		return raw as Array
+	return [str(raw)]
 
 ## The region's ONE brightest thing: its landmark, at the authored focal, under
 ## the only shadow-casting OmniLight in the room.
@@ -1959,7 +2348,13 @@ static func _kit(region_id: String) -> Dictionary:
 					"city-commercial/building-k", "city-commercial/low-detail-building-a",
 					"retro-urban/wall-a-roof"],
 				"sky_n": 34,
-				"cover": "mini-market/shelf-boxes", "cover_h": 0.85,
+				# Three DIFFERENT market barriers, not three copies of the
+				# aisle shelf: the shelf was also the cover model, which is how
+				# "twenty-plus identical shelf units" happened in a room that
+				# only draws six of them on purpose.
+				"cover": ["prototype/crate", "mini-market/display-fruit",
+					"mini-market/shelf-end"],
+				"cover_h": 0.85,
 			}
 		"cloud_district":
 			# Somebody else's computer, with a very good view.
@@ -1972,7 +2367,11 @@ static func _kit(region_id: String) -> Dictionary:
 					"city-commercial/building-skyscraper-a",
 					"city-commercial/building-skyscraper-d", "space-station/skip"],
 				"sky_n": 32,
-				"cover": "space-station/container", "cover_h": 0.6,
+				# NOT `container` three times over: that model is the olive
+				# barrel the critic counted ten of in this room.
+				"cover": ["prototype/crate", "space-station/container-flat",
+					"space-station/skip"],
+				"cover_h": 0.6,
 			}
 		"open_source_wildlands":
 			# A forest of forks. One person has been maintaining it for nine years.
@@ -2040,7 +2439,11 @@ static func _kit(region_id: String) -> Dictionary:
 					"castle/tower-hexagon-base", "castle/tower-square-top-roof-high",
 					"castle/tower-slant-roof"],
 				"sky_n": 34,
-				"cover": "mini-dungeon/barrel", "cover_h": 0.9,
+				# One barrel block, one chest block, one table block: eight
+				# identical barrels was the room's loudest repetition.
+				"cover": ["mini-dungeon/barrel", "mini-dungeon/chest",
+					"mini-dungeon/table"],
+				"cover_h": 0.9,
 			}
 		_:
 			return {
@@ -2092,21 +2495,26 @@ static func _dress_region(parent: Node3D, ctx: Dictionary) -> void:
 ## lines, shelf aisles, server banks and colonnades get built. `h` is a HEIGHT
 ## in world units, not a scale factor: a CEILING by default (`_cap`), or a
 ## target when `grow` says the run is architecture (`_fit`).
+## `yaw_jit` leans each piece a little off the run's own heading, on a fixed
+## three-step cycle rather than a draw (the enemy staging runs off the same
+## generator every dressing pass shares, so a number taken here would move the
+## whole region's fight). A row drawn to the millimetre reads as one extruded
+## object — the critic's "twenty-plus identical shelf units" is that, twice.
 static func _run(parent: Node3D, key: String, from: Vector2, to: Vector2, n: int,
-		yaw: float, h: float, tint: Color = Color.WHITE, grow: bool = false) -> void:
+		yaw: float, h: float, tint: Color = Color.WHITE, grow: bool = false,
+		yaw_jit: float = 0.0) -> void:
 	if n <= 0:
 		return
 	var s := _size_for(key, h, grow)
 	for i in n:
 		var t := float(i) / maxf(1.0, float(n - 1))
-		place(parent, key, from.lerp(to, t), yaw, s, tint)
+		place(parent, key, from.lerp(to, t), yaw + (float(i % 3) - 1.0) * yaw_jit, s, tint)
 
 # --- dependency district ---------------------------------------------------
 
 static func _dress_dependency(parent: Node3D, ctx: Dictionary) -> void:
 	var w: float = ctx["w"]
 	var h: float = ctx["h"]
-	var warm: Color = ctx["warm"]
 
 	# The packing line along the north wall — the region's one straight, man-made
 	# edge, and the reason the room reads as a depot instead of a yard. 7 pieces.
@@ -2151,10 +2559,11 @@ static func _dress_dependency(parent: Node3D, ctx: Dictionary) -> void:
 	scatter(parent, ctx, ["factory/warning-orange", "factory/cone",
 		"retro-urban/detail-barrier-type-a"], 3,
 		Rect2(140, 200, w - 280, h - 340), 0.5, 0.7)
-	scatter(parent, ctx, ["retro-urban/pallet", "prototype/crate"], 2,
-		_south_rect(w, h), 0.35, 0.5)
-
-	motes(parent, Vector2(w * 0.5, h * 0.5), warm, 14, Vector3(9.0, 1.2, 7.0), 0.16, 1.0)
+	# No near-camera litter. The critic found "tiny saturated orange-red squares
+	# sprinkled across the floor" in this room, the Ruins and the Mines; the
+	# squares were the ambient motes (see DUST), and the litter pass under them
+	# was two more objects in the one band of the room the player reads through.
+	motes(parent, Vector2(w * 0.5, h * 0.5), DUST, 14, Vector3(9.0, 1.2, 7.0), 0.16, 1.0)
 
 static func _focal_dependency(parent: Node3D, ctx: Dictionary) -> void:
 	# The node_modules heap: 900 MB of transitive dependencies, stacked.
@@ -2217,8 +2626,6 @@ static func _dress_ruins(parent: Node3D, ctx: Dictionary) -> void:
 		Rect2(80, 200, w - 160, h - 300), 0.35, 0.5)
 	scatter(parent, ctx, ["graveyard/crypt-small", "graveyard/crypt"], 4,
 		Rect2(60, 180, w - 120, 500), 1.0, 1.8)
-	scatter(parent, ctx, ["graveyard/debris", "graveyard/rocks"], 2,
-		_south_rect(w, h), 0.25, 0.4)
 
 	# Two lamp posts at the room's waist, and ONE of them is lit. Eight posts
 	# with eight omnis is a lit street; one working lamp and one that is not is a
@@ -2235,7 +2642,7 @@ static func _dress_ruins(parent: Node3D, ctx: Dictionary) -> void:
 		place(parent, "graveyard/lightpost-single", Vector2(x, 470.0),
 			PI * 0.5 * k, _cap("graveyard/lightpost-single", 2.2))
 	light(ctx, Vector2(92, 470), accent, 0.8, 8.0, false, 1.8)
-	motes(parent, Vector2(w * 0.5, h * 0.55), accent, 12, Vector3(9.0, 1.4, 7.0), 0.1, 1.4)
+	motes(parent, Vector2(w * 0.5, h * 0.55), DUST, 12, Vector3(9.0, 1.4, 7.0), 0.1, 1.4)
 
 static func _focal_ruins(parent: Node3D, ctx: Dictionary) -> void:
 	# The Accepted Answer. Green tick, 4,102 upvotes, deprecated in 2019.
@@ -2282,15 +2689,23 @@ static func _dress_bazaar(parent: Node3D, ctx: Dictionary) -> void:
 	var warm: Color = ctx["warm"]
 
 	# Two shelf aisles down the sides, a run of freezers across the top: the
-	# market has lanes, and the lanes point at the doors. 3 + 3 + 4 = 10.
+	# market has lanes, and the lanes point at the doors. 3 + 3 + 3 = 9.
 	# The west aisle stops at 540 rather than running the wall: the 2D room stands
 	# cover blocks there at (170,340) and (150,600), and a shelf through a barrier
 	# is a shelf the player fights around without ever seeing.
-	_run(parent, "mini-market/shelf-bags", Vector2(126, 400), Vector2(126, 540), 3, PI * 0.5, 1.6)
+	# ...and each piece leans a few degrees off the aisle it stands in, because a
+	# row drawn to the millimetre reads as ONE object repeated, which is exactly
+	# what the critic counted. Six shelves in the room's runs, two more on the
+	# focal's stall: eight, which is the budget.
+	_run(parent, "mini-market/shelf-bags", Vector2(126, 400), Vector2(126, 540), 3, PI * 0.5,
+		1.6, Color.WHITE, false, 0.10)
 	# 360..640, not 300..660: at 300 the first shelf stood on the rate limiter's
 	# post at (1120,300) and at 660 the last one stood on the reseller's feet.
-	_run(parent, "mini-market/shelf-boxes", Vector2(1154, 360), Vector2(1154, 640), 3, -PI * 0.5, 1.6)
-	_run(parent, "mini-market/freezers-standing", Vector2(360, 122), Vector2(920, 122), 4, 0.0, 1.1)
+	_run(parent, "mini-market/shelf-boxes", Vector2(1154, 360), Vector2(1154, 640), 3,
+		-PI * 0.5, 1.6, Color.WHITE, false, 0.10)
+	# Three freezers, not four, and turned out of true as well.
+	_run(parent, "mini-market/freezers-standing", Vector2(400, 122), Vector2(880, 122), 3, 0.0,
+		1.1, Color.WHITE, false, 0.07)
 
 	# Four awnings, desaturated. An awning is CANVAS: it belongs to the room's
 	# silhouette, not to its colour, and the accent/warm it used to be painted in
@@ -2299,16 +2714,34 @@ static func _dress_bazaar(parent: Node3D, ctx: Dictionary) -> void:
 		var x := 300.0 + float(i) * 224.0
 		place(parent, "city-commercial/detail-awning", Vector2(x, 182), PI,
 			_fit("city-commercial/detail-awning", 0.5), Color.WHITE, 1.15)
-	scatter(parent, ctx, ["mini-market/display-fruit", "mini-market/display-bread",
-		"mini-market/freezer", "mini-market/cash-register", "mini-market/shelf-end"], 5,
-		Rect2(70, 170, w - 140, h - 260), 0.5, 0.75)
+	# FOUR DISTINCT market props, hand-placed rather than scattered, so the room
+	# has four things in it that are not each other: a fruit stand, a bread
+	# stand, a chest freezer and an abandoned trolley. The five-item scatter that
+	# used to stand here drew the aisle shelf a sixth and seventh time.
+	# All four clear the authored anchors: the stall register is at (566,342),
+	# the status page at (266,630) and the pricing board at (392,876). Every key
+	# is one the SWATCH table has a measured reading for, which is what lets
+	# `place()` land each of them on the prop band.
+	place(parent, "mini-market/display-fruit", Vector2(470, 214), 0.22,
+		_cap("mini-market/display-fruit", 0.7))
+	place(parent, "mini-market/display-bread", Vector2(830, 208), -0.3,
+		_cap("mini-market/display-bread", 0.7))
+	place(parent, "mini-market/freezer", Vector2(214, 214), 0.35,
+		_cap("mini-market/freezer", 0.75))
+	place(parent, "mini-market/shopping-cart", Vector2(946, 470), 0.9,
+		_cap("mini-market/shopping-cart", 0.45))
 	# `food/pizza-box` ships OPEN and is nearly a metre across the lid; it is not
 	# market dressing at this camera, it is a white slab on the floor. Dropped.
-	scatter(parent, ctx, ["mini-market/shopping-cart", "mini-market/shopping-basket",
-		"food/soda-can"], 3,
+	scatter(parent, ctx, ["mini-market/shopping-basket", "food/soda-can"], 2,
 		Rect2(140, 220, w - 280, h - 340), 0.3, 0.45)
+	# The umbrellas are WARM. `city-commercial/detail-parasol-*` reads (0.45,
+	# 0.62, 0.57) out of the box — a GREEN canvas, and the critic named it: two
+	# saturated green hexagons in a magenta-and-gold night market. A desaturating
+	# division cannot take the green out of a surface whose own texel is four
+	# times greener than the model's mean, so they are aimed at this room's gold
+	# instead of at neutral.
 	scatter(parent, ctx, ["city-commercial/detail-parasol-a", "city-commercial/detail-parasol-b"],
-		2, Rect2(60, 180, w - 120, 500), 1.5, 1.9)
+		2, Rect2(60, 180, w - 120, 500), 1.5, 1.9, [0], 0.0, warm)
 
 	# The market's own neon: ONE sign per flank at the room's waist, on the two
 	# hues this region owns. Ten aisle panels and four omnis is what "the
@@ -2342,10 +2775,11 @@ static func _focal_bazaar(parent: Node3D, ctx: Dictionary) -> void:
 	# thing carrying the ACCENT: it is the pitch you are meant to walk toward.
 	place(parent, "city-commercial/detail-awning", f + Vector2(0, -46), PI,
 		_fit("city-commercial/detail-awning", 0.7), accent, 1.45)
-	place(parent, "city-commercial/detail-parasol-b", f + Vector2(-210, 10), 0.0,
+	# ONE parasol, on one side. The pair was a mirror image either side of the
+	# pitch — "two identical saucers" in the report — and a market stall with a
+	# matched pair of umbrellas is a diagram, not a stall.
+	place(parent, "city-commercial/detail-parasol-b", f + Vector2(-210, 10), 0.4,
 		_fit("city-commercial/detail-parasol-b", 1.9), warm)
-	place(parent, "city-commercial/detail-parasol-a", f + Vector2(210, 10), 0.0,
-		_fit("city-commercial/detail-parasol-a", 1.9), warm)
 	# The pitch board: one lit face, with the gold rule under it as its trim.
 	panel(parent, f + Vector2(0, -54), Vector3(1.6, 0.5, 0.07), accent, 1.6, 0.0, 2.15)
 	panel(parent, f + Vector2(0, -54), Vector3(1.7, 0.06, 0.08), warm, 1.2, 0.0, 1.86)
@@ -2358,12 +2792,22 @@ static func _dress_cloud(parent: Node3D, ctx: Dictionary) -> void:
 	var h: float = ctx["h"]
 	var accent: Color = ctx["accent"]
 
-	# ONE server aisle, cold and straight. The second row behind it was the same
-	# nine silhouettes again at the same height — depth the camera cannot read
-	# and nine placements it cost to say nothing.
+	# TWO racks, and they are not the same rack.
+	#
+	# The aisle was eight `space-station/container-tall` in a dead-straight line
+	# and the critic did not read it as an aisle at all: "five identical olive
+	# barrel columns", with "ten scattered olive barrels" around them. That model
+	# is a stack of drums, it reads olive whatever it is tinted, and eight of it
+	# is a repetition before it is a data centre. So: one tall rack and one wide
+	# one, a room apart, in the region's own BASE grey — two objects the eye can
+	# tell apart, which is what "varied" means.
+	var base: Color = ctx["base"]
+	var floor_c: Color = ctx["floor"]
+	var rack_grey := _wall_tone(base, floor_c).lerp(floor_c, 0.45)
 	var rack_s := _fit("space-station/container-tall", RACK_H)
-	_run(parent, "space-station/container-tall", Vector2(230, 150), Vector2(1050, 150),
-		8, 0.0, RACK_H, Color.WHITE, true)
+	place(parent, "space-station/container-tall", Vector2(360, 150), 0.0, rack_s, rack_grey)
+	var rack2_s := _fit("space-station/container-wide", RACK_H * 0.85)
+	place(parent, "space-station/container-wide", Vector2(880, 150), 0.0, rack2_s, rack_grey)
 	# Only the WEST pipe run survives. The east one ran down the salesperson's
 	# wall at (1196,700) and was the mirror of a line the player had already
 	# read; the fourteen-piece rail across the room's waist went with it, because
@@ -2374,28 +2818,29 @@ static func _dress_cloud(parent: Node3D, ctx: Dictionary) -> void:
 	scatter(parent, ctx, ["space-station/computer", "space-station/computer-wide",
 		"space-station/computer-system"], 3,
 		Rect2(70, 250, w - 140, h - 340), 0.6, 0.75)
-	scatter(parent, ctx, ["space-station/container", "space-station/container-wide",
-		"space-station/container-flat"], 2,
-		Rect2(60, 240, w - 120, h - 330), 0.6, 0.75)
+	# The container scatter is GONE: those are the olive barrels, and the cover
+	# blocks already stand three of that family in the room.
 	scatter(parent, ctx, ["modular-space/cables", "space-station/container-flat"],
 		1, _south_rect(w, h), 0.3, 0.45)
 
 	# Rack status LEDs: one strip per cabinet, on its camera-facing face. These
 	# ARE screens (LAW 7 lets a screen carry the accent on its lit surface), but
-	# thirty-six of them at energy 5 was a light field, not a data centre. Eight,
-	# at screen energy, under the aisle's single motivated omni.
+	# thirty-six of them at energy 5 was a light field, not a data centre. Two —
+	# one per rack — at screen energy, under this room's single motivated omni.
 	var led := BoxMesh.new()
 	led.size = Vector3(0.55, 0.05, 0.06)
-	# On the racks' camera-facing face, not 13px inside them.
-	var face := _front("space-station/container-tall", rack_s)
+	# One strip per rack, on its camera-facing face, and there are two racks.
 	var xf: Array = []
-	for i in 8:
-		var x := 230.0 + float(i) * (820.0 / 7.0)
-		xf.append(Transform3D(Basis(), Map3D.to3d(Vector2(x, 150.0 + face), 0.52)))
-	# 1.4, not 2.4: at 2.4 these strips came back WHITE, and the critic read the
-	# result as "a flat pure-white rectangle on the floor at the base of every
-	# barrel" — the barrels are the racks and the rectangles are these.
-	_mm_mesh(parent, led, xf, Map3D.matte(accent, 1.4))
+	xf.append(Transform3D(Basis(),
+		Map3D.to3d(Vector2(360.0, 150.0 + _front("space-station/container-tall", rack_s)),
+			0.52)))
+	xf.append(Transform3D(Basis(),
+		Map3D.to3d(Vector2(880.0, 150.0 + _front("space-station/container-wide", rack2_s)), 0.52)))
+	# The strip's HUE at EMISSIVE_V, at PANEL_E_MAX: at 2.4 these came back WHITE
+	# and the critic read them as "a flat pure-white rectangle on the floor at the
+	# base of every barrel"; at 1.4 in full-value ACCENT they were still the
+	# brightest thing in the north half of the room.
+	_mm_mesh(parent, led, xf, Map3D.matte(_emissive(accent), PANEL_E_MAX))
 	light(ctx, Vector2(w * 0.5, 196.0), accent, 0.85, 9.0, false, 1.9)
 
 static func _focal_cloud(parent: Node3D, ctx: Dictionary) -> void:
@@ -2409,7 +2854,6 @@ static func _focal_cloud(parent: Node3D, ctx: Dictionary) -> void:
 	# invoice sits.
 	var f: Vector2 = ctx["focal"]
 	var accent: Color = ctx["accent"]
-	var warm: Color = ctx["warm"]
 	var screen := f + Vector2(0, -38)
 	# The CABINET is a prop and does not glow (it used to be emissive over its
 	# whole body at energy 2.5, which is a light box with a picture stuck on it);
@@ -2421,11 +2865,13 @@ static func _focal_cloud(parent: Node3D, ctx: Dictionary) -> void:
 	var table := f + Vector2(-124, 52)
 	var table_s := _cap("space-station/table-display", 0.8)
 	place(parent, "space-station/table-display", table, 0.3, table_s)
-	# The table-display's own top, now that place() grounds it. A hologram is a
-	# screen, so it is allowed emission — at a screen's energy, not a sun's.
-	place(parent, "space-station/table-display-planet", table, 0.3,
-		_cap("space-station/table-display-planet", 0.35), warm,
-		_height_of("space-station/table-display") * table_s, 1.4)
+	# NO HOLOGRAM. `space-station/table-display-planet` is a lit dome on a disc,
+	# and this region's boss is a saucer: the critic found "a large violet-blue
+	# disc with a red core" in the frame and could not tell which of the two it
+	# was looking at. The boss is an ACTOR and it is the one that matters, so the
+	# builder stops drawing the other one. (`warm` here is #E8F4FF — a near-white
+	# — which is also the one emissive colour in the game that could never obey
+	# "nothing white".)
 	place(parent, "space-station/computer-system", f + Vector2(116, 42), -0.4,
 		_cap("space-station/computer-system", 0.75))
 	light(ctx, f + Vector2(0, 12), accent, 1.15, 10.0, true, 2.4)
@@ -2435,17 +2881,24 @@ static func _focal_cloud(parent: Node3D, ctx: Dictionary) -> void:
 static func _dress_wildlands(parent: Node3D, ctx: Dictionary) -> void:
 	var w: float = ctx["w"]
 	var h: float = ctx["h"]
-	var warm: Color = ctx["warm"]
 
 	# A clearing with a wood around it, not a wood with a clearing lost in it.
 	# 119 placements went in here — thirty-four of them FLOWERS, which at this
 	# camera is confetti on the ground and is precisely LAW 4's "floor overlays:
 	# zero" wearing a mesh. 9 trees on the edges, 6 bushes, 6 rocks and logs,
 	# 3 near the camera. The canopy the player reads is on the horizon (`sky`).
+	#
+	# The canopy leans on this region's ACCENT — leaf green — rather than on
+	# neutral. Every nature tree is authored on a `leafs` material that reads
+	# (0.17, 0.65, 0.67): a TEAL, and the critic named it ("teal-cyan pines").
+	# A model whose leaf texel is four times bluer than the model's own mean
+	# cannot be desaturated by a division against that mean, so the leaves are
+	# aimed at the hue this region owns instead of at grey.
+	var accent: Color = ctx["accent"]
 	var trees := ["nature/tree_default", "nature/tree_oak", "nature/tree_pineRoundC",
 		"nature/tree_detailed", "mini-forest/tree", "mini-forest/tree-high"]
 	for r: Rect2 in _edge_rects(w, h):
-		scatter(parent, ctx, trees, 3, r, 2.5, 3.0)
+		scatter(parent, ctx, trees, 3, r, 2.5, 3.0, [0], 0.0, accent)
 	scatter(parent, ctx, ["nature/plant_bushLarge", "nature/plant_bushDetailed",
 		"nature/plant_bushSmall", "mini-forest/plant"], 6,
 		Rect2(80, 190, w - 160, h - 280), 0.3, 0.4)
@@ -2455,7 +2908,7 @@ static func _dress_wildlands(parent: Node3D, ctx: Dictionary) -> void:
 	scatter(parent, ctx, ["nature/plant_bushSmall", "nature/log", "nature/stump_round"],
 		3, _south_rect(w, h), 0.2, 0.3)
 
-	motes(parent, Vector2(w * 0.5, h * 0.5), warm, 12, Vector3(9.5, 1.6, 7.0), 0.14, 1.3)
+	motes(parent, Vector2(w * 0.5, h * 0.5), DUST, 12, Vector3(9.5, 1.6, 7.0), 0.14, 1.3)
 
 static func _focal_wildlands(parent: Node3D, ctx: Dictionary) -> void:
 	# The maintainer's campfire. Nine years, one person, forty thousand deps.
@@ -2468,7 +2921,6 @@ static func _focal_wildlands(parent: Node3D, ctx: Dictionary) -> void:
 	# at (1148,620).
 	var f: Vector2 = ctx["focal"]
 	var warm: Color = ctx["warm"]
-	var accent: Color = ctx["accent"]
 	var fire := f + Vector2(-46, 6)
 	place(parent, "nature/campfire_stones", fire, 0.0, 1.6)
 	place(parent, "nature/campfire_logs", fire, 0.35, 1.6, warm, 0.04, 1.4)
@@ -2480,8 +2932,11 @@ static func _focal_wildlands(parent: Node3D, ctx: Dictionary) -> void:
 		_cap("nature/log_large", 0.45))
 	place(parent, "nature/log_large", f + Vector2(96, 40), PI * 0.5,
 		_cap("nature/log_large", 0.45))
+	# The flag is WARM — the camp's lantern colour. It read RED in the frame and
+	# red in this game means one thing (LAW 2: HOSTILE is an enemy tell), so the
+	# one banner in a peaceful clearing does not get to wear it.
 	place(parent, "mini-forest/flag", f + Vector2(96, -90), 0.0,
-		_cap("mini-forest/flag", 1.4), accent)
+		_cap("mini-forest/flag", 1.4), warm)
 	# The fire: this region's ONE bright thing, and the only warm light in a
 	# wood at night. Embers, not a bonfire — LAW 9 keeps rest quiet.
 	panel(parent, fire, Vector3(0.26, 0.08, 0.26), warm, 1.5, 0.0, 0.09)
@@ -2582,46 +3037,57 @@ static func _dress_mines(parent: Node3D, ctx: Dictionary) -> void:
 	var accent: Color = ctx["accent"]
 	var warm: Color = ctx["warm"]
 
-	# ONE rig bank along the north, where the 2D room posts its memory leaks: the
-	# thing worth taking is the thing that is defended. Six racks became five,
-	# and the two status strips per rack became one — twelve strips at energy 5
-	# was the brightest thing in a room whose focal is supposed to be a hole full
-	# of fire.
+	# TWO GENERATORS along the north, where the 2D room posts its memory leaks:
+	# the thing worth taking is the thing that is defended. One status strip
+	# each, and the strip is the only emissive surface in the room that is not
+	# the heat pit.
+	#
 	# `factory/machine-fortified`, not `space-station/container-tall`: the Cloud
 	# already owns that silhouette in a straight line along ITS north wall, and
 	# two regions wearing the same set-piece is one of the things the critic
 	# counted. A mine rents machines; it does not rent server cabinets.
+	#
+	# THE ROOM'S WHOLE SECONDARY BUDGET IS TWELVE: 2 generators + 3 pit props +
+	# 2 gears + 5 rock piles. Five rigs, four cogs, four props, two crystals,
+	# six rock piles and three pieces of near-camera litter was twenty-four, and
+	# the pass-4 critic counted the excess item by item.
 	var rig := "factory/machine-fortified"
 	var rig_s := _cap(rig, 1.35)
 	var face := 128.0 + _front(rig, rig_s)
-	for i in 5:
-		var x := 300.0 + float(i) * 140.0
+	for i in 2:
+		var x := 440.0 + float(i) * 280.0
 		place(parent, rig, Vector2(x, 128), 0.0, rig_s)
-		panel(parent, Vector2(x, face), Vector3(0.5, 0.05, 0.06), accent, 1.4, 0.0, 0.7)
+		panel(parent, Vector2(x, face), Vector3(0.5, 0.05, 0.06), accent, PANEL_E_MAX, 0.0, 0.7)
 	light(ctx, Vector2(w * 0.5, 176.0), warm, 0.8, 8.0, false, 1.8)
 
-	# Cogs and pipework half-buried in the rock; the mine is a machine that
-	# happens to be underground. 4 cogs, one pipe run, 8 rocks, 2 crystals.
+	# Cogs and pit props half-buried in the rock; the mine is a machine that
+	# happens to be underground.
+	#
 	# A cog is 1.00 x 0.22: at 2.1 it was a two-unit gear lying on the floor
 	# beside a 0.9u player. `_cap` reads its real bounds and the footprint guard
-	# in `_fit` stops a flat model being blown up to reach a height at all.
-	scatter(parent, ctx, ["factory/cog-a", "factory/cog-b", "factory/cog-c",
-		"factory/cog-d", "factory/cog-e"], 4,
-		Rect2(60, 190, w - 120, h - 280), 0.22, 0.3)
+	# in `_fit` stops a flat model being blown up to reach a height at all. TWO
+	# of them, and in this room's own WARM rather than at neutral: `factory/cog-*`
+	# reads (0.46, 0.46, 0.63) untouched and the division against that mean was
+	# landing a LILAC gear on a scorched-ember floor.
+	scatter(parent, ctx, ["factory/cog-a", "factory/cog-c", "factory/cog-e"], 2,
+		Rect2(60, 190, w - 120, h - 280), 0.22, 0.3, [0], 0.0, warm)
 	# Timber, not the factories' pipework: `factory/pipe-large-long` runs down
 	# the west wall in BOTH Dependency and Production already, and a third copy
-	# of it is the shared set-piece the critic named.
-	_run(parent, "mini-dungeon/column", Vector2(78, 340), Vector2(78, 760), 4, 0.0, 1.6,
-		Color.WHITE, true)
-	scatter(parent, ctx, ["tower-defense/detail-crystal", "tower-defense/detail-crystal-large"],
-		2, Rect2(80, 200, w - 160, h - 300), 0.4, 0.55)
+	# of it is the shared set-piece the critic named. THREE of them, each leaning
+	# a little off true, because four identical posts in a line is a fence.
+	_run(parent, "mini-dungeon/column", Vector2(78, 360), Vector2(78, 740), 3, 0.0, 1.6,
+		Color.WHITE, true, 0.05)
+	# The loose crystals are GONE. `tower-defense/detail-crystal` reads (0.79,
+	# 0.47, 0.92) — a saturated violet — and the heat pit's own cluster is where
+	# this room's crystal fiction already lives.
 	scatter(parent, ctx, ["mini-dungeon/rocks", "mini-dungeon/stones", "nature/rock_largeC",
-		"tower-defense/detail-rocks-large", "graveyard/rocks"], 6,
+		"tower-defense/detail-rocks-large", "graveyard/rocks"], 5,
 		Rect2(70, 190, w - 140, h - 290), 0.4, 0.55)
-	scatter(parent, ctx, ["tower-defense/detail-rocks", "mini-dungeon/stones"], 3,
-		_south_rect(w, h), 0.2, 0.32)
+	# ...and so is the near-camera litter (see DUST: the "orange-red squares" the
+	# critic found in this room were the motes, and the litter under them was
+	# three more objects in the band the player reads the objective through).
 
-	motes(parent, Vector2(w * 0.5, h * 0.5), warm, 14, Vector3(9.5, 1.6, 7.0), 0.5, 0.8)
+	motes(parent, Vector2(w * 0.5, h * 0.5), DUST, 14, Vector3(9.5, 1.6, 7.0), 0.5, 0.8)
 
 static func _focal_mines(parent: Node3D, ctx: Dictionary) -> void:
 	# The heat pit. Everything expensive in this game comes out of this hole.
@@ -2654,9 +3120,9 @@ static func _focal_mines(parent: Node3D, ctx: Dictionary) -> void:
 		_fit("tower-defense/detail-crystal-large", 1.1), warm, 0.0, 1.4)
 	for k: float in [1.0, -1.0]:
 		place(parent, "tower-defense/detail-crystal", pit + Vector2(k * 44.0, 22.0),
-			k * 0.6, _cap("tower-defense/detail-crystal", 0.55))
+			k * 0.6, _cap("tower-defense/detail-crystal", 0.55), warm)
 		place(parent, "tower-defense/detail-crystal", pit + Vector2(k * 30.0, -26.0),
-			-k * 0.9, _cap("tower-defense/detail-crystal", 0.4))
+			-k * 0.9, _cap("tower-defense/detail-crystal", 0.4), warm)
 	motes(parent, pit, warm, 8, Vector3(0.5, 0.3, 0.4), 0.9, 0.35)
 	light(ctx, pit, warm, 0.9, 5.0, true, 1.4)
 
@@ -2748,14 +3214,21 @@ static func _dress_vault(parent: Node3D, ctx: Dictionary) -> void:
 
 	# Colonnades down both flanks — the vault is the one room in the game with
 	# architecture rather than equipment.
-	# 240..760 on a 130 pitch, not 300..780 on 120: the old second column stood
-	# exactly on the cover block at (1180,420). The lamps ride the column tops
-	# (a column is 1.98u at 1.8x) rather than being cast inside them.
-	# FIVE a side, not four: the pitch is what keeps a column off the cover block
-	# at (1180,420) — four columns put one at y 413, inside it.
+	#
+	# TWO columns a side, at TWO heights, and the focal's pair makes six — which
+	# is the budget. Five down each flank plus the focal's two was twelve
+	# identical pillars, and a colonnade the eye cannot count is wallpaper.
+	# y 240 and 760 are the two ends of the old five-column run: both clear the
+	# cover block at (1180,420), which is the constraint that run existed to
+	# satisfy, and dropping the three between them is what leaves the middle of
+	# each flank open.
+	var tall := true
 	for side: float in [116.0, 1164.0]:
-		_run(parent, "mini-dungeon/column", Vector2(side, 240), Vector2(side, 760), 5,
-			0.0, 2.2, Color.WHITE, true)
+		for cy: float in [240.0, 760.0]:
+			var col_h := 2.2 if tall else 1.7
+			place(parent, "mini-dungeon/column", Vector2(side, cy), 0.0,
+				_fit("mini-dungeon/column", col_h))
+			tall = not tall
 	# Two sconces, one per colonnade, at the room's waist — the vault's second
 	# motivated source. Ten of them down both walls with four omnis was a
 	# corridor of light with a treasure room somewhere inside it.
@@ -2769,12 +3242,20 @@ static func _dress_vault(parent: Node3D, ctx: Dictionary) -> void:
 	# Three, 340..700, at y 90: the way home is a door in that wall at (884,96)
 	# with a 200px keep-out, and the reserve's coin horseshoe reaches y 102.
 	_run(parent, "castle/metal-gate", Vector2(340, 90), Vector2(700, 90), 3, PI * 0.5, 1.6)
-	scatter(parent, ctx, ["mini-dungeon/chest", "mini-dungeon/barrel", "mini-dungeon/pot",
-		"mini-dungeon/table"], 3, Rect2(70, 190, w - 140, h - 290), 0.45, 0.6)
+	# No barrel in the scatter: the cover blocks already stand this room's three
+	# barrels, and eight of them was the loudest repetition in the frame. The
+	# survivors are aimed at this room's WARM — which for the vault IS violet
+	# (LAW 2: #8B5CF6) — on purpose: `mini-dungeon/pot` reads (0.76, 0.47, 0.42)
+	# and the neutral mean-division was landing it on a LILAC nobody chose. A
+	# prop drawn in a hue the room owns, at prop value, beats a prop drifting
+	# toward one it does not.
+	scatter(parent, ctx, ["mini-dungeon/chest", "mini-dungeon/pot",
+		"mini-dungeon/table"], 3, Rect2(70, 190, w - 140, h - 290), 0.45, 0.6,
+		[0], 0.0, warm)
 	scatter(parent, ctx, ["mini-dungeon/stones", "mini-dungeon/rocks", "castle/flag"], 2,
 		Rect2(80, 200, w - 160, 480), 0.45, 0.7)
 	scatter(parent, ctx, ["mini-dungeon/stones", "mini-dungeon/pot"], 2,
-		_south_rect(w, h), 0.3, 0.42)
+		_south_rect(w, h), 0.3, 0.42, [0], 0.0, warm)
 	# The twenty accent-tinted floor coins are GONE. Eight real tokens are the
 	# only gold points a player may see in this room (LAW 3: tokens are one of
 	# the five bright things); twenty scenery coins that look exactly like them

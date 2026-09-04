@@ -202,7 +202,15 @@ const LIGHT_ATTEN := 1.5
 ## 1.6 an emissive face clips the ACES shoulder and comes back WHITE whatever
 ## hue it was authored in. The glow threshold is 1.0, so everything here still
 ## blooms; it blooms in cyan and amber now instead of in white.
-const GLOW_E_MAX := 1.6
+## RE-SIZED AGAIN for pass 4: 1.2, and every lit face is drawn at its own HUE at
+## EMISSIVE_V rather than at the colour the call site handed over. At 1.6 in a
+## full-value cyan the battlestation still came back as a white bar, and the
+## deploy button's disc as the "red cushion" the critic found on the floor.
+const GLOW_E_MAX := 1.2
+## The VALUE (HSV V) every emissive surface in the flat is drawn at. A hue at 1.0
+## over energy 1 clips the ACES shoulder and returns white whatever it started
+## as; at 0.85 the same energy blooms in the colour it was authored in.
+const EMISSIVE_V := 0.85
 static var _lights := 0
 static var _shadows := 0
 
@@ -224,6 +232,28 @@ const SCENES3D := "res://scenes/world3d/"
 
 ## furniture/desk is 0.384 tall, so anything that lives on a desk sits here.
 const DESK_TOP := 0.384
+
+## HEIGHT CEILINGS in world units, against a 0.9u player — the same table
+## region_builder3d's `_cap` spends, applied here for the first time. This file
+## had no size governance at all: every prop went in at the kit's authored size
+## with nothing to stop a caller asking for 2.0. A ceiling never grows anything
+## (Kenney's chair really is 0.61u and its desk 0.384u, both comfortably under),
+## so this changes no frame today; it is the rule that stops the next edit
+## putting a doll's house or a giant's chair in the first room of the game.
+const PROP_H_CAP := {
+	"furniture/chairDesk": 0.9,
+	"furniture/desk": 0.75,
+	"furniture/loungeSofaLong": 0.8,
+	"furniture/loungeSofaOttoman": 0.8,
+	"furniture/bedSingle": 0.8,
+	"furniture/tableCoffee": 0.5,
+	"furniture/bookcaseOpen": 1.6,
+	"furniture/bookcaseOpenLow": 1.6,
+	"furniture/bookcaseClosedWide": 1.6,
+	"furniture/kitchenFridge": 1.7,
+	"furniture/coatRackStanding": 2.0,
+	"space-station/container-tall": 1.8,
+}
 
 ## One-time mesh extraction cache keyed by "pack/name": a 400-tile floor must
 ## instantiate its GLB once, not four hundred times. `_aabb_cache` holds the
@@ -334,6 +364,7 @@ static func _prop(parent: Node3D, key: String, px: Vector2, y: float = 0.0,
 	# what callers get back.
 	var holder := Node3D.new()
 	holder.name = n.name
+	model_scale = _capped(key, model_scale)
 	var rot := Basis(Vector3.UP, deg_to_rad(yaw_deg))
 	var c := _centre(key)
 	# The centring offset travels through the same rotation and scale the model
@@ -347,8 +378,56 @@ static func _prop(parent: Node3D, key: String, px: Vector2, y: float = 0.0,
 	# model's mean is landed on a desaturated target computed from its own
 	# swatch, and its internal tones survive as ratios around it.
 	Map3D.tint(n, _tint_to(_prop_target(key, tint_col), key))
+	_de_metal(n)
 	parent.add_child(holder)
 	return holder
+
+
+## `model_scale`, never bigger than PROP_H_CAP allows for this model. A CEILING:
+## a model already under its cap is drawn at the size its kit authored.
+static func _capped(key: String, model_scale: float) -> float:
+	if not PROP_H_CAP.has(key):
+		return model_scale
+	var tall := maxf(_aabb(key).size.y, 0.02)
+	return minf(model_scale, float(PROP_H_CAP[key]) / tall)
+
+
+## Force every material under `node` off metal. Two of the Food kit's materials
+## and every one of the Nature and Retro-Urban kits' are authored at
+## metallicFactor 1.0, and a fully metallic surface has no diffuse term at all —
+## it shows a reflection and nothing else, which is how a prop ends up as a pure
+## black silhouette beside an identically tinted neighbour. Cheap insurance in
+## this room (the Furniture kit is clean); load-bearing wherever it is not.
+static func _de_metal(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mi := node as MeshInstance3D
+		var mesh: Mesh = mi.mesh
+		if mesh != null:
+			for i in mesh.get_surface_count():
+				var mat := mi.get_active_material(i) as StandardMaterial3D
+				if mat == null:
+					continue
+				var dup: StandardMaterial3D = mat.duplicate()
+				dup.metallic = 0.0
+				dup.roughness = maxf(dup.roughness, 0.85)
+				mi.set_surface_override_material(i, dup)
+	for c in node.get_children():
+		_de_metal(c)
+
+
+## `c`, with its VALUE capped at EMISSIVE_V — the brightest a lit face in this
+## flat may be. A CEILING, not a normalisation: a call site that asked for a
+## dim face (the two wall posters at (0.18, 0.20, 0.30) and energy 0.35, the
+## `WARM * 0.7` bedside lamp) keeps the value it asked for, because "printed
+## matter, barely emissive" is LAW 3 obeyed and lifting it to 0.85 would have
+## turned three quiet posters into three more lit screens. Only a colour that
+## would clip the ACES shoulder is pulled down, and it keeps its hue on the way.
+static func _lit(c: Color) -> Color:
+	var m := maxf(maxf(c.r, c.g), maxf(c.b, 0.0001))
+	if m <= EMISSIVE_V:
+		return Color(c.r, c.g, c.b, 1.0)
+	var k := EMISSIVE_V / m
+	return Color(c.r * k, c.g * k, c.b * k, 1.0)
 
 
 ## A pizza box, open or closed. The Food kit only ships the box OPEN — its
@@ -404,6 +483,11 @@ static func _glow(parent: Node3D, px: Vector2, y: float, size: Vector2,
 		color: Color, energy: float, yaw_deg: float = 0.0,
 		pitch_deg: float = 0.0) -> MeshInstance3D:
 	energy = clampf(energy, 0.0, GLOW_E_MAX)
+	# A LIT face is drawn at its own hue at EMISSIVE_V; an UNLIT one (a sticky
+	# note, dark glass) keeps the exact albedo the call site chose, because for
+	# an unshaded quad at energy 0 that albedo IS the screen value.
+	if energy > 0.0:
+		color = _lit(color)
 	var q := QuadMesh.new()
 	q.size = size
 	var mi := MeshInstance3D.new()
@@ -543,6 +627,8 @@ static func _tinted_mesh(mesh: Mesh, tint: Color, fallback: Color) -> Mesh:
 			m.albedo_color = m.albedo_color * tint
 		else:
 			m = Map3D.matte(fallback)
+		m.metallic = 0.0
+		m.roughness = maxf(m.roughness, 0.85)
 		dup.surface_set_material(i, m)
 	return dup
 
@@ -600,6 +686,8 @@ static func _glow_batch(parent: Node3D, xforms: Array[Transform3D], size: Vector
 	# Same ceiling as `_glow`: these were the one emissive path in the flat that
 	# skipped the clamp, at 2.2-2.4, which is over the ACES shoulder and white.
 	energy = clampf(energy, 0.0, GLOW_E_MAX)
+	if energy > 0.0:
+		color = _lit(color)
 	var q := QuadMesh.new()
 	q.size = size
 	var mm := MultiMesh.new()
@@ -623,6 +711,16 @@ static func _glow_batch(parent: Node3D, xforms: Array[Transform3D], size: Vector
 	parent.add_child(mmi)
 
 
+## The plank bond (LAW 6, pass 4). A board is 1.5u long and 0.25u wide — a 3m x
+## 50cm floorboard at this project's 1u = 2m, which is a floorboard — laid in
+## courses that step half a board each row, in three tones spanning 5% end to
+## end. PLANK_T is the slab's thickness, so the seam plane beneath shows through
+## the inset as a joint with real depth.
+const PLANK_L := 1.5
+const PLANK_W := 0.25
+const PLANK_T := 0.05
+const PLANK_LADDER := 0.05
+
 ## Kenney floor tiles butt edge to edge and the joint disappears. Each one is
 ## inset by this about its own footprint centre, so the seam plane under the
 ## flat shows through as a joint — LAW 6's "visible joints", drawn as geometry
@@ -640,6 +738,37 @@ static func _tile_xform(key: String, gx: int, gz: int) -> Transform3D:
 	var off := (Vector3(-c.x, 0.0, -c.z)) * FLOOR_SEAM
 	return Transform3D(Basis.IDENTITY.scaled(Vector3(FLOOR_SEAM, 1.0, FLOOR_SEAM)),
 		mid + off + Vector3(0.0, -_top(key), 0.0))
+
+
+## A stable per-board hash. Deliberately local rather than borrowed from the 2D
+## builder: this file's floor must rebuild byte-identically and must not depend
+## on another class's private helper to do it.
+static func _plank_hash(col: int, row: int) -> int:
+	var v := (col * 374761393 + row * 668265263) & 0x7FFFFFFF
+	v = ((v ^ (v >> 13)) * 1274126177) & 0x7FFFFFFF
+	return (v ^ (v >> 16)) & 0x7FFFFFFF
+
+
+## `xforms` copies of a mesh built HERE (rather than imported), through one
+## MultiMesh. `_batch` is the same idea for a Kenney model; the generated floor
+## has no model to name.
+static func _mm_xform(parent: Node3D, mesh: Mesh, xforms: Array, mat: Material,
+		node_name: String) -> void:
+	if xforms.is_empty():
+		return
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = xforms.size()
+	for i in xforms.size():
+		var xf: Transform3D = xforms[i]
+		mm.set_instance_transform(i, xf)
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = node_name
+	mmi.multimesh = mm
+	mmi.material_override = mat
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(mmi)
 
 
 static func _group(root: Node3D, node_name: String) -> Node3D:
@@ -697,30 +826,68 @@ static func _build_floor(root: Node3D) -> void:
 	seams.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	z.add_child(seams)
 
-	var plank := "furniture/floorFull"
+	# BOARDS, not tiles. The pass-4 critic measured this floor as "mathematically
+	# flat (p10 == p90)" and read the whole room's ground as one square grid with
+	# a hue on it — which it was: 400 one-unit tiles of one material at one tone,
+	# with the kit's own plank seams too fine to survive the camera.
+	#
+	# A plank floor is a BOND: boards 1.5u long and 0.25u wide, each course
+	# shifted half a board off the one before it, in THREE tones five per cent
+	# apart end to end (LAW 6 caps the variant at 6%). Generated rather than
+	# tiled, so the value is chosen instead of inherited, and drawn through three
+	# MultiMeshes — one per tone — so it still costs three draw calls.
 	var panel := "space-station/floor-panel"
 	var has_panel := Map3D.has_model(panel)
-	var planks: Array[Transform3D] = []
+	var boards: Array = [[], [], []]
 	var lino: Array[Transform3D] = []
 	var panels: Array[Transform3D] = []
-	for gx in ROOM_W:
-		for gz in ROOM_H:
-			if has_panel and gx >= 19 and gz <= 5:
-				panels.append(_tile_xform(panel, gx, gz))
-			elif gx <= 5 and gz <= 4:
-				lino.append(_tile_xform(plank, gx, gz))
-			else:
-				planks.append(_tile_xform(plank, gx, gz))
-	# Two floor MATERIALS at two tones (LAW 6): the planks the flat lives on, and
-	# the harder surfaces — kitchen lino, server decking — a legal step apart
-	# from them and a little cooler. The plank tint is the reference hex divided
-	# by what the kit's wood actually reads at (SWATCH — a flat orange, not a mid
-	# grey), so the multiply LANDS on #5A3F2A instead of 1.6x over it.
-	_batch(z, plank, planks, "Planks", null, _tint_to(FLOOR_TONE, plank))
-	# Lino is the same mesh under a flat cool override: a kitchen floor is a
-	# different SURFACE, and one material buys that for nothing. Mid-value, not
-	# void — the old 0.20 grey was BASE being used as a floor again.
-	_batch(z, plank, lino, "Lino", Map3D.matte(Color(0.26, 0.27, 0.30)))
+	var rows := int(ceil(float(ROOM_H) / PLANK_W))
+	for row in rows:
+		var cz := float(row) * PLANK_W + PLANK_W * 0.5
+		# The boards stop at the other two surfaces rather than running under
+		# them: the lino is x 0..6 for z < 5 and the decking x 19..25 for z < 6,
+		# so a course crossing either is clipped instead of z-fighting it.
+		var x_lo := 6.0 if cz < 5.0 else 0.0
+		var x_hi := 19.0 if (has_panel and cz < 6.0) else float(ROOM_W)
+		var keep := Rect2(x_lo, 0.0, maxf(x_hi - x_lo, 0.0), float(ROOM_H))
+		# A staggered bond: each course starts half a board along from the last.
+		var shift := fposmod(float(row) * PLANK_L * 0.5, PLANK_L)
+		var cx := -shift + PLANK_L * 0.5
+		var col := 0
+		while cx - PLANK_L * 0.5 < float(ROOM_W):
+			var r := Rect2(cx - PLANK_L * 0.5, cz - PLANK_W * 0.5, PLANK_L,
+				PLANK_W).intersection(keep)
+			cx += PLANK_L
+			col += 1
+			if r.size.x <= 0.02 or r.size.y <= 0.02:
+				continue
+			var mid := r.position + r.size * 0.5
+			var tone: Array = boards[_plank_hash(col, row) % 3]
+			tone.append(Transform3D(
+				Basis.IDENTITY.scaled(Vector3(r.size.x * FLOOR_SEAM, 1.0,
+					r.size.y * FLOOR_SEAM)),
+				Vector3(mid.x, -PLANK_T * 0.5, mid.y)))
+	for gx2 in ROOM_W:
+		for gz2 in ROOM_H:
+			if has_panel and gx2 >= 19 and gz2 <= 5:
+				panels.append(_tile_xform(panel, gx2, gz2))
+			elif gx2 <= 5 and gz2 <= 4:
+				lino.append(Transform3D(
+					Basis.IDENTITY.scaled(Vector3(FLOOR_SEAM, 1.0, FLOOR_SEAM)),
+					Vector3(float(gx2) + 0.5, -PLANK_T * 0.5, float(gz2) + 0.5)))
+	var slab := BoxMesh.new()
+	slab.size = Vector3(1.0, PLANK_T, 1.0)
+	for t in 3:
+		var tone2: Array = boards[t]
+		if tone2.is_empty():
+			continue
+		var lift := 1.0 + (float(t) * 0.5 - 0.5) * PLANK_LADDER
+		_mm_xform(z, slab, tone2, Map3D.matte(Color(FLOOR_TONE.r * lift,
+			FLOOR_TONE.g * lift, FLOOR_TONE.b * lift, 1.0)), "Planks%d" % t)
+	# Lino is a different SURFACE, and one material buys that for nothing:
+	# mid-value and cooler, a legal step off the boards. Not void — the old 0.20
+	# grey was BASE being used as a floor again.
+	_mm_xform(z, slab, lino, Map3D.matte(Color(0.26, 0.27, 0.30)), "Lino")
 	# The decking lands a legal 6% over the planks' value and cooler: #5A3F2A is
 	# luminance 0.264, this is 0.28.
 	_batch(z, panel, panels, "ServerPanels", null, _tint_to(Color(0.27, 0.28, 0.31), panel))
@@ -1091,8 +1258,12 @@ static func _build_battlestation(root: Node3D) -> void:
 	_prop(z, "furniture/laptop", Vector2(462.0, 444.0), 0.281, 168.0, 0.9)
 	# deploy_button (760, 380): a red floor button you physically stand on to
 	# ship to production. 3D_BIBLE §7 names the model; the comedy names itself.
-	_prop(z, "prototype/button-floor-round", Vector2(760.0, 380.0), 0.0, 0.0, 1.0, ALARM)
-	_glow(z, Vector2(760.0, 380.0), 0.155, Vector2(0.42, 0.42), ALARM, 4.5, 0.0, -90.0)
+	# WARM, not ALARM. At full-value HOSTILE on a 0.42u disc this was the "red
+	# cushion" the critic found lying on the floor of the first room in the game,
+	# and LAW 2 reserves that red for enemy tells. Amber is what a hazard control
+	# is anyway, and the mat under it has been amber since pass 3.
+	_prop(z, "prototype/button-floor-round", Vector2(760.0, 380.0), 0.0, 0.0, 1.0, WARM)
+	_glow(z, Vector2(760.0, 380.0), 0.155, Vector2(0.42, 0.42), WARM, 1.1, 0.0, -90.0)
 
 
 ## One monitor: the prop, and — when it is switched on — the emissive face that
@@ -1152,7 +1323,9 @@ static func _build_gpu_rig(root: Node3D) -> void:
 	# warning panel is the +Z face at 0.30, so the glow sits 22 px south.
 	_prop(z, "space-station/container-tall", Vector2(1120.0, 610.0), 0.0, 0.0)
 	_solid(z, Vector2(1120.0, 610.0), Vector2(0.64, 0.64), 0.9)
-	_glow(z, Vector2(1120.0, 632.0), 0.55, Vector2(0.34, 0.20), ALARM, 5.0)
+	# WARM: the "red barrel bar" in the report. An outage warning is an amber
+	# panel; the room's one HOSTILE red is the power strip's single LED.
+	_glow(z, Vector2(1120.0, 632.0), 0.55, Vector2(0.34, 0.20), WARM, 1.1)
 	# free_tokens_ad (1160, 620): a display screaming an offer, on a crate so it
 	# stands at eye height and can be read from across the room. Its crate is
 	# clear of both the outage container (z 9.21..9.85) and the GPU stack
@@ -1331,17 +1504,15 @@ const CABLE_TONE := Color(0.18, 0.19, 0.22)
 
 static func _build_cables(root: Node3D) -> void:
 	var z := _group(root, "Cables")
+	# ONE ROUTE, and all of it on the skirting. Pass 3 pulled the cable off the
+	# middle of the floor and pass 4 found what was left: three of these six runs
+	# still cut across open floor (north wall to the desk, east wall to the rig,
+	# rig to the power strip), and at a near-black tone on a dark plank they read
+	# as exactly what the critic called them last round — debug lines. A cable is
+	# stapled to the wall; that is the whole of it. It turns one corner, from the
+	# north skirting into the east one, and stops at the server corner.
 	var runs := [
-		# The north spine, and its drops to the battlestation and the servers.
-		[Vector2(300, 40), Vector2(1470, 40)],
-		[Vector2(430, 40), Vector2(430, 300), Vector2(560, 340)],
-		[Vector2(1470, 40), Vector2(1470, 240)],
-		# The east spine, and its drop to the GPU rig.
-		[Vector2(1568, 260), Vector2(1568, 700)],
-		[Vector2(1568, 470), Vector2(1300, 470), Vector2(1180, 470)],
-		# The last metre: rig to power strip, along the desks rather than across
-		# the walk lane the opening sequence uses.
-		[Vector2(1180, 470), Vector2(900, 452), Vector2(716, 438)],
+		[Vector2(300, 40), Vector2(1568, 40), Vector2(1568, 700)],
 	]
 	var xforms: Array[Transform3D] = []
 	for run: Array in runs:
@@ -1423,9 +1594,9 @@ static func _build_lighting(root: Node3D) -> void:
 	_light(z, Vector2(1450.0, 268.0), 0.90, ACCENT, 0.8, 7.0)
 	# 6. The GPU rig's corner: thermals, and the ad that will not close.
 	_light(z, Vector2(1150.0, 560.0), 0.82, WARM, 0.7, 7.0)
-	# 7. The outage. The one red thing in the room, and it is a warning, not a
-	#    light source — low energy, short reach, on the container it belongs to.
-	_light(z, Vector2(1120.0, 630.0), 0.70, ALARM, 0.6, 6.0)
+	# 7. The outage. A warning, not a light source — low energy, short reach, on
+	#    the container it belongs to, and amber rather than red (see the panel).
+	_light(z, Vector2(1120.0, 630.0), 0.70, WARM, 0.6, 6.0)
 	# 8. The lounge — low, warm, and last in the reading order.
 	_light(z, Vector2(880.0, 748.0), 1.00, WARM, 0.6, 6.5)
 

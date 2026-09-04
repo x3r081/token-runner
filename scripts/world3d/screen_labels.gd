@@ -6,8 +6,9 @@ extends Node
 ## to the screen edge, and a portal ended up wearing four texts. Every world
 ## caption is now a plain 2D Label in the game's aliased UI font, positioned
 ## each frame by unprojecting its owner's position, clamped inside the safe
-## area, and stacked when two would overlap. Owners free their labels by
-## leaving the tree.
+## area, stacked when two would overlap, and kept OFF the player (see
+## KEEP_CLEAR_RADIUS — a caption that lands on the one silhouette the frame is
+## about costs more than it says). Owners free their labels by leaving the tree.
 ##
 ##   var lbl := ScreenLabels.attach(self, "Talk to Claude", ScreenLabels.BODY)
 ##   ScreenLabels.set_text(lbl, "...")   # or lbl.text = "..."
@@ -24,6 +25,34 @@ const SAFE_TOP := 96.0	  # HUD top strip
 const SAFE_BOTTOM := 118.0  # ability bar + hint line
 const SAFE_SIDE := 12.0
 const STACK_GAP := 2.0
+
+## KEEP-CLEAR (round 3). `combat_dependency_district.png` put five texts and the
+## waypoint chevron inside a 260x160 box centred on the player — "-10", "+5",
+## "Localhost · 4m · via this portal", "[E] node_modules" and a portal's
+## "→ Localhost" — and the cold read of that frame was that the player is
+## unfindable, which is the rubric's FIRST question ("can I tell in one second
+## what is the player?"). No single caption is at fault; the pile is. Only the
+## thing that places all of them can see the pile, so the rule lives here: a
+## disc of KEEP_CLEAR_RADIUS around the player's screen position that ordinary
+## captions do not enter at all, and that essential ones are lifted clear of.
+##
+## 100px at 1920x928 is a little under twice the player's on-screen height —
+## enough to hold his silhouette plus the shoulders of the model, and small
+## enough that a caption one prop away is untouched.
+const KEEP_CLEAR_RADIUS := 100.0
+## Priority at or above which a label may STAY inside the disc (pushed clear of
+## it) instead of being dropped. Everything ambient — nameplates (0), portal
+## captions (1), the interact prompt (-1) — is below it and simply does not draw
+## while it would land on the player. Fx3D.glyph spawns AT this priority, so a
+## damage number is still readable: it is the one text the player must not miss.
+const KEEP_CLEAR_PRIORITY := 2
+## Where the disc is centred on the player: chest height, so it covers the body
+## rather than the floor he stands on.
+const KEEP_CLEAR_LIFT := 0.6
+## "There is no player on screen" — a centre every distance test fails against
+## by kilometres, so a 2D run, a menu, or a camera looking away costs one
+## comparison and changes nothing.
+const NO_CLEAR := Vector2(-1.0e9, -1.0e9)
 
 var _entries: Array[Dictionary] = []
 var _canvas: CanvasLayer
@@ -97,6 +126,7 @@ func _process(_delta: float) -> void:
 		return
 	var view := get_viewport().get_visible_rect().size
 	var safe := Rect2(SAFE_SIDE, SAFE_TOP, view.x - SAFE_SIDE * 2.0, view.y - SAFE_TOP - SAFE_BOTTOM)
+	var clear_at := _keep_clear_centre(cam)
 	var placed: Array[Rect2] = []
 	var live: Array[Dictionary] = []
 	# Drop dead entries, hide the ones behind the camera.
@@ -138,22 +168,88 @@ func _process(_delta: float) -> void:
 		# Clamp into the safe area (never under the HUD, never off an edge).
 		pos.x = clampf(pos.x, safe.position.x, safe.end.x - size.x)
 		pos.y = clampf(pos.y, safe.position.y, safe.end.y - size.y)
-		# Stack upward off anything already placed.
 		var rect := Rect2(pos, size)
-		var guard := 0
-		while guard < 12:
-			var hit := false
-			for r in placed:
-				if r.intersects(rect):
-					rect.position.y = r.position.y - size.y - STACK_GAP
-					hit = true
-					break
-			if not hit:
-				break
-			guard += 1
-		if rect.position.y < safe.position.y:
-			rect.position.y = safe.position.y
+		# KEEP-CLEAR, before stacking: a label that is not going to be drawn must
+		# not reserve a row and push a caption that IS drawn out of the frame.
+		if rect.get_center().distance_to(clear_at) < KEEP_CLEAR_RADIUS:
+			if int(e.priority) < KEEP_CLEAR_PRIORITY:
+				lbl.visible = false
+				continue
+			rect = _evade(rect, clear_at, safe)
+		rect = _stack(rect, placed, safe)
 		placed.append(rect)
 		lbl.position = rect.position
 		lbl.visible = true
 		shown += 1
+
+## The player's screen position, or NO_CLEAR when there is none to avoid.
+##
+## The "player" group is SCANNED for a Node3D rather than trusting the first
+## member: 3D_BIBLE §5 keeps the ActorProxy in "player_proxy" and
+## tests/world3d_test.gd asserts it is NOT in "player", but a 2D run's player is
+## a CharacterBody2D in this same group and must cost nothing here. Untyped loop
+## var on purpose: binding a group member to a typed `Node` before
+## `is_instance_valid` is exactly the "previously freed instance" error
+## documented above.
+func _keep_clear_centre(cam: Camera3D) -> Vector2:
+	for n in get_tree().get_nodes_in_group("player"):
+		if not is_instance_valid(n) or not (n is Node3D):
+			continue
+		var at: Vector3 = (n as Node3D).global_position + Vector3(0.0, KEEP_CLEAR_LIFT, 0.0)
+		if cam.is_position_behind(at):
+			return NO_CLEAR
+		return cam.unproject_position(at)
+	return NO_CLEAR
+
+## Lift an essential label off the player. Its BOTTOM edge goes one radius above
+## the keep-clear centre — text belongs over its subject — and when that would
+## climb out of the safe area it drops one radius BELOW instead, because a
+## caption jammed against the HUD's top strip is the pile-up by another route.
+func _evade(rect: Rect2, clear_at: Vector2, safe: Rect2) -> Rect2:
+	var out := rect
+	out.position.y = clear_at.y - KEEP_CLEAR_RADIUS - rect.size.y
+	if out.position.y < safe.position.y:
+		out.position.y = clear_at.y + KEEP_CLEAR_RADIUS
+	out.position.y = _clamp_y(out.position.y, rect.size.y, safe)
+	return out
+
+## Push a rect off everything already placed: UPWARD first, and DOWNWARD from
+## the original row when the upward run would leave the safe area. Round 2
+## stacked upward only and clamped the overflow to SAFE_TOP, which is how four
+## captions ended up interleaved inside one 20px band under the region name.
+func _stack(rect: Rect2, placed: Array[Rect2], safe: Rect2) -> Rect2:
+	var up := _slide(rect, placed, -1.0)
+	if up.position.y >= safe.position.y:
+		return up
+	var down := _slide(rect, placed, 1.0)
+	if down.end.y <= safe.end.y:
+		return down
+	up.position.y = _clamp_y(up.position.y, rect.size.y, safe)
+	return up
+
+## One directional run: step off each rect hit, `dir` -1 up and +1 down. The
+## guard bounds a pathological pile; MAX_VISIBLE labels never reach it.
+func _slide(rect: Rect2, placed: Array[Rect2], dir: float) -> Rect2:
+	var out := rect
+	var guard := 0
+	while guard < 12:
+		var hit := false
+		for r: Rect2 in placed:
+			if r.intersects(out):
+				if dir < 0.0:
+					out.position.y = r.position.y - out.size.y - STACK_GAP
+				else:
+					out.position.y = r.end.y + STACK_GAP
+				hit = true
+				break
+		if not hit:
+			break
+		guard += 1
+	return out
+
+## Clamp a top edge into the safe band, tolerating a label taller than the band
+## itself — a `clampf` whose min exceeds its max returns the max, i.e. the wrong
+## end — in which case the TOP of the safe area wins.
+func _clamp_y(y: float, height: float, safe: Rect2) -> float:
+	var lo := safe.position.y
+	return clampf(y, lo, maxf(lo, safe.end.y - height))

@@ -110,28 +110,53 @@ const TELL_TINT := Color(1.0, 0.42, 0.47)
 ## VISUAL_BIBLE v2 LAW 7 — enemies are hostile by SILHOUETTE. The Kenney kits
 ## dress a zombie in teal, an orc in green, a keeper in brown and a UFO in
 ## chrome, all at full chroma; a room with four of them had four hues in it
-## before the region spent one. A multiply of ~0.57 grey-blue drops every body
-## to a dark, faintly cool shape that the moon still models — a silhouette, not
-## a mud pit — and leaves exactly one saturated thing on the whole enemy: the
-## red tell below.
-const BODY_TINT := Color(0.55, 0.58, 0.62)
+## before the region spent one.
+##
+## TWO operations, because one was not enough and the frames proved it: the
+## critic still read "a saturated green low-poly form" in the Ruins and "red
+## capes" in Corporate under the old 0.55 multiply. A MULTIPLY only darkens — it
+## keeps every hue exactly as saturated as the kit authored it, so a bright orc
+## green became a dark orc green and stayed the third hue in a room that had
+## already spent its three. So:
+##   * BODY_TINT darkens (and cools) — Map3D.tint's contract, a multiply. No
+##     channel under 0.45: the body must stay a MODELLED shape above the floor's
+##     64-84 luminance, not a hole in it;
+##   * BODY_DESAT pulls what is left toward its own luminance, which is what
+##     actually kills the orc's green, the vampire's cape and the UFO's chrome.
+##     Every enemy kit is a COLORMAP TEXTURE over a white albedo (verified in the
+##     GLBs: baseColorFactor absent, one `Textures/colormap.png` each), so this
+##     has to land on the TEXTURE — see `_desat_texture` — greying a white
+##     `albedo_color` greys nothing.
+## npc3d.gd holds its people at a 0.74 multiply and no desaturation, so an enemy
+## is now unmistakably the darker, greyer body in any frame that holds both.
+const BODY_TINT := Color(0.45, 0.48, 0.52)
+const BODY_DESAT := 0.55
 
 ## THE TELL. One red core per enemy, and nothing else on the body is allowed to
-## be bright (LAW 3 lists "enemy tells (eyes/core only)" among the five). It is
-## a tiny billboarded quad at eye height, additive and over the §7 glow
-## threshold so it blooms as a point rather than as a halo — the read is "two
-## eyes in the dark", not "an enemy wearing a coloured light".
-const TELL_QUAD := 0.075
-const TELL_GAIN := 1.5
-## Elites and bosses speak the SAME language, louder: the same red core, bigger,
-## plus a pool small enough to stay under the body. v1 gave them a 2.4-energy
-## OmniLight in the enemy's own DEATH_ACCENT — a per-type rainbow halo, range 5,
-## which is precisely the "accent halo" LAW 7 forbids and a large part of why
-## the combat frame is a pastel wash.
+## be bright (LAW 3 lists "enemy tells (eyes/core only)" among the five): a PAIR
+## of eyes at head height, additive and over the §7 glow threshold (1.0) so they
+## bloom as points rather than as a halo. The read is "two eyes in the dark".
+##
+## The previous numbers were 0.075u and a 1.5 gain, on ONE quad, sitting at the
+## dead centre of the body — i.e. inside the skull, behind the model's own
+## depth, and about two screen pixels across at the camera's 29u. The critic's
+## verdict on that tell was that there is no tell: "player-sized tan Kenney bots
+## ... no red tell, indistinguishable from an NPC". 0.12u each, gain 2.0, and
+## drawn without a depth test so the head cannot eat them.
+const TELL_EYE := 0.12
+const TELL_GAIN := 2.0
+## ...and a small pool of the same red under every enemy, ALWAYS ON. This is the
+## half a dark silhouette cannot do on its own: a body facing away, a body at the
+## far end of a room, a body in an unlit corner still stands in a red circle.
+## Bosses get the louder version of the same one thing — never a second hue.
+## (v1 gave elites a 2.4-energy OmniLight in the enemy's own per-type accent,
+## range 5: precisely the "accent halo" LAW 7 forbids.)
+const TELL_LIGHT_BASE := 0.45
 const TELL_LIGHT_ELITE := 0.6
 const TELL_LIGHT_BOSS := 0.8
-const TELL_RANGE_ELITE := 1.5
-const TELL_RANGE_BOSS := 2.2
+const TELL_RANGE_BASE := 2.2
+const TELL_RANGE_ELITE := 2.8
+const TELL_RANGE_BOSS := 3.5
 
 ## The readout over a damaged body: SMALL, TEXT_DIM, and silent until it has
 ## something to say (LAW 4: quiet by default). It is a screen-space label like
@@ -241,15 +266,21 @@ const FALLBACK_HEIGHT := 0.9
 ## boss's 1.55 is a four-and-a-half-metre enemy in a room whose ceiling is the
 ## camera):
 ##   * a person is a person — 0.85-1.0u, the band npc3d.gd holds its NPCs to
-##   * a boss may be a monument, but never over 2.2u tall
+##   * a boss may be a monument, but never over 2.0u tall
 ##   * a saucer is measured ACROSS: `fit_height` scales uniformly, and the ufos
 ##     are half again wider than they are tall, so 1.6u of width is the limit
 ##     that actually governs them
 ## And a model whose manifest bounds are degenerate is not fitted at all: that
 ## division is noise, not a scale factor.
+##
+## Every one of these is applied TWICE: once here, on the manifest's numbers, to
+## pick the height to fit to — and again in `_fit_and_anchor`, on the model's own
+## measured AABB, which is the only source that cannot be wrong. The Ruins boss
+## is why: the manifest says the orc's min.y is 0, the frame says it is buried to
+## the knee, and a number that disagrees with the picture loses.
 const HUMANOID_MIN := 0.85
 const HUMANOID_MAX := 1.0
-const BOSS_MAX := 2.2
+const BOSS_MAX := 2.0
 const UFO_MAX_W := 1.6
 const DEGENERATE_H := 0.2
 ## Kenney's characters are authored facing +Z (player3d.gd / npc3d.gd verified
@@ -361,7 +392,8 @@ var _marker: MeshInstance3D
 var _marker_t := 0.0
 var _marker_dur := 0.0
 var _marker_r := 0.0
-var _tell: MeshInstance3D
+## The eye pair's holder (the two quads are its children) and the pool under it.
+var _tell: Node3D
 var _tell_light: OmniLight3D
 var _proxy: ActorProxy
 
@@ -389,6 +421,10 @@ static var _mesh_wedge: ArrayMesh
 static var _mesh_disc: ArrayMesh
 static var _mat_tell: StandardMaterial3D
 static var _mat_lane: StandardMaterial3D
+## The desaturated copy of every kit colormap an enemy has worn, keyed by the
+## source texture's path: one 512x512 pass per PACK per session, shared by every
+## enemy from that pack. Never the original — NPCs and props draw with that.
+static var _desat_tex: Dictionary = {}
 
 ## The one colour an enemy is allowed to emit (see the block where the per-type
 ## table used to be). Kept as a function, not inlined, so a future exception has
@@ -483,10 +519,10 @@ func _roll_elite() -> void:
 	token_drop = int(round(float(token_drop) * 2.5))
 	_guard_max += 1
 
-## The Kenney body. Floor-anchored (some packs author a negative min.y, so the
-## model is lifted by its own bounds rather than trusted to sit at zero), fitted
-## to the bible's height, tinted with the accent only when it is a boss or an
-## elite (LAW 2: an ordinary enemy is its own flat colormap).
+## The Kenney body: fitted to the bible's height, capped and floor-anchored
+## against its OWN measured bounds (`_fit_and_anchor`), then dropped to a dark
+## grey silhouette (BODY_TINT + `_grey_body`). Nothing on it is saturated; the
+## one red thing an enemy owns is the tell built in `_build_tell`.
 func _build_model() -> void:
 	var spec: Dictionary = MODELS.get(enemy_type, {})
 	_model_key = str(spec.get("key", ""))
@@ -516,10 +552,8 @@ func _build_model() -> void:
 			_base_model_h = FALLBACK_HEIGHT
 		else:
 			Map3D.fit_height(inst, _model_key, _base_model_h)
-		# Floor-anchor: manifest min.y is authored, so lift by it * the fit scale.
-		var b: Dictionary = Map3D.bounds(_model_key)
-		var mn: Array = b.get("min", [0.0, 0.0, 0.0])
-		inst.position.y = -float(mn[1]) * inst.scale.y
+		# Measure what was actually built, cap it, and stand it on the floor.
+		_fit_and_anchor(inst)
 		# LAW 7, every body without exception — including the boss, whose v1
 		# accent wash plus 0.18 emission made the one enemy the player is
 		# meant to read as a shape into the brightest object in its arena.
@@ -533,12 +567,145 @@ func _build_model() -> void:
 	_apply_body_scale()
 	model_root.position.y = _model_y
 
+## Stand the model ON the floor at a size the room can hold — MEASURED, not
+## declared. The manifest's authored `min.y` is the number this used to trust,
+## and the Stack Overflow boss is what happens when it is wrong: "a saturated
+## green low-poly form roughly 2.5x the player's height clips through the floor".
+##
+## A mesh knows its own bounds, so this asks every MeshInstance3D under the model
+## for its AABB, merges them in MODEL ROOT space, shrinks the model if the merged
+## box breaks one of the SCALE CLAMP limits (measured against the FINAL on-screen
+## size, `_visual_scale()` included), and then offsets it so the box's min.y is
+## exactly 0. Nothing clips through the floor and nothing floats above it; the
+## flyers' lift is `model_root.position.y = _model_y`, applied on top of a body
+## that is properly seated at its own zero.
+##
+## `_base_model_h` is rewritten from the same measurement, so the tell, the HP
+## anchor, the head-text origin and the hit sparks all ride the body's REAL head
+## height rather than the manifest's idea of it.
+func _fit_and_anchor(inst: Node3D) -> void:
+	# Measure with the model at its parent's origin, so the box is purely
+	# `inst.scale` * the mesh and scaling it again is a plain multiply.
+	inst.position = Vector3.ZERO
+	var box := _merged_aabb(inst)
+	if box.size.y <= 0.001:
+		# No measurable geometry (a mesh-less rig, an empty scene): fall back to
+		# the manifest's authored minimum, and only ever LIFT with it.
+		var b: Dictionary = Map3D.bounds(_model_key)
+		var mn: Array = b.get("min", [0.0, 0.0, 0.0])
+		inst.position.y = -minf(float(mn[1]), 0.0) * inst.scale.y
+		return
+	var k := maxf(_visual_scale(), 0.01)
+	# Kenney names every rigged person `character-*` and every saucer
+	# `enemy-ufo-*`, and Map3D keeps that name, so the kit says which limit
+	# applies. A boss is allowed to be a monument; it is not allowed to be a wall.
+	var humanoid: bool = _model_key.contains("character") and not is_boss
+	var max_h: float = HUMANOID_MAX if humanoid else BOSS_MAX
+	var s := 1.0
+	if box.size.y * k > max_h:
+		s = max_h / (box.size.y * k)
+	elif humanoid and box.size.y * k < HUMANOID_MIN:
+		s = HUMANOID_MIN / (box.size.y * k)
+	if _model_key.contains("ufo"):
+		var w: float = maxf(box.size.x, box.size.z) * k * s
+		if w > UFO_MAX_W:
+			s *= UFO_MAX_W / w
+	inst.scale *= s
+	# AABB.position IS the min corner: put it on the floor.
+	inst.position.y = -box.position.y * s
+	_base_model_h = box.size.y * s
+
+## Every MeshInstance3D under `node`, merged into ONE box in `model_root` space.
+## Zero-sized when the subtree has no measurable geometry, which is the caller's
+## signal to fall back to the manifest.
+##
+## The corners are transformed one at a time rather than the box as a whole: a
+## rotated child (Kenney rigs several) would otherwise contribute an axis-aligned
+## box in the WRONG axes, and a merged bound that is bigger than the model is how
+## a floor-anchored body ends up hovering.
+func _merged_aabb(node: Node3D) -> AABB:
+	var inv := model_root.global_transform.affine_inverse()
+	var out := AABB()
+	var have := false
+	var stack: Array[Node] = [node]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D:
+			var mi := n as MeshInstance3D
+			if mi.mesh != null:
+				var local := mi.get_aabb()
+				if local.size.x + local.size.y + local.size.z > 0.0:
+					var rel := inv * mi.global_transform
+					for i in 8:
+						var p: Vector3 = rel * local.get_endpoint(i)
+						if have:
+							out = out.expand(p)
+						else:
+							out = AABB(p, Vector3.ZERO)
+							have = true
+		for c: Node in n.get_children():
+			stack.append(c)
+	return out
+
+## Pull a body colour toward its own luminance (see BODY_TINT). BODY_TINT is a
+## multiply and multiplies cannot desaturate; this is the half that does — for a
+## material whose colour lives in `albedo_color` (the fallback capsule, a kit
+## authored with flat colours). A textured kit's colour lives in the texture and
+## goes through `_desat_texture` instead; on those this is a harmless no-op.
+static func _grey_body(c: Color) -> Color:
+	var grey: float = c.r * 0.299 + c.g * 0.587 + c.b * 0.114
+	return Color(lerpf(c.r, grey, BODY_DESAT), lerpf(c.g, grey, BODY_DESAT),
+		lerpf(c.b, grey, BODY_DESAT), c.a)
+
+## The same pull, on a kit COLORMAP. Every Kenney enemy is a white albedo under
+## one shared 512x512 texture, so this is where the orc's green and the vampire's
+## cape actually go grey. Built once per source texture and cached; a texture
+## that cannot be read back (no image, a compressed format that will not
+## decompress) is left as it is rather than replaced with nothing.
+static func _desat_texture(tex: Texture2D) -> Texture2D:
+	if tex == null:
+		return null
+	var key: String = tex.resource_path if tex.resource_path != "" \
+		else str(tex.get_instance_id())
+	if _desat_tex.has(key):
+		return _desat_tex[key] as Texture2D
+	var img: Image = tex.get_image()
+	if img == null or img.is_empty():
+		return tex
+	img = img.duplicate() as Image
+	if img.is_compressed():
+		img.decompress()
+	if img.is_compressed():
+		return tex
+	# adjust_bcs's saturation is "how much of the original chroma survives".
+	img.adjust_bcs(1.0, 1.0, 1.0 - BODY_DESAT)
+	var out := ImageTexture.create_from_image(img)
+	if out == null:
+		return tex
+	_desat_tex[key] = out
+	return out
+
 ## Cache the model's materials so a damage flash or a wind-up tint is two float
 ## writes instead of a recursive duplicate-everything pass.
+##
+## It is also where the SILHOUETTE lands: Map3D.tint has already multiplied the
+## body dark, this pulls what is left toward grey (the colormap through
+## `_desat_texture`, the albedo through `_grey_body`) and puts out any emission
+## a kit might ship, so the only lit thing anywhere on an enemy is the red tell.
+## The cached "base" every effect returns to is the silhouette colour, not the
+## kit's.
 func _bind_materials(node: Node) -> void:
 	if node is MeshInstance3D:
 		var mi := node as MeshInstance3D
-		if mi.mesh:
+		if mi.material_override is StandardMaterial3D:
+			# The missing-model stand-in wears a material_override, and an override
+			# OUTRANKS every surface override: binding the surface here would cache
+			# a material nothing draws, and the fallback body would silently stop
+			# flashing when it was hit.
+			var om := (mi.material_override as StandardMaterial3D).duplicate() as StandardMaterial3D
+			mi.material_override = om
+			_cache_material(om)
+		elif mi.mesh:
 			for i in mi.mesh.get_surface_count():
 				var src: Material = mi.get_surface_override_material(i)
 				if src == null:
@@ -546,13 +713,24 @@ func _bind_materials(node: Node) -> void:
 				if src is StandardMaterial3D:
 					var mat := (src as StandardMaterial3D).duplicate() as StandardMaterial3D
 					mi.set_surface_override_material(i, mat)
-					_mats.append(mat)
-					_mat_albedo.append(mat.albedo_color)
-					_mat_emis.append(mat.emission)
-					_mat_emis_e.append(mat.emission_energy_multiplier)
-					_mat_emis_on.append(mat.emission_enabled)
-	for c in node.get_children():
+					_cache_material(mat)
+	for c: Node in node.get_children():
 		_bind_materials(c)
+
+## Silhouette one material and remember what "unlit and at rest" means for it, so
+## the flash and the wind-up tint have a base to return to.
+func _cache_material(mat: StandardMaterial3D) -> void:
+	mat.albedo_color = _grey_body(mat.albedo_color)
+	if mat.albedo_texture != null:
+		mat.albedo_texture = _desat_texture(mat.albedo_texture)
+	mat.emission_enabled = false
+	mat.emission = Color.BLACK
+	mat.emission_energy_multiplier = 0.0
+	_mats.append(mat)
+	_mat_albedo.append(mat.albedo_color)
+	_mat_emis.append(mat.emission)
+	_mat_emis_e.append(mat.emission_energy_multiplier)
+	_mat_emis_on.append(mat.emission_enabled)
 
 ## Model, body collider and hitbox all follow `_body_scale`, so a boss is meaty
 ## and a grown Scope Creep genuinely occupies more floor. The root node's own
@@ -585,6 +763,8 @@ func _apply_body_scale() -> void:
 		_alert_ring.scale = Vector3(k, 1.0, k)
 	if is_instance_valid(_tell):
 		_tell.position.y = _tell_y()
+		# The eyes are the body's eyes: they grow with it and shrink with it.
+		_tell.scale = Vector3.ONE * k
 	if is_instance_valid(_tell_light):
 		_tell_light.position.y = _tell_y()
 	if is_instance_valid(_shadow):
@@ -757,55 +937,84 @@ func _build_presence() -> void:
 	_build_tell()
 
 ## THE TELL (LAW 7). Every enemy in the game wears exactly one saturated thing
-## and it is this: a tiny HOSTILE core at eye height, billboarded so it reads
-## from any angle, additive and just over the glow threshold so it blooms as a
-## POINT. A dark silhouette with a red eye is legible at a glance in a night
-## room and costs the frame nothing; the v1 answer — a range-5 OmniLight in the
-## enemy's own per-type accent — cost it a hue, a wash, and the hierarchy.
+## and it is this: a PAIR of HOSTILE eyes at head height plus a small pool of the
+## same red under the body. A dark silhouette with two red eyes is legible at a
+## glance in a night room and costs the frame nothing; the v1 answer — a range-5
+## OmniLight in the enemy's own per-type accent — cost it a hue, a wash, and the
+## hierarchy.
 ##
-## Elites and bosses get the same tell, larger, plus a small pool of the same
-## red. They are still the only enemies carrying a light, and it is now under a
-## third of what it was and reaches a body's width instead of five metres.
+## Three things make it actually read, all of them absent from the version the
+## critic could not find any red in:
+##   * SIZE. 0.12u per eye. At the rig's 29u and 40 degree FOV that is about five
+##     screen pixels on a forty-pixel body, which blooms; the old 0.075 single
+##     quad was two, which does not.
+##   * GAIN 2.0, i.e. an albedo of 2.0 x HOSTILE on an ADDITIVE unshaded material.
+##     Unshaded ignores `emission` entirely (see `_hot_mat`), so overbright albedo
+##     is how a mesh gets above §7's 1.0 glow threshold — this is the "emission
+##     energy 2.0" the brief asks for, spelled the way this renderer reads it.
+##   * NO DEPTH TEST. The old quad sat at the body's centre line, which for every
+##     Kenney character is INSIDE the skull: depth-tested, additive, and drawn
+##     behind the head that contains it. A tell the model can eat is not a tell.
+##     The cost is that the eyes read through a wall the body is behind; the rooms
+##     are single open arenas, and an enemy you can see coming is the point.
+## The light is ALWAYS ON — every enemy, not just elites and bosses — because the
+## half a pair of eyes cannot do is ground a body that is facing away or standing
+## in an unlit corner. Bosses speak the same language, louder.
 func _tell_y() -> float:
-	return _base_model_h * _visual_scale() * 0.78 + _model_y
+	return _base_model_h * _visual_scale() * 0.80 + _model_y
 
 func _build_tell() -> void:
 	var k := _visual_scale()
-	_tell = MeshInstance3D.new()
+	# A holder, not a mesh: the two eyes are siblings inside it, so ONE node
+	# carries the head height and the body's scale for both.
+	_tell = Node3D.new()
 	_tell.name = "Tell"
-	var quad := QuadMesh.new()
-	var span: float = TELL_QUAD * (1.7 if is_boss else (1.3 if _elite else 1.0))
-	quad.size = Vector2(span, span)
-	_tell.mesh = quad
-	var tm := _hot_mat(HOSTILE, TELL_GAIN)
-	tm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	_tell.material_override = tm
-	_tell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_tell.position = Vector3(0.0, _tell_y(), 0.0)
+	_tell.scale = Vector3.ONE * k
 	add_child(_tell)
-	if not (_elite or is_boss):
-		return
+	var span: float = TELL_EYE * (1.7 if is_boss else (1.3 if _elite else 1.0))
+	var quad := QuadMesh.new()
+	quad.size = Vector2(span, span * 0.7)
+	var em := _hot_mat(HOSTILE, TELL_GAIN)
+	em.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	# A billboard drops the node's scale unless it is told to keep it, and this
+	# pair's scale IS the body's size (a grown Scope Creep looks at you with
+	# bigger eyes).
+	em.billboard_keep_scale = true
+	em.no_depth_test = true
+	em.render_priority = 2
+	for side: float in [-1.0, 1.0]:
+		var eye := MeshInstance3D.new()
+		eye.name = "Eye"
+		eye.mesh = quad
+		eye.material_override = em
+		eye.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		eye.position = Vector3(side * span * 0.62, 0.0, 0.0)
+		_tell.add_child(eye)
 	_tell_light = OmniLight3D.new()
 	_tell_light.name = "TellLight"
 	_tell_light.light_color = HOSTILE
-	_tell_light.light_energy = TELL_LIGHT_BOSS if is_boss else TELL_LIGHT_ELITE
-	_tell_light.omni_range = TELL_RANGE_BOSS if is_boss else TELL_RANGE_ELITE
+	_tell_light.light_energy = TELL_LIGHT_BOSS if is_boss \
+		else (TELL_LIGHT_ELITE if _elite else TELL_LIGHT_BASE)
+	_tell_light.omni_range = TELL_RANGE_BOSS if is_boss \
+		else (TELL_RANGE_ELITE if _elite else TELL_RANGE_BASE)
 	_tell_light.omni_attenuation = 1.6
 	_tell_light.shadow_enabled = false
 	_tell_light.position = Vector3(0.0, _tell_y(), 0.0)
 	add_child(_tell_light)
-	if _elite and not is_boss:
-		# The elite chevron: one small STILL marker over its head, in the same
-		# red as every other tell. It does not spin and it does not pulse.
-		var mark := MeshInstance3D.new()
-		var prism := PrismMesh.new()
-		prism.size = Vector3(0.26, 0.2, 0.05)
-		mark.mesh = prism
-		mark.material_override = _tell_mat()
-		mark.rotation_degrees = Vector3(0.0, 0.0, 180.0)
-		mark.position = Vector3(0.0, _base_model_h * k + _model_y + 0.5, 0.0)
-		mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(mark)
+	if not _elite or is_boss:
+		return
+	# The elite chevron: one small STILL marker over its head, in the same red as
+	# every other tell. It does not spin and it does not pulse.
+	var mark := MeshInstance3D.new()
+	var prism := PrismMesh.new()
+	prism.size = Vector3(0.26, 0.2, 0.05)
+	mark.mesh = prism
+	mark.material_override = _tell_mat()
+	mark.rotation_degrees = Vector3(0.0, 0.0, 180.0)
+	mark.position = Vector3(0.0, _base_model_h * k + _model_y + 0.5, 0.0)
+	mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mark)
 
 static func _tell_mat() -> StandardMaterial3D:
 	if _mat_tell == null:
