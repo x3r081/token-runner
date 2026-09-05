@@ -78,6 +78,7 @@ func _run() -> void:
 	_test_stage3d()
 	_test_spawn_is_map_pixels()
 	await _test_actors_and_waypoint(world)
+	await _test_prop_objective_resolves(world)
 
 	# The live world goes FIRST, and the bare region builds run in the empty
 	# tree behind it. A region built while world3d is mounted parents its
@@ -315,3 +316,27 @@ func _check(label: String, condition: bool) -> void:
 ## loud so a green run is never mistaken for a complete one.
 func _note(text: String) -> void:
 	print("  NOTE: %s" % text)
+
+
+## REGRESSION — the first quest chain must never loop between portals.
+## morning_ritual targets prop_coffee, an Interactable3D in the apartment. Its
+## ActorProxy declares EVERY mirrored field, so a waypoint that classified NPCs
+## by `"npc_id" in node` skipped every prop and fell back to "Way out" — the
+## player was bounced Localhost <-> Dependency District with nothing to do.
+func _test_prop_objective_resolves(world: Node) -> void:
+	QuestManager.on_talk("roommate_ai")
+	QuestManager.on_token_collected(10)
+	await get_tree().process_frame
+	var obj := QuestManager.get_current_objective()
+	_check("after hello_localhost the current objective is prop_coffee (got %s)" % str(obj.get("node_id", "")), str(obj.get("node_id", "")) == "prop_coffee")
+	var wp: Node = get_tree().get_first_node_in_group("objective_waypoint")
+	if wp == null and is_instance_valid(world):
+		wp = world.get_node_or_null("HUD/ObjectiveWaypoint")
+	_check("objective waypoint is reachable (group or HUD child)", wp != null)
+	if wp == null:
+		return
+	wp.refresh_now()
+	await get_tree().create_timer(0.3).timeout
+	var target = wp.target_node()
+	_check("waypoint resolves prop_coffee (target=%s)" % str(target), target != null and "interact_id" in target and str(target.get("interact_id")) == "prop_coffee")
+	_check("waypoint is NOT in 'Way out' fallback for an in-room prop objective", not bool(wp.get("_fallback")))

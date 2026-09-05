@@ -1069,11 +1069,12 @@ func _finish_resolve(previous: String, prev_cross: bool) -> void:
 	# own world label, so the beacon has to be lifted above it. Property probe
 	# rather than a class check: `target_region` is exactly what `_portals()`
 	# already identifies a portal by, so the two can never disagree.
-	_target_is_portal = is_instance_valid(_target) and "target_region" in _target
+	_target_is_portal = is_instance_valid(_target) and "target_region" in _target \
+		and str(_target.get("target_region")) != ""
 	# Same probe, same reason: `npc_id` is exactly what `_find_npc()` identifies
 	# an NPC by, so the two can never disagree about what one is.
 	_target_is_npc = is_instance_valid(_target) and not _target_is_portal \
-		and "npc_id" in _target
+		and "npc_id" in _target and str(_target.get("npc_id")) != ""
 	if previous != _target_name or prev_cross != _cross_region:
 		_last_label_metres = -1
 	_apply_accent()
@@ -1129,7 +1130,9 @@ func _find_prop(prop_id: String) -> Node2D:
 	for n in get_tree().get_nodes_in_group("interactable"):
 		if not (n is Node2D):
 			continue
-		if "npc_id" in n:
+		# Non-EMPTY, not merely present: a 3D ActorProxy declares every mirrored
+		# field on every proxy, so existence alone would skip every prop.
+		if "npc_id" in n and str(n.get("npc_id")) != "":
 			continue  # NPCs mirror their id into interact_id; not a prop
 		if "interact_id" in n and str(n.interact_id) == prop_id:
 			return n as Node2D
@@ -1183,7 +1186,7 @@ func _nearest_enemy(kind: String) -> Node2D:
 func _portals() -> Array[Node2D]:
 	var out: Array[Node2D] = []
 	for n in get_tree().get_nodes_in_group("interactable"):
-		if n is Node2D and "target_region" in n:
+		if n is Node2D and "target_region" in n and str(n.get("target_region")) != "":
 			out.append(n as Node2D)
 	return out
 
