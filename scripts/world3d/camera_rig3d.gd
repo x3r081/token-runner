@@ -73,7 +73,7 @@ const FAR := 220.0
 ## Follow. Exponential damping, so the frame is frame-rate independent and can
 ## never overshoot; §7's "rate 6" plus a 1.2u lead in the direction of travel.
 const FOLLOW_RATE := 6.0
-const LOOK_DIST := 1.2
+const LOOK_DIST := 2.6
 const LOOK_RATE := 5.5
 const SPEED_SMOOTH := 4.5
 ## player.gd SPEED is 220 map px/s; one tile is 64 px (Map3D.PX), so full walk
@@ -98,6 +98,37 @@ const SHAKE_SPEED := 11.0
 ## a scale about the focus. 0.84 keeps him roughly one body-height clear of
 ## every screen edge before the frame gives up "no void" to follow him.
 const FRAME_KEEP := 0.84
+
+## How much of the way the frame travels toward the player when the room is
+## SMALLER than the frame — which, at this framing, is every authored room.
+##
+## The clamp below used to demand that the view's bounding box fit inside the
+## room. That box is ~30u wide by ~33u deep once the yaw and pitch are taken
+## into account, and a room is 20 x 15, so the demand was unsatisfiable on both
+## axes, the clamp took its "centre instead" branch, and the camera parked: it
+## did not follow at all. `_framed()` then had to drag the frame once the player
+## had already reached 84% of the way to a screen edge, with no easing — exactly
+## the "the edge does not reveal until very late" that was reported.
+##
+## A fixed overhang allowance cannot fix this in general: the depth box exceeds
+## a room's depth by more than any sane constant. So when the frame does not
+## fit, the focus travels this FRACTION of the way from the best-compromise
+## position toward the player instead of stopping at it. The edge he walks
+## toward reveals in proportion to his approach, and the overhang stays bounded
+## by the fraction rather than being unbounded.
+##
+## Looking past a wall is cheap now and was not when that clamp was written:
+## the Environment background is the region's own BASE, both builders paint a
+## lit BASE ground plane 200u square beyond the border, and a backdrop band
+## stands behind it. What shows past a wall is the region's dark, not a hole.
+const TIGHT_FOLLOW := 0.55
+
+## The hard cap on how far past a wall the frame may look, in world units.
+## TIGHT_FOLLOW decides how much the camera leads; this decides how much of the
+## outside that is ever allowed to cost. Together they replace the old
+## all-or-nothing rule, which chose "no void" over "follow the player" and, in
+## every room where the two conflicted, stopped following.
+const VOID_ALLOW := 5.0
 
 ## Dolly transients, as a FRACTION of DISTANCE pulled in.
 const PUNCH_DECAY := 4.5
@@ -327,14 +358,26 @@ func _clamped(f: Vector3) -> Vector3:
 	if _room.x <= 0.0 or _room.y <= 0.0:
 		return f
 	var out := f
-	var lo_x := 0.0 - _view_min.x
-	var hi_x := _room.x - _view_max.x
-	out.x = clampf(f.x, lo_x, hi_x) if hi_x >= lo_x else (lo_x + hi_x) * 0.5
-	var lo_z := 0.0 - _view_min.y
-	var hi_z := _room.y - _view_max.y
-	out.z = clampf(f.z, lo_z, hi_z) if hi_z >= lo_z else (lo_z + hi_z) * 0.5
+	out.x = _axis(f.x, 0.0 - _view_min.x, _room.x - _view_max.x)
+	out.z = _axis(f.z, 0.0 - _view_min.y, _room.y - _view_max.y)
 	out.y = 0.0
 	return out
+
+## One axis of the clamp.
+##
+## When the frame FITS between `lo` and `hi`, the focus is clamped into that
+## band and the camera is a true follow cam that never shows anything past a
+## wall. When it does not fit, the band's midpoint is still the best-compromise
+## position — it is where the yawed frustum sits most evenly in the room, which
+## is why this is not simply the room centre — and the focus travels
+## TIGHT_FOLLOW of the way from there toward what the follow wants.
+static func _axis(want: float, lo: float, hi: float) -> float:
+	var base := (lo + hi) * 0.5
+	var f := base + (want - base) * TIGHT_FOLLOW
+	# The band is inverted when the frame does not fit the room, but widening
+	# both ends by VOID_ALLOW leaves a sane interval either way, so this is one
+	# formula rather than two branches.
+	return clampf(f, minf(lo, hi) - VOID_ALLOW, maxf(lo, hi) + VOID_ALLOW)
 
 ## Keep the followed body ON SCREEN, which outranks "never show void".
 ##
